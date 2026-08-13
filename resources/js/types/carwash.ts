@@ -78,6 +78,7 @@ export interface CarwashCustomer {
     email: string;
     vehicle: string;
     plate: string;
+    vehicles: CarwashVehicle[];
     stamps: number;
     lifetimeStamps: number;
     visits: number;
@@ -143,6 +144,12 @@ export interface CarwashVoucher {
     status: string;
 }
 
+/**
+ * Derived from how much of the order has been collected: nothing yet, a partial
+ * deposit, or the full amount.
+ */
+export type CarwashPaymentStatus = 'belum bayar' | 'dp' | 'lunas';
+
 export interface CarwashOrder {
     id: number;
     orderNo: string;
@@ -155,9 +162,14 @@ export interface CarwashOrder {
     plate: string;
     items: string;
     serviceIds: number[];
+    /** Already net of `discount` — this is what the cashier bills. */
     total: number;
+    discount: number;
+    /** Name of the reward the front office traded in, or `'—'`. */
+    reward: string;
+    paidAmount: number;
     payment: string;
-    paymentStatus: string;
+    paymentStatus: CarwashPaymentStatus;
     status: string;
     stampsEarned: number;
     crew: string;
@@ -202,11 +214,6 @@ export interface CarwashCrewMember {
     jobs: number;
     rating: number;
     initials: string;
-}
-
-export interface CarwashCartLine {
-    service: CarwashService;
-    quantity: number;
 }
 
 export interface CarwashMoneyEntry {
@@ -311,12 +318,27 @@ export interface CarwashRevenuePoint {
     date: string;
     revenue: number;
     transactions: number;
+    expense: number;
 }
 
-export interface CarwashMonthlyPoint {
-    month: string;
+/** One bar of the report chart, already aggregated by day or by month. */
+export interface CarwashTrendPoint {
+    label: string;
+    caption: string;
     revenue: number;
     expense: number;
+    transactions: number;
+}
+
+/** The active report range, plus the bounds the filter may select within. */
+export interface CarwashReportFilters {
+    from: string;
+    to: string;
+    label: string;
+    granularity: 'harian' | 'bulanan';
+    days: number;
+    today: string;
+    earliest: string;
 }
 
 export interface CarwashTopService {

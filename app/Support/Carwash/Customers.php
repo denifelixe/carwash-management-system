@@ -2,17 +2,19 @@
 
 namespace App\Support\Carwash;
 
+use Illuminate\Support\Str;
+
 /**
  * Centralized customer database (BR-07) and the loyalty/stamp records (BR-02).
  */
 class Customers
 {
     /**
-     * @return list<array{id: int, name: string, memberId: string, phone: string, email: string, vehicle: string, plate: string, stamps: int, lifetimeStamps: int, visits: int, spend: int, joinedAt: string, lastVisit: string, initials: string, status: string, hasAccount: bool}>
+     * @return list<array{id: int, name: string, memberId: string, phone: string, email: string, vehicle: string, plate: string, vehicles: list<array{name: string, plate: string, type: string, isPrimary: bool}>, stamps: int, lifetimeStamps: int, visits: int, spend: int, joinedAt: string, lastVisit: string, initials: string, status: string, hasAccount: bool}>
      */
     public static function all(): array
     {
-        return [
+        $customers = [
             ['id' => 1, 'name' => 'Hendra Gunawan', 'memberId' => 'ZW-2023-0031', 'phone' => '0812-1100-2255', 'email' => 'hendra.g@mail.com', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'stamps' => 9, 'lifetimeStamps' => 78, 'visits' => 64, 'spend' => 18450000, 'joinedAt' => 'Mar 2023', 'lastVisit' => 'Hari ini, 09.20', 'initials' => 'HG', 'status' => 'aktif', 'hasAccount' => true],
             ['id' => 2, 'name' => 'Rizky Pratama', 'memberId' => 'ZW-2023-0118', 'phone' => '0813-7788-1200', 'email' => 'rizky.pratama@mail.com', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'stamps' => 6, 'lifetimeStamps' => 61, 'visits' => 51, 'spend' => 14200000, 'joinedAt' => 'Jun 2023', 'lastVisit' => 'Hari ini, 08.05', 'initials' => 'RP', 'status' => 'aktif', 'hasAccount' => true],
             ['id' => 3, 'name' => 'Budi Santoso', 'memberId' => 'ZW-2024-0412', 'phone' => '0812-3456-7890', 'email' => 'budi.santoso@mail.com', 'vehicle' => 'Toyota Avanza', 'plate' => 'B 1234 CDE', 'stamps' => 7, 'lifetimeStamps' => 52, 'visits' => 42, 'spend' => 9850000, 'joinedAt' => 'Jan 2024', 'lastVisit' => 'Kemarin, 16.40', 'initials' => 'BS', 'status' => 'aktif', 'hasAccount' => true],
@@ -26,6 +28,32 @@ class Customers
             ['id' => 11, 'name' => 'Gilang Ramadhan', 'memberId' => 'ZW-2025-0502', 'phone' => '0817-8899-1010', 'email' => 'gilang.r@mail.com', 'vehicle' => 'Wuling Almaz', 'plate' => 'B 9021 HH', 'stamps' => 1, 'lifetimeStamps' => 3, 'visits' => 3, 'spend' => 410000, 'joinedAt' => 'Mei 2025', 'lastVisit' => '2 minggu lalu', 'initials' => 'GR', 'status' => 'tidak aktif', 'hasAccount' => false],
             ['id' => 12, 'name' => 'Putri Amelia', 'memberId' => 'ZW-2025-0640', 'phone' => '0838-4321-7788', 'email' => 'putri.amelia@mail.com', 'vehicle' => 'Hyundai Stargazer', 'plate' => 'B 3388 VN', 'stamps' => 2, 'lifetimeStamps' => 2, 'visits' => 2, 'spend' => 205000, 'joinedAt' => 'Jun 2025', 'lastVisit' => '3 minggu lalu', 'initials' => 'PA', 'status' => 'tidak aktif', 'hasAccount' => true],
         ];
+
+        $additionalVehicles = [
+            1 => [
+                ['name' => 'Toyota Alphard', 'plate' => 'B 2020 HG', 'type' => 'Mobil', 'isPrimary' => false],
+            ],
+            3 => [
+                ['name' => 'Honda Vario 160', 'plate' => 'B 5566 TY', 'type' => 'Motor', 'isPrimary' => false],
+            ],
+            6 => [
+                ['name' => 'Honda HR-V', 'plate' => 'B 7789 JK', 'type' => 'Mobil', 'isPrimary' => false],
+            ],
+        ];
+
+        return array_map(static function (array $customer) use ($additionalVehicles): array {
+            $customer['vehicles'] = [
+                [
+                    'name' => $customer['vehicle'],
+                    'plate' => $customer['plate'],
+                    'type' => Str::contains($customer['vehicle'], ['Yamaha', 'Vario']) ? 'Motor' : 'Mobil',
+                    'isPrimary' => true,
+                ],
+                ...($additionalVehicles[$customer['id']] ?? []),
+            ];
+
+            return $customer;
+        }, $customers);
     }
 
     /**

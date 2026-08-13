@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import {
     Boxes,
     CalendarClock,
@@ -11,6 +11,7 @@ import {
     Wallet,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import DateRangeFilter from '@/components/carwash/DateRangeFilter.vue';
 import SectionCard from '@/components/carwash/SectionCard.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import StatusPill from '@/components/carwash/StatusPill.vue';
@@ -20,24 +21,25 @@ import {
     formatPercent,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
+import admin from '@/routes/carwash/admin';
 import type {
     CarwashBookingSummary,
     CarwashBrand,
     CarwashCashSummary,
     CarwashCustomerActivity,
     CarwashInventorySummary,
-    CarwashMonthlyPoint,
-    CarwashRevenuePoint,
+    CarwashReportFilters,
     CarwashShift,
     CarwashStat,
     CarwashTopService,
+    CarwashTrendPoint,
 } from '@/types/carwash';
 
 const props = defineProps<{
     brand: CarwashBrand;
     stats: CarwashStat[];
-    revenueTrend: CarwashRevenuePoint[];
-    monthlyTrend: CarwashMonthlyPoint[];
+    trend: CarwashTrendPoint[];
+    filters: CarwashReportFilters;
     topServices: CarwashTopService[];
     customerActivity: CarwashCustomerActivity;
     bookingSummary: CarwashBookingSummary;
@@ -46,37 +48,97 @@ const props = defineProps<{
     shifts: CarwashShift[];
 }>();
 
-const period = ref<'minggu' | 'bulan'>('minggu');
+/** Gross margin the business measures itself against, in percent. */
+const MARGIN_TARGET = 50;
 
-const weekRevenue = computed<number>(() =>
-    props.revenueTrend.reduce((total, point) => total + point.revenue, 0),
+/** Most axis labels to print before they start colliding. */
+const MAX_AXIS_LABELS = 12;
+
+const hoveredBar = ref<number | null>(null);
+const isLoading = ref<boolean>(false);
+
+/** The range lives in the URL, so a filtered report stays shareable. */
+function applyRange(range: { from: string; to: string }): void {
+    router.get(admin.reports.url(), range, {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+        only: [
+            'trend',
+            'filters',
+            'topServices',
+            'customerActivity',
+            'bookingSummary',
+        ],
+        onStart: () => {
+            isLoading.value = true;
+        },
+        onFinish: () => {
+            isLoading.value = false;
+        },
+    });
+}
+
+/** Largest value in a list, or 0 when empty — `Math.max()` alone returns -Infinity. */
+function peakOf(values: number[]): number {
+    return values.length === 0 ? 0 : Math.max(...values);
+}
+
+/** `value` as a percentage of `total`, clamped to 0…100 and safe when `total` is 0. */
+function shareOf(value: number, total: number): number {
+    if (total <= 0) {
+        return 0;
+    }
+
+    return Math.min(100, Math.max(0, (value / total) * 100));
+}
+
+/** Print every nth label so a 60-day range keeps a readable axis. */
+const axisStride = computed<number>(() =>
+    Math.ceil(props.trend.length / MAX_AXIS_LABELS),
 );
 
-const weekTransactions = computed<number>(() =>
-    props.revenueTrend.reduce((total, point) => total + point.transactions, 0),
+const periodRevenue = computed<number>(() =>
+    props.trend.reduce((total, point) => total + point.revenue, 0),
 );
 
-const monthRevenue = computed<number>(() =>
-    props.monthlyTrend.reduce((total, point) => total + point.revenue, 0),
+const periodExpense = computed<number>(() =>
+    props.trend.reduce((total, point) => total + point.expense, 0),
 );
 
-const monthExpense = computed<number>(() =>
-    props.monthlyTrend.reduce((total, point) => total + point.expense, 0),
+const periodTransactions = computed<number>(() =>
+    props.trend.reduce((total, point) => total + point.transactions, 0),
 );
 
 const grossMargin = computed<number>(() =>
-    monthRevenue.value === 0
+    periodRevenue.value === 0
         ? 0
-        : ((monthRevenue.value - monthExpense.value) / monthRevenue.value) *
+        : ((periodRevenue.value - periodExpense.value) / periodRevenue.value) *
           100,
 );
 
-const maxMonthly = computed<number>(() =>
-    Math.max(...props.monthlyTrend.map((point) => point.revenue)),
+const averageTicket = computed<number>(() =>
+    periodTransactions.value === 0
+        ? 0
+        : Math.round(periodRevenue.value / periodTransactions.value),
 );
 
-const maxTopServiceRevenue = computed<number>(() =>
-    Math.max(...props.topServices.map((service) => service.revenue)),
+const isMarginOnTarget = computed<boolean>(
+    () => grossMargin.value >= MARGIN_TARGET,
+);
+
+/** Both series share one scale so the bars stay comparable. */
+const trendPeak = computed<number>(() =>
+    peakOf(props.trend.flatMap((point) => [point.revenue, point.expense])),
+);
+
+/** Sorted so the bar lengths run top to bottom, matching "layanan teratas". */
+const rankedServices = computed<CarwashTopService[]>(() =>
+    [...props.topServices].sort((a, b) => b.revenue - a.revenue),
+);
+
+const topServiceRevenue = computed<number>(() =>
+    peakOf(props.topServices.map((service) => service.revenue)),
 );
 
 const totalServiceRevenue = computed<number>(() =>
@@ -84,11 +146,10 @@ const totalServiceRevenue = computed<number>(() =>
 );
 
 const stampRedemptionRate = computed<number>(() =>
-    props.customerActivity.stampsIssued === 0
-        ? 0
-        : (props.customerActivity.stampsRedeemed /
-              props.customerActivity.stampsIssued) *
-          100,
+    shareOf(
+        props.customerActivity.stampsRedeemed,
+        props.customerActivity.stampsIssued,
+    ),
 );
 </script>
 
@@ -96,70 +157,37 @@ const stampRedemptionRate = computed<number>(() =>
     <Head :title="`${brand.name} — Laporan`" />
 
     <div class="space-y-4">
-        <!-- Period switch -->
+        <!-- Range filter -->
         <section class="flex flex-wrap items-center justify-between gap-3">
             <div>
                 <h2 class="text-base font-semibold text-slate-900">
                     Laporan & monitoring
                 </h2>
                 <p class="mt-0.5 text-xs text-slate-500">
-                    Rekap operasional, keuangan, dan loyalty
+                    {{ filters.label }} · {{ formatNumber(filters.days) }} hari
                 </p>
             </div>
-            <div class="flex gap-1 rounded-xl bg-slate-200/70 p-1 text-sm">
-                <button
-                    type="button"
-                    class="rounded-lg px-4 py-1.5 font-medium transition"
-                    :class="
-                        period === 'minggu'
-                            ? 'bg-white text-slate-900 shadow-sm'
-                            : 'text-slate-500'
-                    "
-                    @click="period = 'minggu'"
-                >
-                    Mingguan
-                </button>
-                <button
-                    type="button"
-                    class="rounded-lg px-4 py-1.5 font-medium transition"
-                    :class="
-                        period === 'bulan'
-                            ? 'bg-white text-slate-900 shadow-sm'
-                            : 'text-slate-500'
-                    "
-                    @click="period = 'bulan'"
-                >
-                    Bulanan
-                </button>
-            </div>
+            <DateRangeFilter
+                :from="filters.from"
+                :to="filters.to"
+                :today="filters.today"
+                :earliest="filters.earliest"
+                @change="applyRange"
+            />
         </section>
 
-        <!-- Headline numbers -->
+        <!-- Headline numbers, all on the selected period -->
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
                 label="Pendapatan"
-                :value="
-                    formatShortCurrency(
-                        period === 'minggu' ? weekRevenue : monthRevenue,
-                    )
-                "
-                :caption="
-                    period === 'minggu'
-                        ? `${weekTransactions} transaksi minggu ini`
-                        : '6 bulan terakhir'
-                "
+                :value="formatShortCurrency(periodRevenue)"
+                :caption="`${formatNumber(periodTransactions)} transaksi`"
                 :icon="Wallet"
                 tone="emerald"
             />
             <StatCard
                 label="Pengeluaran"
-                :value="
-                    formatShortCurrency(
-                        period === 'minggu'
-                            ? cashSummary.todayOut * 7
-                            : monthExpense,
-                    )
-                "
+                :value="formatShortCurrency(periodExpense)"
                 caption="biaya operasional"
                 :icon="TrendingDown"
                 tone="rose"
@@ -167,14 +195,12 @@ const stampRedemptionRate = computed<number>(() =>
             <StatCard
                 label="Margin kotor"
                 :value="formatPercent(grossMargin)"
-                caption="pendapatan dikurangi biaya"
-                :icon="TrendingUp"
+                :caption="`target internal ${formatPercent(MARGIN_TARGET)}`"
+                :icon="isMarginOnTarget ? TrendingUp : TrendingDown"
             />
             <StatCard
                 label="Rata-rata transaksi"
-                :value="
-                    formatCurrency(Math.round(weekRevenue / weekTransactions))
-                "
+                :value="formatCurrency(averageTicket)"
                 caption="per kendaraan"
                 :icon="ChartColumn"
                 tone="amber"
@@ -184,49 +210,130 @@ const stampRedemptionRate = computed<number>(() =>
         <!-- Revenue vs expense -->
         <SectionCard
             title="Pendapatan vs pengeluaran"
-            caption="Perbandingan 6 bulan terakhir"
+            :caption="`Perbandingan ${filters.granularity} · ${filters.label}`"
         >
-            <div class="mt-6 flex h-56 items-end gap-3 sm:gap-5">
-                <div
-                    v-for="point in monthlyTrend"
-                    :key="point.month"
-                    class="flex h-full flex-1 flex-col justify-end"
-                >
-                    <div class="flex h-full items-end justify-center gap-1">
-                        <div
-                            class="w-1/2 rounded-t bg-gradient-to-t from-cyan-600 to-cyan-400 transition-all"
-                            :style="{
-                                height: `${Math.round((point.revenue / maxMonthly) * 100)}%`,
-                            }"
-                            :title="`Pendapatan ${formatCurrency(point.revenue)}`"
-                        ></div>
-                        <div
-                            class="w-1/2 rounded-t bg-gradient-to-t from-rose-500 to-rose-300 transition-all"
-                            :style="{
-                                height: `${Math.round((point.expense / maxMonthly) * 100)}%`,
-                            }"
-                            :title="`Pengeluaran ${formatCurrency(point.expense)}`"
-                        ></div>
-                    </div>
-                    <p
-                        class="mt-2 text-center text-[11px] font-medium text-slate-500"
-                    >
-                        {{ point.month }}
-                    </p>
+            <template #actions>
+                <div class="flex items-center gap-4 text-[11px] text-slate-500">
+                    <span class="flex items-center gap-1.5">
+                        <span
+                            class="h-2.5 w-2.5 rounded-sm bg-gradient-to-t from-cyan-600 to-cyan-400"
+                        ></span>
+                        Pendapatan
+                    </span>
+                    <span class="flex items-center gap-1.5">
+                        <span
+                            class="h-2.5 w-2.5 rounded-sm bg-gradient-to-t from-rose-500 to-rose-300"
+                        ></span>
+                        Pengeluaran
+                    </span>
                 </div>
-            </div>
+            </template>
 
             <div
-                class="mt-4 flex items-center gap-4 text-[11px] text-slate-500"
+                class="mt-6 flex gap-3 transition-opacity duration-200"
+                :class="isLoading ? 'opacity-40' : 'opacity-100'"
             >
-                <span class="flex items-center gap-1.5">
-                    <span class="h-2.5 w-2.5 rounded-sm bg-cyan-500"></span>
-                    Pendapatan
-                </span>
-                <span class="flex items-center gap-1.5">
-                    <span class="h-2.5 w-2.5 rounded-sm bg-rose-400"></span>
-                    Pengeluaran
-                </span>
+                <!-- Value scale, so bar heights can actually be read -->
+                <div
+                    class="flex h-56 w-16 shrink-0 flex-col justify-between pb-7 text-right text-[10px] whitespace-nowrap text-slate-400 tabular-nums"
+                >
+                    <span>{{ formatShortCurrency(trendPeak) }}</span>
+                    <span>{{ formatShortCurrency(trendPeak / 2) }}</span>
+                    <span>0</span>
+                </div>
+
+                <div class="relative min-w-0 flex-1">
+                    <!-- Gridlines -->
+                    <div
+                        class="pointer-events-none absolute inset-x-0 top-0 flex h-56 flex-col justify-between pb-7"
+                    >
+                        <div class="border-t border-slate-100"></div>
+                        <div class="border-t border-slate-100"></div>
+                        <div class="border-t border-slate-200"></div>
+                    </div>
+
+                    <div
+                        class="relative flex h-56 items-end"
+                        :class="
+                            trend.length > 14 ? 'gap-0.5' : 'gap-2 sm:gap-4'
+                        "
+                    >
+                        <div
+                            v-for="(point, index) in trend"
+                            :key="point.label"
+                            class="group relative flex h-full min-w-0 flex-1 flex-col justify-end"
+                            @mouseenter="hoveredBar = index"
+                            @mouseleave="hoveredBar = null"
+                        >
+                            <div
+                                v-if="hoveredBar === index"
+                                class="absolute -top-1 left-1/2 z-10 w-44 -translate-x-1/2 -translate-y-full rounded-xl bg-slate-900 px-3 py-2 text-left shadow-xl"
+                            >
+                                <p class="text-[11px] text-slate-400">
+                                    {{ point.caption }}
+                                </p>
+                                <p
+                                    class="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-cyan-300"
+                                >
+                                    <span>Masuk</span>
+                                    <span
+                                        class="font-semibold text-white tabular-nums"
+                                    >
+                                        {{ formatCurrency(point.revenue) }}
+                                    </span>
+                                </p>
+                                <p
+                                    class="flex items-baseline justify-between gap-2 text-[11px] text-rose-300"
+                                >
+                                    <span>Keluar</span>
+                                    <span
+                                        class="font-semibold text-white tabular-nums"
+                                    >
+                                        {{ formatCurrency(point.expense) }}
+                                    </span>
+                                </p>
+                                <p
+                                    class="mt-1 border-t border-white/10 pt-1 text-[11px] text-slate-400"
+                                >
+                                    {{ formatNumber(point.transactions) }}
+                                    transaksi
+                                </p>
+                            </div>
+
+                            <div
+                                class="flex h-full items-end justify-center gap-1 pb-7"
+                            >
+                                <div
+                                    class="w-1/2 rounded-t bg-gradient-to-t from-cyan-600 to-cyan-400 transition-all duration-300"
+                                    :style="{
+                                        height: `${Math.max(2, shareOf(point.revenue, trendPeak))}%`,
+                                    }"
+                                ></div>
+                                <div
+                                    class="w-1/2 rounded-t bg-gradient-to-t from-rose-500 to-rose-300 transition-all duration-300"
+                                    :style="{
+                                        height: `${Math.max(2, shareOf(point.expense, trendPeak))}%`,
+                                    }"
+                                ></div>
+                            </div>
+
+                            <p
+                                v-if="
+                                    index % axisStride === 0 ||
+                                    hoveredBar === index
+                                "
+                                class="absolute inset-x-0 bottom-0 truncate text-center text-[11px] font-medium transition"
+                                :class="
+                                    hoveredBar === index
+                                        ? 'text-slate-900'
+                                        : 'text-slate-500'
+                                "
+                            >
+                                {{ point.label }}
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
         </SectionCard>
 
@@ -237,32 +344,40 @@ const stampRedemptionRate = computed<number>(() =>
                 :caption="`Total ${formatShortCurrency(totalServiceRevenue)} dari 5 layanan teratas`"
             >
                 <ul class="mt-4 space-y-3.5">
-                    <li v-for="service in topServices" :key="service.name">
+                    <li v-for="service in rankedServices" :key="service.name">
                         <div class="flex items-baseline justify-between gap-3">
                             <p class="truncate text-sm text-slate-700">
                                 {{ service.name }}
                             </p>
                             <p
-                                class="shrink-0 text-xs font-medium text-slate-500 tabular-nums"
+                                class="shrink-0 text-xs font-medium text-slate-700 tabular-nums"
                             >
                                 {{ formatShortCurrency(service.revenue) }}
                             </p>
                         </div>
-                        <div class="mt-1.5 flex items-center gap-2">
+                        <div class="mt-1.5 flex items-center gap-3">
                             <div
-                                class="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100"
+                                class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100"
                             >
                                 <div
-                                    class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500"
+                                    class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500 transition-all duration-300"
                                     :style="{
-                                        width: `${Math.round((service.revenue / maxTopServiceRevenue) * 100)}%`,
+                                        width: `${shareOf(service.revenue, topServiceRevenue)}%`,
                                     }"
                                 ></div>
                             </div>
                             <p
-                                class="w-12 text-right text-[11px] text-slate-400 tabular-nums"
+                                class="w-24 shrink-0 text-right text-[11px] text-slate-400 tabular-nums"
                             >
-                                {{ service.orders }}×
+                                {{
+                                    formatPercent(
+                                        shareOf(
+                                            service.revenue,
+                                            totalServiceRevenue,
+                                        ),
+                                    )
+                                }}
+                                · {{ formatNumber(service.orders) }}×
                             </p>
                         </div>
                     </li>
@@ -280,7 +395,7 @@ const stampRedemptionRate = computed<number>(() =>
                         <p
                             class="mt-0.5 text-xl font-semibold text-slate-900 tabular-nums"
                         >
-                            {{ customerActivity.newCustomers }}
+                            {{ formatNumber(customerActivity.newCustomers) }}
                         </p>
                     </div>
                     <div class="rounded-xl bg-slate-50 p-3">
@@ -290,7 +405,11 @@ const stampRedemptionRate = computed<number>(() =>
                         <p
                             class="mt-0.5 text-xl font-semibold text-slate-900 tabular-nums"
                         >
-                            {{ customerActivity.returningCustomers }}
+                            {{
+                                formatNumber(
+                                    customerActivity.returningCustomers,
+                                )
+                            }}
                         </p>
                     </div>
                     <div class="rounded-xl bg-emerald-50 p-3">
@@ -318,7 +437,7 @@ const stampRedemptionRate = computed<number>(() =>
                         class="flex items-center justify-between text-[11px] text-slate-500"
                     >
                         <span>Tingkat penukaran stempel</span>
-                        <span class="font-medium text-slate-700">
+                        <span class="font-medium text-slate-700 tabular-nums">
                             {{ formatPercent(stampRedemptionRate) }}
                         </span>
                     </div>
@@ -326,55 +445,60 @@ const stampRedemptionRate = computed<number>(() =>
                         class="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"
                     >
                         <div
-                            class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500"
+                            class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500 transition-all duration-300"
                             :style="{ width: `${stampRedemptionRate}%` }"
                         ></div>
                     </div>
                 </div>
 
                 <div
-                    class="mt-4 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800"
+                    class="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800"
                 >
-                    <Sparkles class="h-3.5 w-3.5 shrink-0" />
-                    {{ customerActivity.rewardsClaimed }} reward diklaim •
-                    {{ customerActivity.churnRisk }} customer berisiko tidak
-                    kembali
+                    <Sparkles class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>
+                        {{ formatNumber(customerActivity.rewardsClaimed) }}
+                        reward diklaim •
+                        {{ formatNumber(customerActivity.churnRisk) }} customer
+                        berisiko tidak kembali
+                    </span>
                 </div>
             </SectionCard>
         </section>
 
-        <section class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             <!-- Booking summary -->
-            <SectionCard title="Ringkasan booking" caption="Periode berjalan">
+            <SectionCard title="Ringkasan booking" :caption="filters.label">
                 <ul class="mt-4 space-y-2.5 text-sm">
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Total booking</span>
                         <span class="font-semibold text-slate-900 tabular-nums">
-                            {{ bookingSummary.total }}
+                            {{ formatNumber(bookingSummary.total) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Terjadwal</span>
                         <span class="font-medium text-cyan-600 tabular-nums">
-                            {{ bookingSummary.scheduled }}
+                            {{ formatNumber(bookingSummary.scheduled) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Selesai</span>
                         <span class="font-medium text-emerald-600 tabular-nums">
-                            {{ bookingSummary.completed }}
+                            {{ formatNumber(bookingSummary.completed) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Batal</span>
                         <span class="font-medium text-rose-600 tabular-nums">
-                            {{ bookingSummary.cancelled }}
+                            {{ formatNumber(bookingSummary.cancelled) }}
                         </span>
                     </li>
                     <li
-                        class="flex items-center justify-between border-t border-slate-100 pt-2.5"
+                        class="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5"
                     >
-                        <span class="text-slate-500">Tingkat kehadiran</span>
+                        <span class="font-medium text-slate-600">
+                            Tingkat kehadiran
+                        </span>
                         <span class="font-semibold text-slate-900 tabular-nums">
                             {{ formatPercent(bookingSummary.showRate) }}
                         </span>
@@ -391,32 +515,45 @@ const stampRedemptionRate = computed<number>(() =>
             <!-- Inventory summary -->
             <SectionCard title="Ringkasan inventory" caption="Stok operasional">
                 <ul class="mt-4 space-y-2.5 text-sm">
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Total item</span>
                         <span class="font-semibold text-slate-900 tabular-nums">
-                            {{ inventorySummary.totalItems }}
+                            {{ formatNumber(inventorySummary.totalItems) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Stok menipis</span>
-                        <span class="font-medium text-rose-600 tabular-nums">
-                            {{ inventorySummary.lowStock }}
+                        <span
+                            class="font-medium tabular-nums"
+                            :class="
+                                inventorySummary.lowStock > 0
+                                    ? 'text-rose-600'
+                                    : 'text-slate-700'
+                            "
+                        >
+                            {{ formatNumber(inventorySummary.lowStock) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
-                        <span class="text-slate-500">Nilai persediaan</span>
-                        <span class="font-semibold text-slate-900 tabular-nums">
-                            {{
-                                formatShortCurrency(inventorySummary.stockValue)
-                            }}
-                        </span>
-                    </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500"
                             >Pergerakan minggu ini</span
                         >
                         <span class="font-medium text-slate-700 tabular-nums">
-                            {{ inventorySummary.movementsThisWeek }}
+                            {{
+                                formatNumber(inventorySummary.movementsThisWeek)
+                            }}
+                        </span>
+                    </li>
+                    <li
+                        class="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5"
+                    >
+                        <span class="font-medium text-slate-600">
+                            Nilai persediaan
+                        </span>
+                        <span class="font-semibold text-slate-900 tabular-nums">
+                            {{
+                                formatShortCurrency(inventorySummary.stockValue)
+                            }}
                         </span>
                     </li>
                 </ul>
@@ -424,15 +561,17 @@ const stampRedemptionRate = computed<number>(() =>
                     class="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
                 >
                     <Boxes class="h-3.5 w-3.5 shrink-0" />
-                    Paling banyak terpakai:
-                    {{ inventorySummary.topConsumed }}
+                    <span class="truncate">
+                        Paling banyak terpakai:
+                        {{ inventorySummary.topConsumed }}
+                    </span>
                 </p>
             </SectionCard>
 
             <!-- Cash position -->
             <SectionCard title="Posisi kas" caption="Hari ini">
                 <ul class="mt-4 space-y-2.5 text-sm">
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Saldo awal</span>
                         <span class="text-slate-800 tabular-nums">
                             {{
@@ -440,20 +579,20 @@ const stampRedemptionRate = computed<number>(() =>
                             }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Uang masuk</span>
                         <span class="font-medium text-emerald-600 tabular-nums">
                             +{{ formatShortCurrency(cashSummary.todayIn) }}
                         </span>
                     </li>
-                    <li class="flex items-center justify-between">
+                    <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Uang keluar</span>
                         <span class="font-medium text-rose-600 tabular-nums">
                             −{{ formatShortCurrency(cashSummary.todayOut) }}
                         </span>
                     </li>
                     <li
-                        class="flex items-center justify-between border-t border-slate-100 pt-2.5"
+                        class="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5"
                     >
                         <span class="font-medium text-slate-600">
                             Saldo akhir
@@ -513,7 +652,7 @@ const stampRedemptionRate = computed<number>(() =>
                             <td class="px-5 py-3.5">
                                 <div class="flex items-center gap-2">
                                     <span
-                                        class="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
+                                        class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
                                     >
                                         {{ shift.initials }}
                                     </span>
@@ -528,7 +667,7 @@ const stampRedemptionRate = computed<number>(() =>
                             <td
                                 class="px-5 py-3.5 text-right text-slate-700 tabular-nums"
                             >
-                                {{ shift.transactions }}
+                                {{ formatNumber(shift.transactions) }}
                             </td>
                             <td
                                 class="px-5 py-3.5 text-right font-medium text-emerald-600 tabular-nums"
@@ -558,27 +697,43 @@ const stampRedemptionRate = computed<number>(() =>
         <!-- Customer retention note -->
         <SectionCard
             title="Catatan monitoring"
-            caption="Ringkasan otomatis periode ini"
+            :caption="`Ringkasan otomatis — ${filters.label}`"
         >
             <ul class="mt-3 space-y-2 text-xs text-slate-600">
                 <li class="flex items-start gap-2">
                     <Users class="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-600" />
-                    Rata-rata
-                    {{ customerActivity.averageVisitsPerCustomer }} kunjungan
-                    per customer — naikkan dengan promo double stempel akhir
-                    pekan.
+                    <span>
+                        Rata-rata
+                        {{ customerActivity.averageVisitsPerCustomer }}
+                        kunjungan per customer — naikkan dengan promo double
+                        stempel akhir pekan.
+                    </span>
                 </li>
                 <li class="flex items-start gap-2">
-                    <TrendingUp
-                        class="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600"
+                    <component
+                        :is="isMarginOnTarget ? TrendingUp : TrendingDown"
+                        class="mt-0.5 h-3.5 w-3.5 shrink-0"
+                        :class="
+                            isMarginOnTarget
+                                ? 'text-emerald-600'
+                                : 'text-rose-600'
+                        "
                     />
-                    Margin kotor {{ formatPercent(grossMargin) }}, di atas
-                    target internal 50%.
+                    <span>
+                        Margin kotor {{ formatPercent(grossMargin) }},
+                        {{ isMarginOnTarget ? 'di atas' : 'di bawah' }} target
+                        internal {{ formatPercent(MARGIN_TARGET) }}.
+                    </span>
                 </li>
-                <li class="flex items-start gap-2">
+                <li
+                    v-if="inventorySummary.lowStock > 0"
+                    class="flex items-start gap-2"
+                >
                     <Boxes class="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
-                    {{ inventorySummary.lowStock }} item stok menipis berpotensi
-                    menghambat layanan detailing.
+                    <span>
+                        {{ formatNumber(inventorySummary.lowStock) }} item stok
+                        menipis berpotensi menghambat layanan detailing.
+                    </span>
                 </li>
             </ul>
         </SectionCard>

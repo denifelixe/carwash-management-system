@@ -7,6 +7,7 @@ import {
     Phone,
     Plus,
     Sparkles,
+    Trash2,
     UserPlus,
     Users,
 } from '@lucide/vue';
@@ -29,6 +30,7 @@ import type {
     CarwashOrder,
     CarwashReward,
     CarwashStampEntry,
+    CarwashVehicle,
 } from '@/types/carwash';
 
 const props = defineProps<{
@@ -41,7 +43,10 @@ const props = defineProps<{
 }>();
 
 const customerList = ref<CarwashCustomer[]>(
-    props.customers.map((customer) => ({ ...customer })),
+    props.customers.map((customer) => ({
+        ...customer,
+        vehicles: customer.vehicles.map((vehicle) => ({ ...vehicle })),
+    })),
 );
 
 const search = ref<string>('');
@@ -54,8 +59,7 @@ const draft = ref({
     name: '',
     phone: '',
     email: '',
-    vehicle: '',
-    plate: '',
+    vehicles: [emptyVehicle(true)],
 });
 
 const filterOptions = ['Semua', 'aktif', 'tidak aktif'];
@@ -70,7 +74,11 @@ const filteredCustomers = computed<CarwashCustomer[]>(() => {
         const matchesQuery =
             query === '' ||
             customer.name.toLowerCase().includes(query) ||
-            customer.plate.toLowerCase().includes(query) ||
+            customer.vehicles.some(
+                (vehicle) =>
+                    vehicle.plate.toLowerCase().includes(query) ||
+                    vehicle.name.toLowerCase().includes(query),
+            ) ||
             customer.phone.includes(query) ||
             customer.memberId.toLowerCase().includes(query);
 
@@ -123,8 +131,33 @@ const canCreate = computed<boolean>(
     () =>
         draft.value.name.trim() !== '' &&
         draft.value.phone.trim() !== '' &&
-        draft.value.plate.trim() !== '',
+        draft.value.vehicles.length > 0 &&
+        draft.value.vehicles.every(
+            (vehicle) =>
+                vehicle.name.trim() !== '' && vehicle.plate.trim() !== '',
+        ),
 );
+
+function emptyVehicle(isPrimary = false): CarwashVehicle {
+    return {
+        name: '',
+        plate: '',
+        type: 'Mobil',
+        isPrimary,
+    };
+}
+
+function addVehicle(): void {
+    draft.value.vehicles.push(emptyVehicle());
+}
+
+function removeVehicle(index: number): void {
+    if (draft.value.vehicles.length === 1) {
+        return;
+    }
+
+    draft.value.vehicles.splice(index, 1);
+}
 
 function initialsOf(name: string): string {
     return name
@@ -146,6 +179,13 @@ function createCustomer(): void {
     }
 
     const sequence = customerList.value.length + 1;
+    const vehicles = draft.value.vehicles.map((vehicle, index) => ({
+        ...vehicle,
+        name: vehicle.name.trim(),
+        plate: vehicle.plate.trim().toUpperCase(),
+        isPrimary: index === 0,
+    }));
+    const primaryVehicle = vehicles[0];
 
     customerList.value = [
         {
@@ -154,8 +194,9 @@ function createCustomer(): void {
             memberId: `ZW-2026-${String(1000 + sequence).slice(-4)}`,
             phone: draft.value.phone,
             email: draft.value.email || '—',
-            vehicle: draft.value.vehicle || '—',
-            plate: draft.value.plate.toUpperCase(),
+            vehicle: primaryVehicle.name,
+            plate: primaryVehicle.plate,
+            vehicles,
             stamps: 0,
             lifetimeStamps: 0,
             visits: 0,
@@ -169,7 +210,12 @@ function createCustomer(): void {
         ...customerList.value,
     ];
 
-    draft.value = { name: '', phone: '', email: '', vehicle: '', plate: '' };
+    draft.value = {
+        name: '',
+        phone: '',
+        email: '',
+        vehicles: [emptyVehicle(true)],
+    };
     isCreateOpen.value = false;
 }
 
@@ -290,12 +336,40 @@ function stampToneClass(type: string): string {
                                 </div>
                             </td>
                             <td class="px-5 py-3.5">
-                                <p class="text-slate-700">
-                                    {{ customer.vehicle }}
-                                </p>
-                                <p class="text-[11px] text-slate-500">
-                                    {{ customer.plate }}
-                                </p>
+                                <div class="space-y-1.5">
+                                    <div
+                                        v-for="vehicle in customer.vehicles.slice(
+                                            0,
+                                            2,
+                                        )"
+                                        :key="vehicle.plate"
+                                        class="flex items-center gap-2"
+                                    >
+                                        <div class="min-w-0">
+                                            <p class="truncate text-slate-700">
+                                                {{ vehicle.name }}
+                                            </p>
+                                            <p
+                                                class="text-[11px] text-slate-500"
+                                            >
+                                                {{ vehicle.plate }}
+                                            </p>
+                                        </div>
+                                        <span
+                                            v-if="vehicle.isPrimary"
+                                            class="rounded-md bg-cyan-50 px-1.5 py-0.5 text-[9px] font-medium text-cyan-700"
+                                        >
+                                            Utama
+                                        </span>
+                                    </div>
+                                    <p
+                                        v-if="customer.vehicles.length > 2"
+                                        class="text-[11px] font-medium text-cyan-700"
+                                    >
+                                        +{{ customer.vehicles.length - 2 }}
+                                        kendaraan lain
+                                    </p>
+                                </div>
                             </td>
                             <td class="px-5 py-3.5">
                                 <p
@@ -431,18 +505,35 @@ function stampToneClass(type: string): string {
                         {{ detailCustomer.email }}
                     </span>
                 </div>
-                <div
-                    class="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
-                >
-                    <Car class="h-4 w-4 shrink-0 text-slate-400" />
-                    <div>
-                        <p class="text-sm text-slate-700">
-                            {{ detailCustomer.vehicle }}
-                        </p>
-                        <p class="text-[11px] text-slate-500">
-                            {{ detailCustomer.plate }}
+                <div class="rounded-xl border border-slate-200 p-3">
+                    <div class="flex items-center gap-2">
+                        <Car class="h-4 w-4 shrink-0 text-slate-400" />
+                        <p class="text-xs font-medium text-slate-600">
+                            {{ detailCustomer.vehicles.length }} kendaraan
                         </p>
                     </div>
+                    <ul class="mt-3 space-y-2">
+                        <li
+                            v-for="vehicle in detailCustomer.vehicles"
+                            :key="vehicle.plate"
+                            class="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"
+                        >
+                            <div class="min-w-0">
+                                <p class="truncate text-sm text-slate-700">
+                                    {{ vehicle.name }}
+                                </p>
+                                <p class="text-[11px] text-slate-500">
+                                    {{ vehicle.plate }} · {{ vehicle.type }}
+                                </p>
+                            </div>
+                            <span
+                                v-if="vehicle.isPrimary"
+                                class="shrink-0 rounded-md bg-cyan-100 px-2 py-1 text-[10px] font-medium text-cyan-700"
+                            >
+                                Utama
+                            </span>
+                        </li>
+                    </ul>
                 </div>
             </div>
 
@@ -633,36 +724,72 @@ function stampToneClass(type: string): string {
                     />
                 </div>
             </div>
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label
-                        class="text-xs font-medium text-slate-600"
-                        for="cust-plate"
+            <div class="space-y-2.5">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs font-medium text-slate-600">
+                            Kendaraan customer
+                        </p>
+                        <p class="text-[11px] text-slate-400">
+                            Kendaraan pertama menjadi kendaraan utama.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="flex shrink-0 items-center gap-1.5 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-100"
+                        @click="addVehicle"
                     >
-                        Plat nomor
-                    </label>
-                    <input
-                        id="cust-plate"
-                        v-model="draft.plate"
-                        type="text"
-                        placeholder="B 1234 CDE"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
-                    />
+                        <Plus class="h-3.5 w-3.5" />
+                        Tambah kendaraan
+                    </button>
                 </div>
-                <div>
-                    <label
-                        class="text-xs font-medium text-slate-600"
-                        for="cust-vehicle"
-                    >
-                        Kendaraan
-                    </label>
-                    <input
-                        id="cust-vehicle"
-                        v-model="draft.vehicle"
-                        type="text"
-                        placeholder="Toyota Avanza"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
+
+                <div
+                    v-for="(vehicle, index) in draft.vehicles"
+                    :key="index"
+                    class="rounded-xl border border-slate-200 p-3"
+                >
+                    <div class="mb-2 flex items-center justify-between gap-2">
+                        <p class="text-[11px] font-medium text-slate-500">
+                            Kendaraan {{ index + 1 }}
+                            <span v-if="index === 0" class="text-cyan-600">
+                                · utama
+                            </span>
+                        </p>
+                        <button
+                            v-if="draft.vehicles.length > 1"
+                            type="button"
+                            class="rounded-md p-1 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                            :aria-label="`Hapus kendaraan ${index + 1}`"
+                            @click="removeVehicle(index)"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                    <div class="grid gap-2 sm:grid-cols-[1fr_1fr_90px]">
+                        <input
+                            v-model="vehicle.plate"
+                            type="text"
+                            :aria-label="`Plat nomor kendaraan ${index + 1}`"
+                            placeholder="B 1234 CDE"
+                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                        />
+                        <input
+                            v-model="vehicle.name"
+                            type="text"
+                            :aria-label="`Nama kendaraan ${index + 1}`"
+                            placeholder="Toyota Avanza"
+                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        />
+                        <select
+                            v-model="vehicle.type"
+                            :aria-label="`Jenis kendaraan ${index + 1}`"
+                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        >
+                            <option>Mobil</option>
+                            <option>Motor</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 

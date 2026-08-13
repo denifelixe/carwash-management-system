@@ -1,786 +1,621 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import {
-    ChevronDown,
+    Banknote,
     CircleCheck,
+    ClipboardList,
+    Clock,
     CreditCard,
-    Minus,
-    Plus,
     Printer,
     ScanLine,
-    Search,
     Sparkles,
-    Timer,
-    Trash2,
-    UserPlus,
+    Wallet,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import CollapsibleSummary from '@/components/carwash/CollapsibleSummary.vue';
+import DataToolbar from '@/components/carwash/DataToolbar.vue';
 import EmptyState from '@/components/carwash/EmptyState.vue';
 import ModalDialog from '@/components/carwash/ModalDialog.vue';
+import StatCard from '@/components/carwash/StatCard.vue';
+import StatusPill from '@/components/carwash/StatusPill.vue';
 import { formatCurrency, formatNumber } from '@/composables/useCarwashFormat';
 import type {
     CarwashBrand,
-    CarwashCartLine,
     CarwashCustomer,
     CarwashOrder,
-    CarwashReward,
     CarwashService,
 } from '@/types/carwash';
 
 const props = defineProps<{
     brand: CarwashBrand;
+    orders: CarwashOrder[];
     services: CarwashService[];
-    serviceCategories: string[];
     customers: CarwashCustomer[];
-    transactions: CarwashOrder[];
     paymentMethods: string[];
-    rewards: CarwashReward[];
 }>();
 
 interface PosReceipt {
+    orderNo: string;
     invoice: string;
     customer: string;
     items: string;
     total: number;
+    amountPaid: number;
+    paidTotal: number;
+    dueAfter: number;
+    isSettled: boolean;
     payment: string;
     stampsEarned: number;
-    stampsUsed: number;
     stampsAfter: number | null;
-    rewardName: string | null;
+    /** Redeemed at intake, shown here so the customer sees it on the slip. */
+    reward: string;
 }
 
-const category = ref<string>('Semua');
+/** Settle the whole remaining balance, or take a deposit against it. */
+type PaymentMode = 'lunas' | 'sebagian';
+
+const filterOptions = ['Perlu dibayar', 'Sudah lunas', 'Semua'];
+
 const search = ref<string>('');
-const cart = ref<CarwashCartLine[]>([]);
-const selectedCustomerId = ref<number | null>(null);
-const isCustomerPickerOpen = ref<boolean>(false);
-const customerQuery = ref<string>('');
-const appliedRewardId = ref<number | null>(null);
+const paymentFilter = ref<string>('Perlu dibayar');
+const selectedOrderId = ref<number | null>(null);
+const paymentMode = ref<PaymentMode>('lunas');
+const partialAmount = ref<number>(0);
 const paymentMethod = ref<string>('QRIS');
 const receipt = ref<PosReceipt | null>(null);
 
-/** Local copies so checkout can mutate stamps without a backend. */
+/** Local copies so taking a payment can mutate orders and stamps without a backend. */
+const orderList = ref<CarwashOrder[]>(
+    props.orders.map((order) => ({ ...order })),
+);
 const customerList = ref<CarwashCustomer[]>(
     props.customers.map((customer) => ({ ...customer })),
 );
-const transactionLog = ref<CarwashOrder[]>(
-    props.transactions.map((transaction) => ({ ...transaction })),
+
+const outstandingTotal = computed<number>(() =>
+    orderList.value.reduce(
+        (sum, order) => sum + order.total - order.paidAmount,
+        0,
+    ),
 );
 
-const categoryOptions = computed<string[]>(() => [
-    'Semua',
-    ...props.serviceCategories,
-]);
+const depositCount = computed<number>(
+    () =>
+        orderList.value.filter((order) => order.paymentStatus === 'dp').length,
+);
 
-const visibleServices = computed<CarwashService[]>(() => {
+const collectedTotal = computed<number>(() =>
+    orderList.value.reduce((sum, order) => sum + order.paidAmount, 0),
+);
+
+/** Keeps the headline number visible while the summary cards stay collapsed. */
+const summaryCaption = computed<string>(
+    () => `${formatCurrency(outstandingTotal.value)} perlu ditagih`,
+);
+
+const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
-    return props.services.filter((service) => {
-        const matchesCategory =
-            category.value === 'Semua' || service.category === category.value;
+    return orderList.value.filter((order) => {
+        const isSettled = order.paymentStatus === 'lunas';
+        const matchesFilter =
+            paymentFilter.value === 'Semua' ||
+            (paymentFilter.value === 'Sudah lunas' ? isSettled : !isSettled);
         const matchesQuery =
-            query === '' || service.name.toLowerCase().includes(query);
+            query === '' ||
+            order.orderNo.toLowerCase().includes(query) ||
+            order.customer.toLowerCase().includes(query) ||
+            order.plate.toLowerCase().includes(query);
 
-        return service.isActive && matchesCategory && matchesQuery;
+        return matchesFilter && matchesQuery;
     });
 });
 
-const selectedCustomer = computed<CarwashCustomer | null>(
+const selectedOrder = computed<CarwashOrder | null>(
     () =>
-        customerList.value.find(
-            (customer) => customer.id === selectedCustomerId.value,
-        ) ?? null,
-);
-
-const customerResults = computed<CarwashCustomer[]>(() => {
-    const query = customerQuery.value.trim().toLowerCase();
-
-    if (query === '') {
-        return customerList.value.slice(0, 6);
-    }
-
-    return customerList.value
-        .filter(
-            (customer) =>
-                customer.name.toLowerCase().includes(query) ||
-                customer.plate.toLowerCase().includes(query) ||
-                customer.phone.includes(query),
-        )
-        .slice(0, 6);
-});
-
-const subtotal = computed<number>(() =>
-    cart.value.reduce(
-        (total, line) => total + line.service.price * line.quantity,
-        0,
-    ),
-);
-
-/** Rewards the attached customer has enough stamps for (BR-04, BR-13). */
-const redeemableRewards = computed<CarwashReward[]>(() => {
-    const customer = selectedCustomer.value;
-
-    if (!customer) {
-        return [];
-    }
-
-    return props.rewards.filter(
-        (reward) =>
-            reward.status === 'aktif' &&
-            reward.requiredStamps <= customer.stamps,
-    );
-});
-
-const appliedReward = computed<CarwashReward | null>(
-    () =>
-        props.rewards.find((reward) => reward.id === appliedRewardId.value) ??
+        orderList.value.find((order) => order.id === selectedOrderId.value) ??
         null,
 );
 
-/**
- * A redeemed reward covers the cheapest matching line, capped at the subtotal —
- * enough to make the discount believable in the demo.
- */
-const rewardDiscount = computed<number>(() => {
-    if (!appliedReward.value || cart.value.length === 0) {
-        return 0;
-    }
-
-    const cheapest = Math.min(...cart.value.map((line) => line.service.price));
-
-    return Math.min(cheapest, subtotal.value);
-});
-
-const stampsUsed = computed<number>(() =>
-    appliedReward.value ? appliedReward.value.requiredStamps : 0,
+const orderCustomer = computed<CarwashCustomer | null>(
+    () =>
+        customerList.value.find(
+            (customer) => customer.id === selectedOrder.value?.customerId,
+        ) ?? null,
 );
 
-const total = computed<number>(() =>
-    Math.max(subtotal.value - rewardDiscount.value, 0),
-);
-
-const stampsEarned = computed<number>(() =>
-    selectedCustomer.value
-        ? cart.value.reduce(
-              (sum, line) => sum + line.service.stamps * line.quantity,
-              0,
-          )
-        : 0,
-);
-
-const estimatedDuration = computed<number>(() =>
-    cart.value.reduce(
-        (sum, line) => sum + line.service.duration * line.quantity,
-        0,
+const orderServices = computed<CarwashService[]>(() =>
+    props.services.filter((service) =>
+        selectedOrder.value?.serviceIds.includes(service.id),
     ),
 );
 
-function addToCart(service: CarwashService): void {
-    const line = cart.value.find((item) => item.service.id === service.id);
+const dueAmount = computed<number>(() => {
+    const order = selectedOrder.value;
 
-    if (line) {
-        line.quantity += 1;
-
-        return;
+    if (!order) {
+        return 0;
     }
 
-    cart.value.push({ service, quantity: 1 });
-}
+    return Math.max(order.total - order.paidAmount, 0);
+});
 
-function decreaseLine(line: CarwashCartLine): void {
-    if (line.quantity > 1) {
-        line.quantity -= 1;
-
-        return;
+const payAmount = computed<number>(() => {
+    if (paymentMode.value === 'lunas') {
+        return dueAmount.value;
     }
 
-    removeLine(line);
+    const typed = Math.trunc(partialAmount.value);
+
+    return Number.isFinite(typed)
+        ? Math.min(Math.max(typed, 0), dueAmount.value)
+        : 0;
+});
+
+const canSubmit = computed<boolean>(
+    () => selectedOrder.value !== null && payAmount.value > 0,
+);
+
+function selectOrder(order: CarwashOrder): void {
+    selectedOrderId.value = order.id;
+    paymentMode.value = 'lunas';
+    partialAmount.value = 0;
+    /** A deposit usually gets settled with the same method it started on. */
+    paymentMethod.value = props.paymentMethods.includes(order.payment)
+        ? order.payment
+        : 'QRIS';
 }
 
-function removeLine(line: CarwashCartLine): void {
-    cart.value = cart.value.filter(
-        (item) => item.service.id !== line.service.id,
-    );
-}
-
-function selectCustomer(customer: CarwashCustomer | null): void {
-    selectedCustomerId.value = customer?.id ?? null;
-    isCustomerPickerOpen.value = false;
-    customerQuery.value = '';
-    appliedRewardId.value = null;
-}
-
-function resetCart(): void {
-    cart.value = [];
-    selectedCustomerId.value = null;
-    appliedRewardId.value = null;
+function resetPanel(): void {
+    selectedOrderId.value = null;
+    paymentMode.value = 'lunas';
+    partialAmount.value = 0;
     paymentMethod.value = 'QRIS';
 }
 
-function checkout(): void {
-    if (cart.value.length === 0) {
+/**
+ * Records money against the selected order. Anything short of the full amount
+ * leaves the order hanging as a `dp`; settling it issues the invoice and
+ * releases the member's stamps.
+ */
+function submitPayment(): void {
+    const order = selectedOrder.value;
+
+    if (!order || payAmount.value <= 0) {
         return;
     }
 
-    const customer = selectedCustomer.value;
-    const items = cart.value
-        .map((line) =>
-            line.quantity > 1
-                ? `${line.service.name} ×${line.quantity}`
-                : line.service.name,
-        )
-        .join(', ');
+    const customer = orderCustomer.value;
+    const amount = payAmount.value;
 
-    const invoice = `ZW-2608${String(transactionLog.value.length + 13).padStart(4, '0')}`;
+    order.paidAmount += amount;
+    order.payment = paymentMethod.value;
 
-    if (customer) {
-        customer.stamps =
-            customer.stamps - stampsUsed.value + stampsEarned.value;
-        customer.lifetimeStamps += stampsEarned.value;
-        customer.visits += 1;
-        customer.spend += total.value;
-        customer.lastVisit = 'Baru saja';
+    const isSettled = order.paidAmount >= order.total;
+
+    if (isSettled) {
+        order.paymentStatus = 'lunas';
+
+        if (order.invoice === '—') {
+            order.invoice = order.orderNo.replace('ORD', 'ZW');
+        }
+
+        if (customer) {
+            customer.stamps += order.stampsEarned;
+            customer.lifetimeStamps += order.stampsEarned;
+            customer.visits += 1;
+            customer.spend += order.total;
+            customer.lastVisit = 'Baru saja';
+        }
+    } else {
+        order.paymentStatus = 'dp';
     }
 
-    transactionLog.value = [
-        {
-            id: transactionLog.value.length + 1,
-            orderNo: `ORD-2608${String(transactionLog.value.length + 13).padStart(4, '0')}`,
-            invoice,
-            time: 'Baru saja',
-            customerId: customer?.id ?? null,
-            customer: customer?.name ?? 'Umum (non-member)',
-            phone: customer?.phone ?? '—',
-            vehicle: customer?.vehicle ?? '—',
-            plate: customer?.plate ?? '—',
-            items,
-            serviceIds: cart.value.map((line) => line.service.id),
-            total: total.value,
-            payment: paymentMethod.value,
-            paymentStatus: 'lunas',
-            status: 'proses',
-            stampsEarned: stampsEarned.value,
-            crew: 'Menunggu crew',
-            bay: '—',
-            source: 'walk-in',
-        },
-        ...transactionLog.value,
-    ];
-
     receipt.value = {
-        invoice,
-        customer: customer?.name ?? 'Umum (non-member)',
-        items,
-        total: total.value,
-        payment: paymentMethod.value,
-        stampsEarned: stampsEarned.value,
-        stampsUsed: stampsUsed.value,
+        orderNo: order.orderNo,
+        invoice: order.invoice,
+        customer: order.customer,
+        items: order.items,
+        total: order.total,
+        amountPaid: amount,
+        paidTotal: order.paidAmount,
+        dueAfter: Math.max(order.total - order.paidAmount, 0),
+        isSettled,
+        payment: order.payment,
+        stampsEarned: isSettled ? order.stampsEarned : 0,
         stampsAfter: customer?.stamps ?? null,
-        rewardName: appliedReward.value?.name ?? null,
+        reward: order.reward,
     };
 
-    resetCart();
+    resetPanel();
 }
 </script>
 
 <template>
     <Head :title="`${brand.name} — Kasir POS`" />
 
-    <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
-        <!-- Service picker -->
-        <section
-            class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+    <div class="space-y-4">
+        <!-- Summary -->
+        <CollapsibleSummary
+            title="Kasir hari ini"
+            :caption="summaryCaption"
+            :columns="3"
+            collapsible="always"
         >
-            <div class="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h3 class="text-sm font-semibold text-slate-900">
-                        Pilih layanan
-                    </h3>
-                    <p class="mt-0.5 text-xs text-slate-500">
-                        Ketuk kartu untuk menambahkan ke keranjang
-                    </p>
-                </div>
-                <div
-                    class="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2"
-                >
-                    <Search class="h-4 w-4 text-slate-400" />
-                    <input
-                        v-model="search"
-                        type="search"
-                        placeholder="Cari layanan"
-                        class="w-40 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+            <StatCard
+                label="Perlu ditagih"
+                :value="formatCurrency(outstandingTotal)"
+                caption="sisa tagihan seluruh order"
+                :icon="Clock"
+                tone="amber"
+            />
+            <StatCard
+                label="Order menggantung"
+                :value="String(depositCount)"
+                caption="sudah DP, belum lunas"
+                :icon="Wallet"
+            />
+            <StatCard
+                label="Pembayaran diterima"
+                :value="formatCurrency(collectedTotal)"
+                caption="termasuk DP yang sudah masuk"
+                :icon="Banknote"
+                tone="emerald"
+            />
+        </CollapsibleSummary>
+
+        <div class="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_380px]">
+            <!-- Order picker -->
+            <section
+                class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+            >
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Order untuk dibayar
+                        </h3>
+                        <p class="mt-0.5 text-xs text-slate-500">
+                            {{ visibleOrders.length }} order ditampilkan — ketuk
+                            untuk memproses pembayaran
+                        </p>
+                    </div>
+                    <DataToolbar
+                        v-model:search="search"
+                        placeholder="Cari order / plat"
+                        :filters="filterOptions"
+                        :active-filter="paymentFilter"
+                        @filter="paymentFilter = $event"
                     />
                 </div>
-            </div>
 
-            <div class="mt-4 flex flex-wrap gap-2">
-                <button
-                    v-for="option in categoryOptions"
-                    :key="option"
-                    type="button"
-                    class="rounded-full px-3.5 py-1.5 text-xs font-medium transition"
-                    :class="
-                        category === option
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    "
-                    @click="category = option"
-                >
-                    {{ option }}
-                </button>
-            </div>
-
-            <div
-                class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
-            >
-                <button
-                    v-for="service in visibleServices"
-                    :key="service.id"
-                    type="button"
-                    class="group relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300 hover:shadow-lg hover:shadow-cyan-500/10"
-                    @click="addToCart(service)"
-                >
-                    <span
-                        v-if="service.popular"
-                        class="absolute top-3 right-3 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-                    >
-                        Populer
-                    </span>
-                    <div
-                        class="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-sky-100 text-xl"
-                    >
-                        {{ service.icon }}
-                    </div>
-                    <p class="mt-3 text-sm font-semibold text-slate-900">
-                        {{ service.name }}
-                    </p>
-                    <p class="mt-1 line-clamp-2 text-xs text-slate-500">
-                        {{ service.description }}
-                    </p>
-                    <div class="mt-3 flex items-center justify-between">
-                        <p
-                            class="text-sm font-semibold text-cyan-700 tabular-nums"
-                        >
-                            {{ formatCurrency(service.price) }}
-                        </p>
-                        <span
-                            class="flex items-center gap-1 text-[11px] text-slate-400"
-                        >
-                            <Timer class="h-3.5 w-3.5" />
-                            {{ service.duration }} mnt
-                        </span>
-                    </div>
-                    <div
-                        v-if="service.stamps > 0"
-                        class="mt-2 flex items-center gap-1 text-[11px] font-medium text-emerald-600"
-                    >
-                        <Sparkles class="h-3.5 w-3.5" />
-                        +{{ service.stamps }} stempel member
-                    </div>
-                </button>
-            </div>
-        </section>
-
-        <!-- Cart -->
-        <section
-            class="flex h-fit flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm xl:sticky xl:top-24"
-        >
-            <div class="border-b border-slate-100 p-5">
-                <div class="flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-slate-900">
-                        Keranjang
-                    </h3>
-                    <button
-                        v-if="cart.length > 0"
-                        type="button"
-                        class="text-xs font-medium text-rose-500 hover:text-rose-600"
-                        @click="resetCart"
-                    >
-                        Kosongkan
-                    </button>
-                </div>
-
-                <!-- Customer selector -->
-                <div class="relative mt-3">
-                    <button
-                        type="button"
-                        class="flex w-full items-center gap-3 rounded-xl border border-dashed border-slate-300 p-3 text-left transition hover:border-cyan-400 hover:bg-cyan-50/40"
-                        :class="
-                            selectedCustomer
-                                ? 'border-solid border-cyan-200 bg-cyan-50/60'
-                                : ''
-                        "
-                        @click="isCustomerPickerOpen = !isCustomerPickerOpen"
-                    >
-                        <div
-                            class="flex h-9 w-9 items-center justify-center rounded-full text-xs font-semibold"
-                            :class="
-                                selectedCustomer
-                                    ? 'bg-gradient-to-br from-cyan-500 to-sky-600 text-white'
-                                    : 'bg-slate-100 text-slate-400'
-                            "
-                        >
-                            <template v-if="selectedCustomer">
-                                {{ selectedCustomer.initials }}
-                            </template>
-                            <UserPlus v-else class="h-4 w-4" />
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <p
-                                class="truncate text-sm font-medium text-slate-800"
-                            >
-                                {{ selectedCustomer?.name ?? 'Pilih customer' }}
-                            </p>
-                            <p class="truncate text-[11px] text-slate-500">
-                                <template v-if="selectedCustomer">
-                                    {{ selectedCustomer.plate }} •
-                                    {{ selectedCustomer.stamps }}/{{
-                                        brand.stampTarget
-                                    }}
-                                    stempel
-                                </template>
-                                <template v-else>
-                                    Opsional — transaksi umum tanpa stempel
-                                </template>
-                            </p>
-                        </div>
-                        <ChevronDown class="h-4 w-4 shrink-0 text-slate-400" />
-                    </button>
-
-                    <div
-                        v-if="isCustomerPickerOpen"
-                        class="absolute inset-x-0 top-full z-20 mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
-                    >
-                        <div
-                            class="flex items-center gap-2 border-b border-slate-100 px-3 py-2"
-                        >
-                            <Search class="h-4 w-4 text-slate-400" />
-                            <input
-                                v-model="customerQuery"
-                                type="search"
-                                placeholder="Nama, plat, atau no. HP"
-                                class="w-full bg-transparent py-1 text-sm placeholder:text-slate-400 focus:outline-none"
-                            />
-                        </div>
-                        <ul class="max-h-64 overflow-y-auto">
-                            <li
-                                v-for="customer in customerResults"
-                                :key="customer.id"
-                            >
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center gap-3 px-3 py-2.5 text-left transition hover:bg-slate-50"
-                                    @click="selectCustomer(customer)"
-                                >
-                                    <div
-                                        class="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-[11px] font-semibold text-slate-600"
-                                    >
-                                        {{ customer.initials }}
-                                    </div>
-                                    <div class="min-w-0 flex-1">
-                                        <p
-                                            class="truncate text-sm text-slate-800"
-                                        >
-                                            {{ customer.name }}
-                                        </p>
-                                        <p class="text-[11px] text-slate-500">
-                                            {{ customer.plate }} •
-                                            {{ customer.stamps }} stempel
-                                        </p>
-                                    </div>
-                                </button>
-                            </li>
-                            <li
-                                v-if="customerResults.length === 0"
-                                class="px-3 py-4 text-center text-xs text-slate-400"
-                            >
-                                Customer tidak ditemukan
-                            </li>
-                        </ul>
+                <ul v-if="visibleOrders.length > 0" class="mt-4 space-y-2.5">
+                    <li v-for="order in visibleOrders" :key="order.id">
                         <button
                             type="button"
-                            class="w-full border-t border-slate-100 px-3 py-2.5 text-left text-xs font-medium text-slate-500 hover:bg-slate-50"
-                            @click="selectCustomer(null)"
+                            class="w-full rounded-2xl border p-4 text-left transition"
+                            :class="
+                                selectedOrderId === order.id
+                                    ? 'border-cyan-300 bg-cyan-50/60 shadow-sm'
+                                    : 'border-slate-200 bg-white hover:border-cyan-300 hover:shadow-lg hover:shadow-cyan-500/10'
+                            "
+                            @click="selectOrder(order)"
                         >
-                            Lanjut tanpa member
-                        </button>
-                    </div>
-                </div>
-            </div>
+                            <div
+                                class="flex flex-wrap items-start justify-between gap-2"
+                            >
+                                <div class="min-w-0">
+                                    <p
+                                        class="text-sm font-semibold text-slate-900"
+                                    >
+                                        {{ order.orderNo }}
+                                    </p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{ order.time }} • {{ order.source }}
+                                    </p>
+                                </div>
+                                <div class="flex shrink-0 gap-1.5">
+                                    <StatusPill :status="order.status" />
+                                    <StatusPill :status="order.paymentStatus" />
+                                </div>
+                            </div>
 
-            <!-- Lines -->
-            <div class="max-h-72 overflow-y-auto p-5">
-                <ul v-if="cart.length > 0" class="space-y-3">
-                    <li
-                        v-for="line in cart"
-                        :key="line.service.id"
-                        class="flex items-center gap-3"
-                    >
-                        <div
-                            class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-base"
-                        >
-                            {{ line.service.icon }}
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <p
-                                class="truncate text-sm font-medium text-slate-800"
-                            >
-                                {{ line.service.name }}
+                            <p class="mt-2 truncate text-sm text-slate-800">
+                                {{ order.customer }}
                             </p>
-                            <p class="text-[11px] text-slate-500 tabular-nums">
-                                {{ formatCurrency(line.service.price) }} ×
-                                {{ line.quantity }}
+                            <p class="text-[11px] text-slate-500">
+                                {{ order.vehicle }} • {{ order.plate }}
                             </p>
-                        </div>
-                        <div class="flex items-center gap-1">
-                            <button
-                                type="button"
-                                class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
-                                aria-label="Kurangi"
-                                @click="decreaseLine(line)"
+                            <p class="mt-1 line-clamp-1 text-xs text-slate-500">
+                                {{ order.items }}
+                            </p>
+
+                            <div
+                                class="mt-3 flex items-end justify-between border-t border-dashed border-slate-200 pt-2.5"
                             >
-                                <Minus class="h-3.5 w-3.5" />
-                            </button>
-                            <span
-                                class="w-6 text-center text-sm font-medium tabular-nums"
-                            >
-                                {{ line.quantity }}
-                            </span>
-                            <button
-                                type="button"
-                                class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
-                                aria-label="Tambah"
-                                @click="line.quantity += 1"
-                            >
-                                <Plus class="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                                type="button"
-                                class="ml-1 flex h-7 w-7 items-center justify-center rounded-lg text-slate-300 transition hover:bg-rose-50 hover:text-rose-500"
-                                aria-label="Hapus"
-                                @click="removeLine(line)"
-                            >
-                                <Trash2 class="h-3.5 w-3.5" />
-                            </button>
-                        </div>
+                                <span class="text-[11px] text-slate-500">
+                                    Total {{ formatCurrency(order.total) }}
+                                </span>
+                                <span
+                                    v-if="order.paymentStatus === 'lunas'"
+                                    class="text-sm font-semibold text-emerald-600"
+                                >
+                                    Lunas
+                                </span>
+                                <span v-else class="text-right">
+                                    <span
+                                        class="block text-[11px] text-slate-500"
+                                    >
+                                        Sisa tagihan
+                                    </span>
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900 tabular-nums"
+                                    >
+                                        {{
+                                            formatCurrency(
+                                                order.total - order.paidAmount,
+                                            )
+                                        }}
+                                    </span>
+                                </span>
+                            </div>
+                        </button>
                     </li>
                 </ul>
 
                 <EmptyState
                     v-else
-                    :icon="ScanLine"
-                    title="Keranjang masih kosong"
-                    caption="Pilih layanan di sebelah kiri untuk memulai transaksi"
+                    :icon="ClipboardList"
+                    title="Tidak ada order pada filter ini"
+                    caption="Ubah kata kunci pencarian atau pilih filter lain."
                 />
-            </div>
+            </section>
 
-            <!-- Summary -->
-            <div class="space-y-3 border-t border-slate-100 bg-slate-50/60 p-5">
-                <!-- Reward redemption (BR-13) -->
-                <div v-if="redeemableRewards.length > 0" class="space-y-1.5">
-                    <p class="text-[11px] font-medium text-slate-500">
-                        Reward tersedia untuk customer ini
-                    </p>
-                    <button
-                        v-for="reward in redeemableRewards"
-                        :key="reward.id"
-                        type="button"
-                        class="flex w-full items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                        :class="
-                            appliedRewardId === reward.id
-                                ? 'border-cyan-300 bg-cyan-50'
-                                : 'border-slate-200 bg-white hover:border-cyan-300'
-                        "
-                        @click="
-                            appliedRewardId =
-                                appliedRewardId === reward.id ? null : reward.id
-                        "
-                    >
-                        <span class="text-base">{{ reward.icon }}</span>
-                        <span class="min-w-0 flex-1 leading-tight">
-                            <span
-                                class="block truncate text-xs font-medium text-slate-800"
-                            >
-                                {{ reward.name }}
-                            </span>
-                            <span class="block text-[10px] text-slate-500">
-                                Tukar {{ reward.requiredStamps }} stempel
-                            </span>
-                        </span>
-                        <CircleCheck
-                            v-if="appliedRewardId === reward.id"
-                            class="h-4 w-4 shrink-0 text-cyan-600"
-                        />
-                    </button>
-                </div>
-
-                <dl class="space-y-1.5 text-sm">
-                    <div class="flex justify-between">
-                        <dt class="text-slate-500">Subtotal</dt>
-                        <dd class="text-slate-800 tabular-nums">
-                            {{ formatCurrency(subtotal) }}
-                        </dd>
-                    </div>
-                    <div v-if="rewardDiscount > 0" class="flex justify-between">
-                        <dt class="min-w-0 truncate text-slate-500">
-                            Reward: {{ appliedReward?.name }}
-                        </dt>
-                        <dd class="shrink-0 text-emerald-600 tabular-nums">
-                            −{{ formatCurrency(rewardDiscount) }}
-                        </dd>
-                    </div>
-                    <div
-                        v-if="estimatedDuration > 0"
-                        class="flex justify-between"
-                    >
-                        <dt class="text-slate-500">Estimasi pengerjaan</dt>
-                        <dd class="text-slate-800 tabular-nums">
-                            ± {{ estimatedDuration }} menit
-                        </dd>
-                    </div>
-                </dl>
-
-                <div
-                    class="flex items-end justify-between border-t border-dashed border-slate-200 pt-3"
-                >
-                    <span class="text-sm font-medium text-slate-600">
-                        Total
-                    </span>
-                    <span
-                        class="text-xl font-semibold text-slate-900 tabular-nums"
-                    >
-                        {{ formatCurrency(total) }}
-                    </span>
-                </div>
-
-                <p
-                    v-if="selectedCustomer && cart.length > 0"
-                    class="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"
-                >
-                    <Sparkles class="h-3.5 w-3.5" />
-                    {{ selectedCustomer.name.split(' ')[0] }} akan mendapat +{{
-                        stampsEarned
-                    }}
-                    stempel
-                </p>
-
-                <div class="grid grid-cols-4 gap-1.5">
-                    <button
-                        v-for="method in paymentMethods"
-                        :key="method"
-                        type="button"
-                        class="rounded-lg py-2 text-[11px] font-medium transition"
-                        :class="
-                            paymentMethod === method
-                                ? 'bg-slate-900 text-white'
-                                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
-                        "
-                        @click="paymentMethod = method"
-                    >
-                        {{ method }}
-                    </button>
-                </div>
-
-                <button
-                    type="button"
-                    class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
-                    :disabled="cart.length === 0"
-                    @click="checkout"
-                >
-                    <CreditCard class="h-4 w-4" />
-                    Bayar {{ formatCurrency(total) }}
-                </button>
-            </div>
-        </section>
-    </div>
-
-    <!-- Recent transactions -->
-    <section
-        class="mt-4 rounded-2xl border border-slate-200/80 bg-white shadow-sm"
-    >
-        <div class="border-b border-slate-100 p-5">
-            <h3 class="text-sm font-semibold text-slate-900">
-                Transaksi terakhir
-            </h3>
-            <p class="mt-0.5 text-xs text-slate-500">
-                Transaksi baru dari kasir muncul paling atas
-            </p>
-        </div>
-        <div class="overflow-x-auto">
-            <table class="w-full min-w-[720px] text-sm">
-                <thead>
-                    <tr
-                        class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
-                    >
-                        <th class="px-5 py-3">Invoice</th>
-                        <th class="px-5 py-3">Customer</th>
-                        <th class="px-5 py-3">Layanan</th>
-                        <th class="px-5 py-3">Bayar</th>
-                        <th class="px-5 py-3 text-right">Total</th>
-                        <th class="px-5 py-3 text-right">Stempel</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-50">
-                    <tr
-                        v-for="transaction in transactionLog.slice(0, 8)"
-                        :key="transaction.id"
-                        class="transition hover:bg-slate-50/70"
-                    >
-                        <td class="px-5 py-3.5">
-                            <p class="font-medium text-slate-900">
-                                {{ transaction.invoice }}
-                            </p>
-                            <p class="text-[11px] text-slate-500">
-                                {{ transaction.time }}
-                            </p>
-                        </td>
-                        <td class="px-5 py-3.5 text-slate-700">
-                            {{ transaction.customer }}
-                        </td>
-                        <td class="max-w-[240px] px-5 py-3.5 text-slate-600">
-                            {{ transaction.items }}
-                        </td>
-                        <td class="px-5 py-3.5">
-                            <span
-                                class="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
-                            >
-                                {{ transaction.payment }}
-                            </span>
-                        </td>
-                        <td
-                            class="px-5 py-3.5 text-right font-medium text-slate-900 tabular-nums"
+            <!-- Payment panel -->
+            <section
+                class="flex h-fit flex-col rounded-2xl border border-slate-200/80 bg-white shadow-sm xl:sticky xl:top-24"
+            >
+                <div class="border-b border-slate-100 p-5">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Pembayaran
+                        </h3>
+                        <button
+                            v-if="selectedOrder"
+                            type="button"
+                            class="text-xs font-medium text-slate-500 hover:text-slate-700"
+                            @click="resetPanel"
                         >
-                            {{ formatCurrency(transaction.total) }}
-                        </td>
-                        <td class="px-5 py-3.5 text-right tabular-nums">
-                            <span
-                                v-if="transaction.stampsEarned > 0"
-                                class="text-emerald-600"
+                            Batalkan
+                        </button>
+                    </div>
+                    <template v-if="selectedOrder">
+                        <p class="mt-2 text-sm font-medium text-slate-800">
+                            {{ selectedOrder.orderNo }}
+                        </p>
+                        <p class="text-[11px] text-slate-500">
+                            {{ selectedOrder.customer }} •
+                            {{ selectedOrder.plate }}
+                        </p>
+                    </template>
+                    <p v-else class="mt-0.5 text-xs text-slate-500">
+                        Kasir hanya menerima uang — order dibuat di modul Order
+                    </p>
+                </div>
+
+                <template v-if="selectedOrder">
+                    <!-- Ordered services -->
+                    <div class="max-h-56 overflow-y-auto p-5">
+                        <ul class="space-y-3">
+                            <li
+                                v-for="service in orderServices"
+                                :key="service.id"
+                                class="flex items-center gap-3"
                             >
-                                +{{ transaction.stampsEarned }}
+                                <div
+                                    class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-base"
+                                >
+                                    {{ service.icon }}
+                                </div>
+                                <p
+                                    class="min-w-0 flex-1 truncate text-sm font-medium text-slate-800"
+                                >
+                                    {{ service.name }}
+                                </p>
+                                <p class="text-sm text-slate-700 tabular-nums">
+                                    {{ formatCurrency(service.price) }}
+                                </p>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Summary -->
+                    <div
+                        class="space-y-3 border-t border-slate-100 bg-slate-50/60 p-5"
+                    >
+                        <dl class="space-y-1.5 text-sm">
+                            <div
+                                v-if="selectedOrder.discount > 0"
+                                class="flex justify-between"
+                            >
+                                <dt class="min-w-0 truncate text-slate-500">
+                                    Reward: {{ selectedOrder.reward }}
+                                </dt>
+                                <dd
+                                    class="shrink-0 text-emerald-600 tabular-nums"
+                                >
+                                    −{{
+                                        formatCurrency(selectedOrder.discount)
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="flex justify-between">
+                                <dt class="text-slate-500">Total order</dt>
+                                <dd class="text-slate-800 tabular-nums">
+                                    {{ formatCurrency(selectedOrder.total) }}
+                                </dd>
+                            </div>
+                            <div
+                                v-if="selectedOrder.paidAmount > 0"
+                                class="flex justify-between"
+                            >
+                                <dt class="text-slate-500">Sudah dibayar</dt>
+                                <dd class="text-emerald-600 tabular-nums">
+                                    −{{
+                                        formatCurrency(selectedOrder.paidAmount)
+                                    }}
+                                </dd>
+                            </div>
+                        </dl>
+
+                        <div
+                            class="flex items-end justify-between border-t border-dashed border-slate-200 pt-3"
+                        >
+                            <span class="text-sm font-medium text-slate-600">
+                                Sisa tagihan
                             </span>
-                            <span v-else class="text-slate-300">—</span>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
+                            <span
+                                class="text-xl font-semibold text-slate-900 tabular-nums"
+                            >
+                                {{ formatCurrency(dueAmount) }}
+                            </span>
+                        </div>
+
+                        <!-- Lunas or deposit -->
+                        <div class="grid grid-cols-2 gap-1.5">
+                            <button
+                                type="button"
+                                class="rounded-lg py-2 text-[11px] font-medium transition"
+                                :class="
+                                    paymentMode === 'lunas'
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                                "
+                                @click="paymentMode = 'lunas'"
+                            >
+                                Lunas
+                            </button>
+                            <button
+                                type="button"
+                                class="rounded-lg py-2 text-[11px] font-medium transition"
+                                :class="
+                                    paymentMode === 'sebagian'
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                                "
+                                @click="paymentMode = 'sebagian'"
+                            >
+                                Bayar sebagian (DP)
+                            </button>
+                        </div>
+
+                        <label
+                            v-if="paymentMode === 'sebagian'"
+                            class="block rounded-xl bg-white p-3 ring-1 ring-slate-200"
+                        >
+                            <span
+                                class="text-[11px] font-medium text-slate-500"
+                            >
+                                Nominal diterima
+                            </span>
+                            <span class="mt-1 flex items-center gap-2">
+                                <span class="text-sm text-slate-500">Rp</span>
+                                <input
+                                    v-model.number="partialAmount"
+                                    type="number"
+                                    min="0"
+                                    :max="dueAmount"
+                                    step="1000"
+                                    placeholder="0"
+                                    class="w-full bg-transparent text-sm font-medium text-slate-800 tabular-nums placeholder:text-slate-300 focus:outline-none"
+                                />
+                            </span>
+                            <span
+                                class="mt-1.5 block text-[11px] text-slate-500"
+                            >
+                                Sisa setelah pembayaran ini:
+                                {{ formatCurrency(dueAmount - payAmount) }}
+                            </span>
+                        </label>
+
+                        <p
+                            v-if="
+                                orderCustomer && selectedOrder.stampsEarned > 0
+                            "
+                            class="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"
+                        >
+                            <Sparkles class="h-3.5 w-3.5 shrink-0" />
+                            {{ orderCustomer.name.split(' ')[0] }} dapat +{{
+                                selectedOrder.stampsEarned
+                            }}
+                            stempel saat order lunas
+                        </p>
+
+                        <div class="grid grid-cols-4 gap-1.5">
+                            <button
+                                v-for="method in paymentMethods"
+                                :key="method"
+                                type="button"
+                                class="rounded-lg py-2 text-[11px] font-medium transition"
+                                :class="
+                                    paymentMethod === method
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50'
+                                "
+                                @click="paymentMethod = method"
+                            >
+                                {{ method }}
+                            </button>
+                        </div>
+
+                        <button
+                            type="button"
+                            class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
+                            :disabled="!canSubmit"
+                            @click="submitPayment"
+                        >
+                            <CreditCard class="h-4 w-4" />
+                            Terima {{ formatCurrency(payAmount) }}
+                        </button>
+                    </div>
+                </template>
+
+                <EmptyState
+                    v-else
+                    :icon="ScanLine"
+                    title="Belum ada order dipilih"
+                    caption="Pilih order di sebelah kiri untuk menerima pembayaran"
+                />
+            </section>
         </div>
-    </section>
+    </div>
 
     <!-- Receipt -->
     <ModalDialog :open="receipt !== null" size="sm" @close="receipt = null">
         <div v-if="receipt">
             <div
-                class="-m-6 mb-4 bg-gradient-to-br from-emerald-500 to-teal-600 px-6 py-7 text-center text-white"
+                class="-m-6 mb-4 px-6 py-7 text-center text-white"
+                :class="
+                    receipt.isSettled
+                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
+                        : 'bg-gradient-to-br from-amber-500 to-orange-600'
+                "
             >
                 <div
                     class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white/20"
                 >
-                    <CircleCheck class="h-8 w-8" />
+                    <CircleCheck v-if="receipt.isSettled" class="h-8 w-8" />
+                    <Clock v-else class="h-8 w-8" />
                 </div>
-                <p class="mt-3 text-lg font-semibold">Pembayaran berhasil</p>
-                <p class="text-sm text-emerald-50/90">
-                    {{ receipt.invoice }} • {{ receipt.payment }}
+                <p class="mt-3 text-lg font-semibold">
+                    {{
+                        receipt.isSettled
+                            ? 'Pembayaran berhasil'
+                            : 'DP diterima'
+                    }}
+                </p>
+                <p class="text-sm text-white/85">
+                    {{ receipt.isSettled ? receipt.invoice : receipt.orderNo }}
+                    • {{ receipt.payment }}
                 </p>
             </div>
 
@@ -798,27 +633,55 @@ function checkout(): void {
                     </span>
                 </div>
                 <div
-                    v-if="receipt.rewardName"
+                    v-if="receipt.reward !== '—'"
                     class="flex justify-between gap-4"
                 >
                     <span class="shrink-0 text-slate-500">Reward dipakai</span>
                     <span class="text-right text-cyan-700">
-                        {{ receipt.rewardName }}
+                        {{ receipt.reward }}
+                    </span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Total order</span>
+                    <span class="text-slate-700 tabular-nums">
+                        {{ formatCurrency(receipt.total) }}
                     </span>
                 </div>
                 <div
                     class="flex justify-between border-t border-dashed border-slate-200 pt-3"
                 >
-                    <span class="text-slate-500">Total dibayar</span>
+                    <span class="text-slate-500">Diterima sekarang</span>
                     <span
                         class="text-lg font-semibold text-slate-900 tabular-nums"
                     >
-                        {{ formatCurrency(receipt.total) }}
+                        {{ formatCurrency(receipt.amountPaid) }}
                     </span>
                 </div>
 
                 <div
-                    v-if="receipt.stampsAfter !== null"
+                    v-if="!receipt.isSettled"
+                    class="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-100"
+                >
+                    <p
+                        class="flex items-center justify-between text-xs text-amber-900"
+                    >
+                        <span>Total sudah dibayar</span>
+                        <span class="font-semibold tabular-nums">
+                            {{ formatCurrency(receipt.paidTotal) }}
+                        </span>
+                    </p>
+                    <p
+                        class="mt-1 flex items-center justify-between border-t border-amber-200/60 pt-1 text-xs font-medium text-amber-900"
+                    >
+                        <span>Sisa tagihan</span>
+                        <span class="tabular-nums">
+                            {{ formatCurrency(receipt.dueAfter) }}
+                        </span>
+                    </p>
+                </div>
+
+                <div
+                    v-else-if="receipt.stampsAfter !== null"
                     class="rounded-xl bg-cyan-50 p-3 ring-1 ring-cyan-100"
                 >
                     <p
@@ -827,15 +690,6 @@ function checkout(): void {
                         <span>Stempel didapat</span>
                         <span class="font-semibold tabular-nums">
                             +{{ receipt.stampsEarned }}
-                        </span>
-                    </p>
-                    <p
-                        v-if="receipt.stampsUsed > 0"
-                        class="mt-1 flex items-center justify-between text-xs text-cyan-900"
-                    >
-                        <span>Stempel ditukar</span>
-                        <span class="font-semibold tabular-nums">
-                            −{{ receipt.stampsUsed }}
                         </span>
                     </p>
                     <p
@@ -864,7 +718,7 @@ function checkout(): void {
                 class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                 @click="receipt = null"
             >
-                Transaksi baru
+                Selesai
             </button>
         </template>
     </ModalDialog>

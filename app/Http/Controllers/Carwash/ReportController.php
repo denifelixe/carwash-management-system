@@ -15,13 +15,20 @@ class ReportController extends AdminController
 {
     public function index(Request $request): Response
     {
+        ['from' => $from, 'to' => $to] = Reports::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+
+        $scale = Reports::rangeScale($from, $to);
+
         return $this->page($request, 'carwash/admin/Reports', [
             'stats' => Reports::todayStats(),
-            'revenueTrend' => Reports::revenueTrend(),
-            'monthlyTrend' => Reports::monthlyTrend(),
-            'topServices' => Reports::topServices(),
-            'customerActivity' => Reports::customerActivity(),
-            'bookingSummary' => Reports::bookingSummary(),
+            'trend' => Reports::trend($from, $to),
+            'filters' => Reports::rangeMeta($from, $to),
+            'topServices' => Reports::topServices($scale),
+            'customerActivity' => Reports::customerActivity($scale),
+            'bookingSummary' => Reports::bookingSummary($scale),
             'inventorySummary' => Reports::inventorySummary(),
             'cashSummary' => Finance::summary(),
             'shifts' => Brand::shifts(),

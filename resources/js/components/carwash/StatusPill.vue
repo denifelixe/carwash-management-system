@@ -5,6 +5,15 @@ const props = defineProps<{
     status: string;
 }>();
 
+/** Status words the `capitalize` class alone would render badly. */
+const statusLabels: Record<string, string> = {
+    dp: 'DP',
+};
+
+const label = computed<string>(
+    () => statusLabels[props.status] ?? props.status,
+);
+
 /** Maps every status word used across the modules onto a colour family. */
 const toneClass = computed<string>(() => {
     switch (props.status) {
@@ -17,6 +26,7 @@ const toneClass = computed<string>(() => {
         case 'dikerjakan':
         case 'terjadwal':
         case 'berjalan':
+        case 'dp':
             return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200';
         case 'menunggu':
         case 'belum bayar':
@@ -39,6 +49,6 @@ const toneClass = computed<string>(() => {
         class="inline-flex rounded-full px-2 py-1 text-[11px] font-medium capitalize"
         :class="toneClass"
     >
-        {{ status }}
+        {{ label }}
     </span>
 </template>

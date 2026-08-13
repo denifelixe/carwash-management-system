@@ -9,15 +9,15 @@ use Inertia\Testing\AssertableInertia;
  */
 dataset('admin modules', [
     'dashboard' => ['carwash.admin.dashboard', 'carwash/admin/Dashboard', ['stats', 'revenueTrend', 'shifts', 'cashSummary', 'queue']],
-    'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'services', 'customers', 'crew']],
-    'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['services', 'customers', 'transactions', 'paymentMethods', 'rewards']],
+    'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'services', 'customers', 'rewards', 'crew']],
+    'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['orders', 'services', 'customers', 'paymentMethods']],
     'customers' => ['carwash.admin.customers', 'carwash/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],
     'finance' => ['carwash.admin.finance', 'carwash/admin/Finance', ['moneyIn', 'moneyOut', 'incomeCategories', 'expenseCategories', 'cashSummary']],
     'bookings' => ['carwash.admin.bookings', 'carwash/admin/Bookings', ['bookings', 'slots', 'services', 'customers']],
     'inventory' => ['carwash.admin.inventory', 'carwash/admin/Inventory', ['items', 'movements', 'categories', 'movementTypes']],
     'rewards' => ['carwash.admin.rewards', 'carwash/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
     'users' => ['carwash.admin.users', 'carwash/admin/Users', ['staff', 'roles', 'matrix', 'allModules']],
-    'reports' => ['carwash.admin.reports', 'carwash/admin/Reports', ['stats', 'monthlyTrend', 'customerActivity', 'bookingSummary', 'inventorySummary']],
+    'reports' => ['carwash.admin.reports', 'carwash/admin/Reports', ['stats', 'trend', 'filters', 'customerActivity', 'bookingSummary', 'inventorySummary']],
 ]);
 
 test('an owner can open every module with its expected props', function (string $routeName, string $component, array $props) {

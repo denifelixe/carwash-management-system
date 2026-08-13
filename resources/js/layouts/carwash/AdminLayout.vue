@@ -10,6 +10,8 @@ import {
     LayoutDashboard,
     LogOut,
     Menu,
+    PanelLeftClose,
+    PanelLeftOpen,
     ScanLine,
     ShieldCheck,
     Users,
@@ -17,7 +19,7 @@ import {
     X,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import carwash from '@/routes/carwash';
 import admin from '@/routes/carwash/admin';
 import session from '@/routes/carwash/session';
@@ -61,8 +63,18 @@ const moduleUrls: Record<string, () => string> = {
     'carwash.admin.reports': () => admin.reports.url(),
 };
 
+const sidebarStorageKey = 'carwash.admin.sidebar';
+
+/** Off-canvas drawer state, only meaningful below `lg`. */
 const isSidebarOpen = ref<boolean>(false);
+/** Icon-rail state, only meaningful from `lg` up. Read after mount so SSR stays stable. */
+const isSidebarCollapsed = ref<boolean>(false);
 const isNotificationsOpen = ref<boolean>(false);
+
+onMounted(() => {
+    isSidebarCollapsed.value =
+        localStorage.getItem(sidebarStorageKey) === 'collapsed';
+});
 
 const notifications = ref<CarwashNotification[]>(
     page.props.notifications.map((notification) => ({ ...notification })),
@@ -91,6 +103,14 @@ function readAllNotifications(): void {
     });
 }
 
+function toggleSidebarCollapse(): void {
+    isSidebarCollapsed.value = !isSidebarCollapsed.value;
+    localStorage.setItem(
+        sidebarStorageKey,
+        isSidebarCollapsed.value ? 'collapsed' : 'expanded',
+    );
+}
+
 function leaveConsole(): void {
     router.post(session.exit.url());
 }
@@ -100,18 +120,25 @@ function leaveConsole(): void {
     <div class="min-h-screen bg-slate-100 font-sans text-slate-900">
         <!-- Sidebar -->
         <aside
-            class="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 transition-transform duration-300 lg:translate-x-0"
-            :class="isSidebarOpen ? 'translate-x-0' : '-translate-x-full'"
+            class="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 transition-[transform,width] duration-300 lg:translate-x-0"
+            :class="[
+                isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+                isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72',
+            ]"
         >
             <div
                 class="flex items-center gap-3 border-b border-white/5 px-5 py-5"
+                :class="isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''"
             >
                 <div
-                    class="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-xl shadow-lg shadow-cyan-500/30"
+                    class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-xl shadow-lg shadow-cyan-500/30"
                 >
                     {{ brand.logo }}
                 </div>
-                <div class="min-w-0 flex-1 leading-tight">
+                <div
+                    class="min-w-0 flex-1 leading-tight"
+                    :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                >
                     <p class="truncate text-sm font-semibold text-white">
                         {{ brand.name }}
                     </p>
@@ -133,13 +160,20 @@ function leaveConsole(): void {
             <div class="px-3 pt-4">
                 <div
                     class="flex items-center gap-2 rounded-xl px-3 py-2 ring-1"
+                    :class="
+                        isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''
+                    "
+                    :title="isSidebarCollapsed ? role.name : undefined"
                     :style="{
                         backgroundColor: `${role.accent}1f`,
                         boxShadow: `inset 0 0 0 1px ${role.accent}55`,
                     }"
                 >
                     <span class="text-base">{{ role.icon }}</span>
-                    <div class="min-w-0 flex-1 leading-tight">
+                    <div
+                        class="min-w-0 flex-1 leading-tight"
+                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                    >
                         <p
                             class="text-[10px] tracking-wider text-slate-400 uppercase"
                         >
@@ -149,7 +183,10 @@ function leaveConsole(): void {
                             {{ role.name }}
                         </p>
                     </div>
-                    <span class="text-[10px] text-slate-400">
+                    <span
+                        class="text-[10px] text-slate-400"
+                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                    >
                         {{ modules.length }} modul
                     </span>
                 </div>
@@ -161,18 +198,23 @@ function leaveConsole(): void {
                     :key="module.key"
                     :href="moduleUrls[module.route]()"
                     class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
-                    :class="
+                    :class="[
                         activeModule.key === module.key
                             ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-lg shadow-cyan-500/25'
-                            : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                    "
+                            : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                        isSidebarCollapsed ? 'lg:justify-center lg:px-0' : '',
+                    ]"
+                    :title="isSidebarCollapsed ? module.label : undefined"
                     @click="isSidebarOpen = false"
                 >
                     <component
                         :is="moduleIcons[module.icon]"
                         class="h-[18px] w-[18px] shrink-0"
                     />
-                    <span class="flex-1 leading-tight">
+                    <span
+                        class="flex-1 leading-tight"
+                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                    >
                         <span class="block text-sm font-medium">
                             {{ module.label }}
                         </span>
@@ -191,13 +233,21 @@ function leaveConsole(): void {
             </nav>
 
             <div class="space-y-3 border-t border-white/5 p-4">
-                <div class="flex items-center gap-3 px-1">
+                <div
+                    class="flex items-center gap-3 px-1"
+                    :class="
+                        isSidebarCollapsed ? 'lg:flex-col lg:gap-2 lg:px-0' : ''
+                    "
+                >
                     <div
-                        class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-xs font-semibold text-white"
+                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-xs font-semibold text-white"
                     >
                         {{ persona.initials }}
                     </div>
-                    <div class="min-w-0 flex-1 leading-tight">
+                    <div
+                        class="min-w-0 flex-1 leading-tight"
+                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                    >
                         <p class="truncate text-sm font-medium text-white">
                             {{ persona.name }}
                         </p>
@@ -225,7 +275,10 @@ function leaveConsole(): void {
         ></div>
 
         <!-- Main -->
-        <div class="lg:pl-72">
+        <div
+            class="transition-[padding] duration-300"
+            :class="isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'"
+        >
             <header
                 class="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-xl"
             >
@@ -239,6 +292,32 @@ function leaveConsole(): void {
                         @click="isSidebarOpen = true"
                     >
                         <Menu class="h-5 w-5" />
+                    </button>
+
+                    <button
+                        type="button"
+                        class="hidden rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 lg:block"
+                        :aria-label="
+                            isSidebarCollapsed
+                                ? 'Lebarkan menu samping'
+                                : 'Ciutkan menu samping'
+                        "
+                        :aria-expanded="!isSidebarCollapsed"
+                        :title="
+                            isSidebarCollapsed
+                                ? 'Lebarkan menu'
+                                : 'Ciutkan menu'
+                        "
+                        @click="toggleSidebarCollapse"
+                    >
+                        <component
+                            :is="
+                                isSidebarCollapsed
+                                    ? PanelLeftOpen
+                                    : PanelLeftClose
+                            "
+                            class="h-5 w-5"
+                        />
                     </button>
 
                     <div class="min-w-0 flex-1">

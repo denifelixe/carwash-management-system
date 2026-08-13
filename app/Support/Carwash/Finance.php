@@ -70,7 +70,7 @@ class Finance
             'todayIn' => $todayIn,
             'todayOut' => $todayOut,
             'closingBalance' => 12400000 + $todayIn - $todayOut,
-            'pendingPayments' => 130000,
+            'pendingPayments' => Operations::outstandingTotal(),
         ];
     }
 }

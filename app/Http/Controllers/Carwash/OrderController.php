@@ -21,6 +21,7 @@ class OrderController extends AdminController
             'services' => Catalog::services(),
             'serviceCategories' => Catalog::serviceCategories(),
             'customers' => Customers::all(),
+            'rewards' => Catalog::rewards(),
             'crew' => Operations::crew(),
             'paymentMethods' => Operations::paymentMethods(),
         ]);
