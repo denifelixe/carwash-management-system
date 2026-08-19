@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=1200, initial-scale=1" />
+        <title>ZenWash Auto Care — Open Graph Image</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            html,
+            body {
+                width: 1200px;
+                height: 630px;
+                margin: 0;
+                overflow: hidden;
+            }
+
+            body {
+                font-family: Arial, Helvetica, sans-serif;
+                background: linear-gradient(135deg, #22d3ee 0%, #0284c7 100%);
+            }
+
+            .canvas {
+                position: relative;
+                width: 1200px;
+                height: 630px;
+                overflow: hidden;
+            }
+
+            .circle {
+                position: absolute;
+                border-radius: 9999px;
+                background: rgba(255, 255, 255, 0.08);
+            }
+
+            .circle-top {
+                top: -40px;
+                right: 29px;
+                width: 261px;
+                height: 261px;
+            }
+
+            .circle-left {
+                bottom: -31px;
+                left: 20px;
+                width: 201px;
+                height: 201px;
+            }
+
+            .circle-bottom {
+                right: 244px;
+                bottom: -25px;
+                width: 151px;
+                height: 151px;
+            }
+
+            .droplet {
+                position: absolute;
+                top: 240px;
+                left: 190px;
+                width: 120px;
+                height: 162px;
+                fill: #ffffff;
+            }
+
+            .copy {
+                position: absolute;
+                top: 216px;
+                left: 370px;
+                white-space: nowrap;
+            }
+
+            h1 {
+                margin: 0;
+                color: #ffffff;
+                font-size: 72px;
+                font-weight: 700;
+                line-height: 1.15;
+                letter-spacing: -2px;
+            }
+
+            .subtitle {
+                margin: 4px 0 0;
+                color: rgba(255, 255, 255, 0.75);
+                font-size: 44px;
+                font-weight: 400;
+                line-height: 1.2;
+            }
+
+            .features {
+                margin: 30px 0 0;
+                color: rgba(255, 255, 255, 0.75);
+                font-size: 25px;
+                font-weight: 400;
+                line-height: 1;
+            }
+
+            .separator {
+                display: inline-block;
+                padding: 0 10px;
+            }
+        </style>
+    </head>
+    <body>
+        <main class="canvas" aria-label="ZenWash Auto Care social sharing image">
+            <div class="circle circle-top"></div>
+            <div class="circle circle-left"></div>
+            <div class="circle circle-bottom"></div>
+
+            <svg class="droplet" viewBox="0 0 120 162" aria-hidden="true">
+                <path d="M60 0C60 0 0 75 0 101a60 60 0 0 0 120 0C120 75 60 0 60 0Z" />
+            </svg>
+
+            <section class="copy">
+                <h1>ZenWash Auto Care</h1>
+                <p class="subtitle">Carwash Management System</p>
+                <p class="features">
+                    Kasir POS <span class="separator">•</span> Order <span class="separator">•</span> Booking
+                    <span class="separator">•</span> Stok <span class="separator">•</span> Keuangan
+                    <span class="separator">•</span> Loyalty
+                </p>
+            </section>
+        </main>
+    </body>
+</html>
