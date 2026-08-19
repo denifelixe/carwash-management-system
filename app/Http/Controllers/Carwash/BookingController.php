@@ -16,8 +16,8 @@ class BookingController extends AdminController
     public function index(Request $request): Response
     {
         return $this->page($request, 'carwash/admin/Bookings', [
-            'bookings' => Operations::bookings(),
-            'slots' => Operations::bookingSlots(),
+            'bookings' => Operations::scheduledBookings(),
+            'today' => now('Asia/Jakarta')->toDateString(),
             'services' => Catalog::services(),
             'customers' => Customers::all(),
         ]);

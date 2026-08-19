@@ -48,6 +48,6 @@ class EntryController extends Controller
     {
         $request->session()->forget(RoleAccess::SESSION_KEY);
 
-        return to_route('carwash.entry');
+        return to_route('home');
     }
 }

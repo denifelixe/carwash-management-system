@@ -8,18 +8,19 @@ namespace App\Support\Carwash;
 class Brand
 {
     /**
-     * @return array{name: string, logo: string, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string}
+     * @return array{name: string, system: string, logo: string, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string}
      */
     public static function identity(): array
     {
         return [
-            'name' => 'ST Webapp',
+            'name' => 'ZenWash Auto Care',
+            'system' => 'ZenWash Auto Care Management System',
             'logo' => '🚗',
             'whatsapp' => '6281800090009',
             'instagram' => 'zenwash.id',
             'stampTarget' => 10,
             'stampReward' => 'Gratis 1x Cuci Mobil Reguler',
-            'today' => 'Minggu, 3 Agustus 2026',
+            'today' => Reports::today()->locale('id')->isoFormat('dddd, D MMMM YYYY'),
         ];
     }
 
@@ -33,7 +34,7 @@ class Brand
         $identity = self::identity();
 
         return [
-            'title' => $identity['name'].' — Aplikasi Manajemen Carwash',
+            'title' => $identity['system'],
             'description' => 'Aplikasi manajemen carwash '.$identity['name'].': kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.',
             'keywords' => 'carwash, cuci mobil, aplikasi carwash, kasir carwash, pos cuci mobil, detailing, coating, kartu stempel, loyalty member',
             'themeColor' => '#0284C7',

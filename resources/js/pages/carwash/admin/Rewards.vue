@@ -130,6 +130,7 @@ function saveReward(): void {
             {
                 id: 1000 + rewardList.value.length,
                 ...draft.value,
+                applicableServiceIds: [],
                 redeemed: 0,
             },
             ...rewardList.value,

@@ -1,7 +1,7 @@
 {
-    "name": "ST Webapp",
-    "short_name": "ST Webapp",
-    "description": "Aplikasi manajemen carwash: kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.",
+    "name": "ZenWash Auto Care Management System",
+    "short_name": "ZenWash",
+    "description": "Aplikasi manajemen carwash ZenWash Auto Care: kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.",
     "lang": "id",
     "start_url": "/",
     "scope": "/",

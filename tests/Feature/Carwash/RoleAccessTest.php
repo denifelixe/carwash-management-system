@@ -30,13 +30,13 @@ test('each role reaches exactly the modules its matrix allows', function (string
 
 test('visitors without a demo role are sent to the entry screen', function () {
     $this->get(route('carwash.admin.dashboard'))
-        ->assertRedirect(route('carwash.entry'));
+        ->assertRedirect(route('home'));
 });
 
 test('an unknown session role is treated as no role at all', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'janitor'])
         ->get(route('carwash.admin.dashboard'))
-        ->assertRedirect(route('carwash.entry'));
+        ->assertRedirect(route('home'));
 });
 
 test('choosing a role stores it and lands on that role first module', function () {
@@ -56,7 +56,7 @@ test('an invalid role cannot be selected', function () {
 test('leaving the console clears the active role', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
         ->post(route('carwash.session.exit'))
-        ->assertRedirect(route('carwash.entry'));
+        ->assertRedirect(route('home'));
 
     expect(session(RoleAccess::SESSION_KEY))->toBeNull();
 });

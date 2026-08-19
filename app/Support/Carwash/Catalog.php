@@ -31,23 +31,24 @@ class Catalog
     }
 
     /**
-     * Reward catalog. `requiredStamps` is the only condition for redemption (BR-04).
+     * Reward catalog. `applicableServiceIds` limits redemption to services that
+     * already exist in the order being paid.
      *
-     * @return list<array{id: int, name: string, description: string, requiredStamps: int, icon: string, category: string, status: string, stock: int, redeemed: int}>
+     * @return list<array{id: int, name: string, description: string, requiredStamps: int, applicableServiceIds: list<int>, icon: string, category: string, status: string, stock: int, redeemed: int}>
      */
     public static function rewards(): array
     {
         return [
-            ['id' => 1, 'name' => 'Gratis Semir Ban', 'description' => 'Semir ban premium gratis untuk satu kali kunjungan.', 'requiredStamps' => 3, 'icon' => '⚫', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 50, 'redeemed' => 34],
-            ['id' => 2, 'name' => 'Gratis Parfum Mobil', 'description' => 'Wangi kabin tahan lama untuk sekali kunjungan.', 'requiredStamps' => 4, 'icon' => '💨', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 60, 'redeemed' => 28],
-            ['id' => 3, 'name' => 'Gratis Vacuum Interior', 'description' => 'Vacuum kabin menyeluruh tanpa biaya tambahan.', 'requiredStamps' => 5, 'icon' => '🧽', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 35, 'redeemed' => 19],
-            ['id' => 4, 'name' => 'Gratis Cuci Motor', 'description' => 'Tukar stempel dengan satu kali cuci motor reguler.', 'requiredStamps' => 6, 'icon' => '🏍️', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 40, 'redeemed' => 22],
-            ['id' => 5, 'name' => 'Diskon 50% Snow Wash', 'description' => 'Potongan setengah harga untuk snow wash premium.', 'requiredStamps' => 8, 'icon' => '❄️', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 25, 'redeemed' => 11],
-            ['id' => 6, 'name' => 'Gratis Cuci Mobil Reguler', 'description' => 'Satu kali cuci mobil reguler gratis.', 'requiredStamps' => 10, 'icon' => '🚗', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 30, 'redeemed' => 15],
-            ['id' => 7, 'name' => 'Tumbler ZenWash Eksklusif', 'description' => 'Merchandise tumbler stainless edisi terbatas.', 'requiredStamps' => 12, 'icon' => '🥤', 'category' => 'Merchandise', 'status' => 'aktif', 'stock' => 12, 'redeemed' => 6],
-            ['id' => 8, 'name' => 'Voucher Poles Body Rp 100rb', 'description' => 'Potongan langsung untuk layanan poles body detailing.', 'requiredStamps' => 15, 'icon' => '💎', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 18, 'redeemed' => 4],
-            ['id' => 9, 'name' => 'Gratis Deep Clean Interior', 'description' => 'Interior detailing menyeluruh tanpa biaya.', 'requiredStamps' => 20, 'icon' => '🪑', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 10, 'redeemed' => 2],
-            ['id' => 10, 'name' => 'Gratis Nano Ceramic Coating', 'description' => 'Reward utama: coating penuh selama 12 bulan proteksi.', 'requiredStamps' => 40, 'icon' => '🛡️', 'category' => 'Layanan', 'status' => 'nonaktif', 'stock' => 3, 'redeemed' => 1],
+            ['id' => 1, 'name' => 'Gratis Semir Ban', 'description' => 'Semir ban premium gratis untuk satu kali kunjungan.', 'requiredStamps' => 3, 'applicableServiceIds' => [12], 'icon' => '⚫', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 50, 'redeemed' => 34],
+            ['id' => 2, 'name' => 'Gratis Parfum Mobil', 'description' => 'Wangi kabin tahan lama untuk sekali kunjungan.', 'requiredStamps' => 4, 'applicableServiceIds' => [], 'icon' => '💨', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 60, 'redeemed' => 28],
+            ['id' => 3, 'name' => 'Gratis Vacuum Interior', 'description' => 'Vacuum kabin menyeluruh tanpa biaya tambahan.', 'requiredStamps' => 5, 'applicableServiceIds' => [], 'icon' => '🧽', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 35, 'redeemed' => 19],
+            ['id' => 4, 'name' => 'Gratis Cuci Motor', 'description' => 'Tukar stempel dengan satu kali cuci motor reguler.', 'requiredStamps' => 6, 'applicableServiceIds' => [4], 'icon' => '🏍️', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 40, 'redeemed' => 22],
+            ['id' => 5, 'name' => 'Diskon 50% Snow Wash', 'description' => 'Potongan setengah harga untuk snow wash premium.', 'requiredStamps' => 8, 'applicableServiceIds' => [3], 'icon' => '❄️', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 25, 'redeemed' => 11],
+            ['id' => 6, 'name' => 'Gratis Cuci Mobil Reguler', 'description' => 'Satu kali cuci mobil reguler gratis.', 'requiredStamps' => 10, 'applicableServiceIds' => [1], 'icon' => '🚗', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 30, 'redeemed' => 15],
+            ['id' => 7, 'name' => 'Tumbler ZenWash Eksklusif', 'description' => 'Merchandise tumbler stainless edisi terbatas.', 'requiredStamps' => 12, 'applicableServiceIds' => [], 'icon' => '🥤', 'category' => 'Merchandise', 'status' => 'aktif', 'stock' => 12, 'redeemed' => 6],
+            ['id' => 8, 'name' => 'Voucher Poles Body Rp 100rb', 'description' => 'Potongan langsung untuk layanan poles body detailing.', 'requiredStamps' => 15, 'applicableServiceIds' => [6], 'icon' => '💎', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 18, 'redeemed' => 4],
+            ['id' => 9, 'name' => 'Gratis Deep Clean Interior', 'description' => 'Interior detailing menyeluruh tanpa biaya.', 'requiredStamps' => 20, 'applicableServiceIds' => [9], 'icon' => '🪑', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 10, 'redeemed' => 2],
+            ['id' => 10, 'name' => 'Gratis Nano Ceramic Coating', 'description' => 'Reward utama: coating penuh selama 12 bulan proteksi.', 'requiredStamps' => 40, 'applicableServiceIds' => [7], 'icon' => '🛡️', 'category' => 'Layanan', 'status' => 'nonaktif', 'stock' => 3, 'redeemed' => 1],
         ];
     }
 

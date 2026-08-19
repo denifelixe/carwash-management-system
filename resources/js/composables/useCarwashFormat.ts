@@ -6,12 +6,28 @@ const currencyFormatter = new Intl.NumberFormat('id-ID', {
 
 const numberFormatter = new Intl.NumberFormat('id-ID');
 
+const dateFormatter = new Intl.DateTimeFormat('id-ID', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+});
+
 export function formatCurrency(value: number): string {
     return currencyFormatter.format(value);
 }
 
 export function formatNumber(value: number): string {
     return numberFormatter.format(value);
+}
+
+/** ISO "2026-08-19" as the code a number carries: "260819". */
+export function formatDateCode(date: string): string {
+    return date.replaceAll('-', '').slice(2);
+}
+
+/** ISO "2026-08-05" the way the modules spell a date: "5 Agu 2026". */
+export function formatDate(date: string): string {
+    return dateFormatter.format(new Date(`${date}T00:00:00`));
 }
 
 /** Compact rupiah for dense cards and chart axes: "Rp 1,2 jt", "Rp 450 rb". */
@@ -31,6 +47,8 @@ export function useCarwashFormat() {
     return {
         formatCurrency,
         formatNumber,
+        formatDate,
+        formatDateCode,
         formatShortCurrency,
         formatPercent,
     };

@@ -23,10 +23,18 @@ function openReports(array $query = []): AssertableInertia
     return $page;
 }
 
+/**
+ * Every figure is anchored to today, so the suite stands on a fixed day and
+ * keeps naming dates outright.
+ */
+beforeEach(function () {
+    $this->travelTo('2026-08-03 09:00:00');
+});
+
 test('the report defaults to the last seven days', function () {
     $filters = openReports()->toArray()['props']['filters'];
 
-    expect($filters['to'])->toBe(Reports::TODAY)
+    expect($filters['to'])->toBe(Reports::todayDate())
         ->and($filters['from'])->toBe('2026-07-28')
         ->and($filters['days'])->toBe(7)
         ->and($filters['granularity'])->toBe('harian');
@@ -115,7 +123,7 @@ test('the range cannot reach further back than the retained history', function (
     $filters = openReports(['from' => '2019-01-01', 'to' => '2026-08-03'])->toArray()['props']['filters'];
 
     expect($filters['from'])->toBe(
-        CarbonImmutable::parse(Reports::TODAY)->subDays(730)->toDateString()
+        CarbonImmutable::parse(Reports::todayDate())->subDays(730)->toDateString()
     );
 });
 

@@ -20,7 +20,7 @@ import {
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, onMounted, ref } from 'vue';
-import carwash from '@/routes/carwash';
+import { home } from '@/routes';
 import admin from '@/routes/carwash/admin';
 import session from '@/routes/carwash/session';
 import type {
@@ -326,9 +326,6 @@ function leaveConsole(): void {
                         >
                             {{ activeModule.label }}
                         </h1>
-                        <p class="hidden text-xs text-slate-500 sm:block">
-                            {{ brand.today }}
-                        </p>
                     </div>
 
                     <div class="relative">
@@ -435,7 +432,7 @@ function leaveConsole(): void {
                     </div>
 
                     <Link
-                        :href="carwash.entry.url()"
+                        :href="home.url()"
                         class="hidden rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 sm:block"
                     >
                         Ganti role

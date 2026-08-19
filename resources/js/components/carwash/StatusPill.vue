@@ -7,7 +7,8 @@ const props = defineProps<{
 
 /** Status words the `capitalize` class alone would render badly. */
 const statusLabels: Record<string, string> = {
-    dp: 'DP',
+    sebagian: 'Pembayaran Sebagian',
+    booking: 'Booking Hari ini - Belum Datang',
 };
 
 const label = computed<string>(
@@ -25,10 +26,16 @@ const toneClass = computed<string>(() => {
         case 'proses':
         case 'dikerjakan':
         case 'terjadwal':
+        case 'hari ini':
         case 'berjalan':
-        case 'dp':
+        case 'sebagian':
+        case 'booking':
             return 'bg-cyan-50 text-cyan-700 ring-1 ring-cyan-200';
+        case 'pelunasan':
+            return 'bg-violet-50 text-violet-700 ring-1 ring-violet-200';
         case 'menunggu':
+        case 'mendatang':
+        case 'Booking Mendatang':
         case 'belum bayar':
         case 'penyesuaian':
             return 'bg-amber-50 text-amber-700 ring-1 ring-amber-200';

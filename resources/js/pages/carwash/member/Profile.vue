@@ -15,7 +15,7 @@ import {
     formatNumber,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
-import carwash from '@/routes/carwash';
+import { home } from '@/routes';
 import type {
     CarwashBrand,
     CarwashMember,
@@ -210,7 +210,7 @@ function copyReferralCode(): void {
                 Hubungi Customer Service
             </a>
             <Link
-                :href="carwash.entry.url()"
+                :href="home.url()"
                 class="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
                 Keluar

@@ -5,7 +5,9 @@
  *
  * By default the toggle only exists below `sm`; from `sm` up the grid is always
  * rendered, so a collapsed state can never hide the cards on desktop. Pages that
- * want the summary out of the way on every screen pass `collapsible="always"`.
+ * want the summary out of the way on every screen pass `collapsible="always"`,
+ * and pages where the summary must stay visible pass `collapsible="never"` to
+ * drop the toggle entirely and keep the header as a plain label.
  */
 import { ChevronDown } from '@lucide/vue';
 import { computed, ref, useId } from 'vue';
@@ -14,8 +16,8 @@ const props = withDefaults(
     defineProps<{
         title?: string;
         caption?: string;
-        columns?: 2 | 3 | 4;
-        collapsible?: 'mobile' | 'always';
+        columns?: 2 | 3 | 4 | 5 | 6 | 7;
+        collapsible?: 'mobile' | 'always' | 'never';
     }>(),
     {
         title: 'Ringkasan',
@@ -32,6 +34,10 @@ const isAlwaysCollapsible = computed<boolean>(
     () => props.collapsible === 'always',
 );
 
+const isNeverCollapsible = computed<boolean>(
+    () => props.collapsible === 'never',
+);
+
 /**
  * Written out in full so Tailwind can see each class, and picked so the cards
  * always fill the row instead of leaving a hole at the end.
@@ -42,10 +48,17 @@ const columnClass = computed<string>(
             2: 'sm:grid-cols-2',
             3: 'sm:grid-cols-3',
             4: 'sm:grid-cols-2 xl:grid-cols-4',
+            5: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5',
+            6: 'sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6',
+            7: 'sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7',
         })[props.columns],
 );
 
 const contentClass = computed<string>(() => {
+    if (isNeverCollapsible.value) {
+        return 'mt-3 grid';
+    }
+
     if (isAlwaysCollapsible.value) {
         return isOpen.value ? 'mt-3 grid' : 'hidden';
     }
@@ -56,7 +69,18 @@ const contentClass = computed<string>(() => {
 
 <template>
     <section>
+        <div
+            v-if="isNeverCollapsible"
+            class="rounded-2xl border border-slate-200/80 bg-white px-4 py-3 shadow-sm"
+        >
+            <p class="text-sm font-semibold text-slate-900">{{ title }}</p>
+            <p v-if="caption" class="mt-0.5 truncate text-xs text-slate-500">
+                {{ caption }}
+            </p>
+        </div>
+
         <button
+            v-else
             type="button"
             class="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50"
             :class="isAlwaysCollapsible ? '' : 'sm:hidden'"

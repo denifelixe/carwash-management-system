@@ -20,7 +20,7 @@ class EnsureCarwashModule
         $role = (string) $request->session()->get(RoleAccess::SESSION_KEY, '');
 
         if (! RoleAccess::isValidRole($role)) {
-            return redirect()->route('carwash.entry');
+            return redirect()->route('home');
         }
 
         abort_unless(

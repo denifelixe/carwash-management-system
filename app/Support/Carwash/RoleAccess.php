@@ -24,11 +24,11 @@ class RoleAccess
     {
         return [
             ['key' => 'dashboard', 'label' => 'Dashboard', 'caption' => 'Ringkasan operasional', 'icon' => 'dashboard', 'route' => 'carwash.admin.dashboard'],
-            ['key' => 'orders', 'label' => 'Order / Transaksi', 'caption' => 'Proses kendaraan masuk', 'icon' => 'orders', 'route' => 'carwash.admin.orders'],
-            ['key' => 'pos', 'label' => 'Kasir POS', 'caption' => 'Pembayaran order', 'icon' => 'pos', 'route' => 'carwash.admin.pos'],
-            ['key' => 'customers', 'label' => 'Customer', 'caption' => 'Database & stempel', 'icon' => 'customers', 'route' => 'carwash.admin.customers'],
-            ['key' => 'finance', 'label' => 'Uang Masuk & Keluar', 'caption' => 'Arus kas harian', 'icon' => 'finance', 'route' => 'carwash.admin.finance'],
             ['key' => 'bookings', 'label' => 'Booking Order', 'caption' => 'Jadwal pelanggan', 'icon' => 'bookings', 'route' => 'carwash.admin.bookings'],
+            ['key' => 'orders', 'label' => 'Order', 'caption' => 'Proses kendaraan masuk', 'icon' => 'orders', 'route' => 'carwash.admin.orders'],
+            ['key' => 'pos', 'label' => 'Kasir POS', 'caption' => 'Pembayaran order', 'icon' => 'pos', 'route' => 'carwash.admin.pos'],
+            ['key' => 'finance', 'label' => 'Keuangan', 'caption' => 'Arus kas harian', 'icon' => 'finance', 'route' => 'carwash.admin.finance'],
+            ['key' => 'customers', 'label' => 'Member', 'caption' => 'Database & stempel', 'icon' => 'customers', 'route' => 'carwash.admin.customers'],
             ['key' => 'inventory', 'label' => 'Stock Inventory', 'caption' => 'Stok operasional', 'icon' => 'inventory', 'route' => 'carwash.admin.inventory'],
             ['key' => 'rewards', 'label' => 'Reward', 'caption' => 'Katalog & syarat stempel', 'icon' => 'rewards', 'route' => 'carwash.admin.rewards'],
             ['key' => 'users', 'label' => 'User & Role', 'caption' => 'Hak akses pegawai', 'icon' => 'users', 'route' => 'carwash.admin.users'],
@@ -98,7 +98,7 @@ class RoleAccess
     {
         $modules = self::modulesFor($role);
 
-        return $modules[0]['route'] ?? 'carwash.entry';
+        return $modules[0]['route'] ?? 'home';
     }
 
     /**

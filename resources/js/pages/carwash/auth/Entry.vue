@@ -48,8 +48,15 @@ function signInAs(role: string): void {
                 >
                     {{ brand.logo }}
                 </div>
-                <h1 class="mt-5 text-2xl font-semibold sm:text-3xl">
-                    {{ brand.name }}
+                <h1 class="mt-5 flex flex-col items-center gap-1">
+                    <span class="text-2xl font-semibold sm:text-3xl">
+                        {{ brand.name }}
+                    </span>
+                    <span
+                        class="text-base font-medium text-slate-300 sm:text-lg"
+                    >
+                        {{ brand.system.replace(brand.name, '').trim() }}
+                    </span>
                 </h1>
                 <p class="mt-2 max-w-lg text-sm text-slate-400">
                     Pilih role untuk masuk ke konsol admin, atau buka aplikasi

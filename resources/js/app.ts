@@ -7,14 +7,12 @@ import CarwashMemberLayout from '@/layouts/carwash/MemberLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
-const appName = import.meta.env.VITE_APP_NAME || 'ST Webapp';
+const appName = import.meta.env.VITE_APP_NAME || 'ZenWash Auto Care';
 
 createInertiaApp({
     title: (title) => title || appName,
     layout: (name) => {
         switch (true) {
-            case name === 'Welcome':
-                return null;
             // The carwash prototype ships its own shells; auth screens are bare.
             case name.startsWith('carwash/auth/'):
                 return null;

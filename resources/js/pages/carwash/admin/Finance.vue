@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import {
     Banknote,
     Paperclip,
@@ -11,14 +11,18 @@ import {
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import DataToolbar from '@/components/carwash/DataToolbar.vue';
+import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import EmptyState from '@/components/carwash/EmptyState.vue';
 import ModalDialog from '@/components/carwash/ModalDialog.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import {
     formatCurrency,
-    formatShortCurrency,
+    formatDate,
+    formatDateCode,
 } from '@/composables/useCarwashFormat';
+import admin from '@/routes/carwash/admin';
 import type {
+    CarwashDateFilter,
     CarwashBrand,
     CarwashCashSummary,
     CarwashMoneyEntry,
@@ -28,6 +32,7 @@ import type {
 const props = defineProps<{
     brand: CarwashBrand;
     moneyIn: CarwashMoneyEntry[];
+    filters: CarwashDateFilter;
     moneyOut: CarwashMoneyEntry[];
     incomeCategories: string[];
     expenseCategories: string[];
@@ -37,8 +42,10 @@ const props = defineProps<{
 }>();
 
 type Ledger = 'in' | 'out';
+type Shift = 'all' | 'pagi' | 'sore';
 
 const activeLedger = ref<Ledger>('in');
+const activeShift = ref<Shift>('all');
 const search = ref<string>('');
 const categoryFilter = ref<string>('Semua');
 const isFormOpen = ref<boolean>(false);
@@ -64,14 +71,41 @@ const activeCategories = computed<string[]>(() =>
         : props.expenseCategories,
 );
 
-const filterOptions = computed<string[]>(() => [
-    'Semua',
-    ...activeCategories.value,
+const shiftTabs = computed(() => [
+    { id: 'all' as const, label: 'Seluruh Shift', caption: 'Semua transaksi' },
+    ...props.shifts.map((shift) => ({
+        id: shift.id as Exclude<Shift, 'all'>,
+        label: shift.name,
+        caption: `${shift.time} · ${shift.cashier}`,
+    })),
 ]);
 
-const activeEntries = computed<CarwashMoneyEntry[]>(() =>
-    activeLedger.value === 'in' ? incomeList.value : expenseList.value,
+function isInActiveShift(entry: CarwashMoneyEntry): boolean {
+    if (activeShift.value === 'all') {
+        return true;
+    }
+
+    const isMorning = entry.time < '15.00';
+
+    return activeShift.value === 'pagi' ? isMorning : !isMorning;
+}
+
+const scopedIncome = computed<CarwashMoneyEntry[]>(() =>
+    incomeList.value.filter(isInActiveShift),
 );
+
+const scopedExpenses = computed<CarwashMoneyEntry[]>(() =>
+    expenseList.value.filter(isInActiveShift),
+);
+
+const activeEntries = computed<CarwashMoneyEntry[]>(() =>
+    activeLedger.value === 'in' ? scopedIncome.value : scopedExpenses.value,
+);
+
+const filterOptions = computed<string[]>(() => [
+    'Semua',
+    ...new Set(activeEntries.value.map((entry) => entry.category)),
+]);
 
 const filteredEntries = computed<CarwashMoneyEntry[]>(() => {
     const query = search.value.trim().toLowerCase();
@@ -84,21 +118,54 @@ const filteredEntries = computed<CarwashMoneyEntry[]>(() => {
             query === '' ||
             entry.description.toLowerCase().includes(query) ||
             entry.ref.toLowerCase().includes(query) ||
-            entry.recordedBy.toLowerCase().includes(query);
+            entry.recordedBy.toLowerCase().includes(query) ||
+            entry.orderNo?.toLowerCase().includes(query) ||
+            entry.customer?.toLowerCase().includes(query) ||
+            entry.plate?.toLowerCase().includes(query);
 
         return matchesCategory && matchesQuery;
     });
 });
 
 const totalIn = computed<number>(() =>
-    incomeList.value.reduce((total, entry) => total + entry.amount, 0),
+    scopedIncome.value.reduce((total, entry) => total + entry.amount, 0),
 );
 
 const totalOut = computed<number>(() =>
-    expenseList.value.reduce((total, entry) => total + entry.amount, 0),
+    scopedExpenses.value.reduce((total, entry) => total + entry.amount, 0),
 );
 
-const netCash = computed<number>(() => totalIn.value - totalOut.value);
+const remainingBalance = computed<number>(() => totalIn.value - totalOut.value);
+
+const financialChannels = props.paymentMethods.map((key) => ({
+    key,
+    label: key === 'E-Money' ? 'Emoney' : key,
+}));
+
+function channelTotal(entries: CarwashMoneyEntry[], channel: string): number {
+    return entries.reduce(
+        (total, entry) =>
+            total +
+            entry.channelBreakdown
+                .filter((item) => item.label === channel)
+                .reduce((subtotal, item) => subtotal + item.amount, 0),
+        0,
+    );
+}
+
+const channelRows = computed(() =>
+    financialChannels.map((channel) => {
+        const income = channelTotal(scopedIncome.value, channel.key);
+        const expense = channelTotal(scopedExpenses.value, channel.key);
+
+        return {
+            ...channel,
+            income,
+            expense,
+            balance: income - expense,
+        };
+    }),
+);
 
 /**
  * Outgoing money must carry supporting documentation (BR-10), so the save
@@ -118,6 +185,12 @@ const canSave = computed<boolean>(() => {
 
 function switchLedger(ledger: Ledger): void {
     activeLedger.value = ledger;
+    categoryFilter.value = 'Semua';
+    search.value = '';
+}
+
+function switchShift(shift: Shift): void {
+    activeShift.value = shift;
     categoryFilter.value = 'Semua';
     search.value = '';
 }
@@ -142,6 +215,22 @@ function onFileSelected(event: Event): void {
     }
 }
 
+function transactionReference(
+    category: string,
+    date: string,
+    identifier: string | number,
+): string {
+    const categoryCode = (category.toUpperCase().match(/[A-Z0-9]+/g) ?? [])
+        .map((word) => word[0])
+        .join('');
+    const stableIdentifier =
+        typeof identifier === 'number'
+            ? String(identifier).padStart(4, '0')
+            : identifier.toUpperCase().replace(/[^A-Z0-9]+/g, '');
+
+    return `TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`;
+}
+
 function saveEntry(): void {
     if (!canSave.value) {
         return;
@@ -153,13 +242,26 @@ function saveEntry(): void {
 
     const entry: CarwashMoneyEntry = {
         id: sequence,
-        ref: `${isIncome ? 'IN' : 'OUT'}-2608-${String(sequence).padStart(4, '0')}`,
-        date: '3 Agu 2026',
-        time: 'Baru saja',
+        ref: transactionReference(
+            draft.value.category,
+            props.filters.today,
+            sequence,
+        ),
+        date: props.filters.today,
+        time: new Intl.DateTimeFormat('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+        })
+            .format(new Date())
+            .replace(':', '.'),
         category: draft.value.category,
         description: draft.value.description,
         amount: draft.value.amount,
         method: draft.value.method,
+        channelBreakdown: [
+            { label: draft.value.method, amount: draft.value.amount },
+        ],
         recordedBy: 'Sesi demo',
         attachment: isIncome
             ? null
@@ -174,94 +276,141 @@ function saveEntry(): void {
 
     isFormOpen.value = false;
 }
+
+/** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
+function applyDate(date: string): void {
+    router.get(
+        admin.finance.url(),
+        { date },
+        { preserveScroll: true, replace: true },
+    );
+}
 </script>
 
 <template>
-    <Head :title="`${brand.name} — Uang Masuk & Keluar`" />
+    <Head :title="`${brand.name} — Keuangan`" />
 
     <div class="space-y-4">
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard
-                label="Uang masuk"
-                :value="formatCurrency(totalIn)"
-                :caption="`${incomeList.length} transaksi tercatat`"
-                :icon="TrendingUp"
-                tone="emerald"
-            />
-            <StatCard
-                label="Uang keluar"
-                :value="formatCurrency(totalOut)"
-                :caption="`${expenseList.length} pengeluaran`"
-                :icon="TrendingDown"
-                tone="rose"
-            />
-            <StatCard
-                label="Arus kas bersih"
-                :value="formatCurrency(netCash)"
-                caption="masuk dikurangi keluar"
-                :icon="Banknote"
-            />
-            <StatCard
-                label="Saldo kas"
-                :value="formatShortCurrency(cashSummary.closingBalance)"
-                :caption="`Awal ${formatShortCurrency(cashSummary.openingBalance)}`"
-                :icon="Wallet"
-                tone="amber"
-            />
+        <DateFilterBar :filters="filters" @change="applyDate" />
+
+        <section
+            class="rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm"
+        >
+            <div
+                class="grid grid-cols-1 gap-1 sm:grid-cols-3"
+                role="tablist"
+                aria-label="Filter shift"
+            >
+                <button
+                    v-for="shift in shiftTabs"
+                    :key="shift.id"
+                    type="button"
+                    role="tab"
+                    class="rounded-xl px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"
+                    :class="
+                        activeShift === shift.id
+                            ? 'bg-cyan-50 text-cyan-700 shadow-sm ring-1 ring-cyan-200'
+                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
+                    "
+                    :aria-selected="activeShift === shift.id"
+                    @click="switchShift(shift.id)"
+                >
+                    <span class="block text-sm font-semibold">
+                        {{ shift.label }}
+                    </span>
+                    <span class="mt-0.5 block text-[11px] opacity-75">
+                        {{ shift.caption }}
+                    </span>
+                </button>
+            </div>
         </section>
 
-        <!-- Shift breakdown -->
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <section
+            class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]"
+        >
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
+                <StatCard
+                    label="Uang masuk"
+                    :value="formatCurrency(totalIn)"
+                    :caption="`${scopedIncome.length} transaksi tercatat`"
+                    :icon="TrendingUp"
+                    tone="emerald"
+                />
+                <StatCard
+                    label="Uang keluar"
+                    :value="formatCurrency(totalOut)"
+                    :caption="`${scopedExpenses.length} pengeluaran`"
+                    :icon="TrendingDown"
+                    tone="rose"
+                />
+                <StatCard
+                    label="Sisa saldo"
+                    :value="formatCurrency(remainingBalance)"
+                    caption="Uang masuk dikurangi uang keluar"
+                    :icon="Wallet"
+                    tone="amber"
+                />
+            </div>
+
             <article
-                v-for="shift in shifts"
-                :key="shift.id"
-                class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+                class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm"
             >
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-sm font-semibold text-slate-900">
-                            {{ shift.name }}
-                        </p>
-                        <p class="text-xs text-slate-500">
-                            {{ shift.time }} • {{ shift.cashier }}
-                        </p>
-                    </div>
-                    <span
-                        class="rounded-full px-2.5 py-1 text-[11px] font-medium capitalize"
-                        :class="
-                            shift.status === 'berjalan'
-                                ? 'bg-cyan-50 text-cyan-700'
-                                : 'bg-slate-100 text-slate-600'
-                        "
-                    >
-                        {{ shift.status }}
-                    </span>
+                <div class="border-b border-slate-100 px-5 py-4">
+                    <h2 class="font-semibold text-slate-900">Kanal Keuangan</h2>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                        Ringkasan pemasukan, pengeluaran, dan saldo per kanal
+                    </p>
                 </div>
-                <div class="mt-4 grid grid-cols-3 gap-3">
-                    <div>
-                        <p class="text-[11px] text-slate-500">Masuk</p>
-                        <p
-                            class="mt-0.5 text-sm font-semibold text-emerald-600 tabular-nums"
-                        >
-                            {{ formatShortCurrency(shift.moneyIn) }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-[11px] text-slate-500">Keluar</p>
-                        <p
-                            class="mt-0.5 text-sm font-semibold text-rose-600 tabular-nums"
-                        >
-                            {{ formatShortCurrency(shift.moneyOut) }}
-                        </p>
-                    </div>
-                    <div>
-                        <p class="text-[11px] text-slate-500">Transaksi</p>
-                        <p
-                            class="mt-0.5 text-sm font-semibold text-slate-900 tabular-nums"
-                        >
-                            {{ shift.transactions }}
-                        </p>
-                    </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[680px] text-sm">
+                        <thead>
+                            <tr
+                                class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                            >
+                                <th class="px-5 py-3">Kanal Keuangan</th>
+                                <th class="px-5 py-3 text-right">Pemasukan</th>
+                                <th class="px-5 py-3 text-right">
+                                    Pengeluaran
+                                </th>
+                                <th class="px-5 py-3 text-right">
+                                    Saldo Kanal
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            <tr
+                                v-for="channel in channelRows"
+                                :key="channel.key"
+                                class="transition hover:bg-slate-50/70"
+                            >
+                                <td
+                                    class="px-5 py-4 font-medium text-slate-900"
+                                >
+                                    {{ channel.label }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-medium text-emerald-600 tabular-nums"
+                                >
+                                    {{ formatCurrency(channel.income) }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-medium text-rose-600 tabular-nums"
+                                >
+                                    {{ formatCurrency(channel.expense) }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-semibold tabular-nums"
+                                    :class="
+                                        channel.balance < 0
+                                            ? 'text-rose-600'
+                                            : 'text-slate-900'
+                                    "
+                                >
+                                    {{ formatCurrency(channel.balance) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </article>
         </section>
@@ -315,16 +464,17 @@ function saveEntry(): void {
                 <div class="mt-3">
                     <DataToolbar
                         v-model:search="search"
-                        placeholder="Cari deskripsi / ref"
+                        placeholder="Cari transaksi / order / plat"
                         :filters="filterOptions"
                         :active-filter="categoryFilter"
+                        wide-search
                         @filter="categoryFilter = $event"
                     />
                 </div>
             </div>
 
             <div v-if="filteredEntries.length > 0" class="overflow-x-auto">
-                <table class="w-full min-w-[880px] text-sm">
+                <table class="w-full min-w-[1080px] text-sm">
                     <thead>
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
@@ -332,6 +482,7 @@ function saveEntry(): void {
                             <th class="px-5 py-3">Referensi</th>
                             <th class="px-5 py-3">Kategori</th>
                             <th class="px-5 py-3">Deskripsi</th>
+                            <th class="px-5 py-3">Order terkait</th>
                             <th class="px-5 py-3">Metode</th>
                             <th class="px-5 py-3">Dicatat oleh</th>
                             <th v-if="activeLedger === 'out'" class="px-5 py-3">
@@ -351,7 +502,8 @@ function saveEntry(): void {
                                     {{ entry.ref }}
                                 </p>
                                 <p class="text-[11px] text-slate-500">
-                                    {{ entry.date }} • {{ entry.time }}
+                                    {{ formatDate(entry.date) }} •
+                                    {{ entry.time }}
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
@@ -366,8 +518,43 @@ function saveEntry(): void {
                             >
                                 {{ entry.description }}
                             </td>
+                            <td class="px-5 py-3.5">
+                                <template v-if="entry.orderNo">
+                                    <p class="font-medium text-slate-900">
+                                        {{ entry.orderNo }}
+                                    </p>
+                                    <p
+                                        class="mt-0.5 text-[11px] text-slate-500"
+                                    >
+                                        {{ entry.customer }}
+                                    </p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{ entry.vehicle }} · {{ entry.plate }}
+                                    </p>
+                                </template>
+                                <span v-else class="text-xs text-slate-400">
+                                    Tidak terkait order
+                                </span>
+                            </td>
                             <td class="px-5 py-3.5 text-slate-600">
-                                {{ entry.method }}
+                                <div
+                                    v-if="entry.channelBreakdown.length > 1"
+                                    class="space-y-1"
+                                >
+                                    <div
+                                        v-for="channel in entry.channelBreakdown"
+                                        :key="channel.label"
+                                        class="flex items-center justify-between gap-3 whitespace-nowrap"
+                                    >
+                                        <span>{{ channel.label }}</span>
+                                        <span
+                                            class="font-medium text-slate-900 tabular-nums"
+                                        >
+                                            {{ formatCurrency(channel.amount) }}
+                                        </span>
+                                    </div>
+                                </div>
+                                <span v-else>{{ entry.method }}</span>
                             </td>
                             <td class="px-5 py-3.5 text-slate-600">
                                 {{ entry.recordedBy }}

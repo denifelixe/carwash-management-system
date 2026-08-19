@@ -5,6 +5,7 @@ defineProps<{
     placeholder?: string;
     filters?: string[];
     activeFilter?: string;
+    wideSearch?: boolean;
 }>();
 
 const search = defineModel<string>('search', { default: '' });
@@ -16,13 +17,17 @@ const emit = defineEmits<{
 
 <template>
     <div class="flex flex-wrap items-center gap-2">
-        <div class="flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2">
-            <Search class="h-4 w-4 shrink-0 text-slate-400" />
+        <div
+            class="flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100"
+            :class="wideSearch ? 'w-full sm:w-96' : undefined"
+        >
+            <Search class="h-4 w-4 shrink-0 text-slate-500" />
             <input
                 v-model="search"
                 type="search"
                 :placeholder="placeholder ?? 'Cari'"
-                class="w-44 bg-transparent text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none"
+                class="min-w-0 bg-transparent text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
+                :class="wideSearch ? 'w-full' : 'w-44'"
             />
         </div>
 

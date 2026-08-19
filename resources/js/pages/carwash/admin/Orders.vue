@@ -1,32 +1,42 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router } from '@inertiajs/vue3';
 import {
+    Ban,
+    CalendarClock,
     Car,
     CircleCheck,
     ClipboardList,
-    Clock,
+    Hourglass,
     Plus,
     Search,
     Sparkles,
     Wallet,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import type { LucideIcon } from '@lucide/vue';
+import { computed, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
 import CollapsibleSummary from '@/components/carwash/CollapsibleSummary.vue';
 import DataToolbar from '@/components/carwash/DataToolbar.vue';
+import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import EmptyState from '@/components/carwash/EmptyState.vue';
 import ModalDialog from '@/components/carwash/ModalDialog.vue';
 import SlideOver from '@/components/carwash/SlideOver.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import StatusPill from '@/components/carwash/StatusPill.vue';
-import { formatCurrency } from '@/composables/useCarwashFormat';
+import {
+    formatCurrency,
+    formatDate,
+    formatDateCode,
+} from '@/composables/useCarwashFormat';
+import admin from '@/routes/carwash/admin';
 import type {
+    CarwashDateFilter,
+    CarwashBooking,
     CarwashBrand,
     CarwashCrewMember,
     CarwashCustomer,
     CarwashOrder,
-    CarwashReward,
     CarwashService,
     CarwashVehicle,
 } from '@/types/carwash';
@@ -34,17 +44,29 @@ import type {
 const props = defineProps<{
     brand: CarwashBrand;
     orders: CarwashOrder[];
+    filters: CarwashDateFilter;
+    orderStatuses: string[];
+    editableOrderStatuses: string[];
+    upcoming: CarwashBooking[];
     services: CarwashService[];
     serviceCategories: string[];
     customers: CarwashCustomer[];
-    rewards: CarwashReward[];
     crew: CarwashCrewMember[];
     paymentMethods: string[];
 }>();
 
-const statusFlow = ['menunggu', 'proses', 'selesai'] as const;
+/** Single lifecycle the floor tracks; payment state stays with the cashier. */
+const statusFlow = props.orderStatuses;
 
-type CustomerMode = 'existing' | 'walk-in' | 'new-member';
+/** Stages an order cannot move on from: settled by the cashier, or cancelled. */
+const closedStatuses = ['selesai', 'batal'];
+
+/** Cars on the floor right now: a booking has not arrived yet, so it is left out. */
+const runningStatuses = statusFlow.filter(
+    (status) => !closedStatuses.includes(status) && status !== 'booking',
+);
+
+type CustomerMode = 'existing' | 'walk-in';
 
 type CustomerOption = {
     key: `customer-${number}-vehicle-${number}`;
@@ -53,13 +75,17 @@ type CustomerOption = {
     vehicle: CarwashVehicle;
 };
 
+type CreatedOrderAlert = {
+    orderNo: string;
+    customer: string;
+};
+
 const customerTabs: { key: CustomerMode; label: string }[] = [
-    { key: 'existing', label: 'Customer terdaftar' },
-    { key: 'walk-in', label: 'Non member' },
-    { key: 'new-member', label: 'Member baru' },
+    { key: 'existing', label: 'Member' },
+    { key: 'walk-in', label: 'Non-Member' },
 ];
 
-/** Local copies so redeeming a reward can spend the member's stamps. */
+/** Local copies used by the member and vehicle picker. */
 const customerList = ref<CarwashCustomer[]>(
     props.customers.map((customer) => ({ ...customer })),
 );
@@ -80,9 +106,10 @@ const orderList = ref<CarwashOrder[]>(
 );
 
 const search = ref<string>('');
-const statusFilter = ref<string>('Semua');
+const statusFilter = ref<string>('menunggu');
 const detailOrderId = ref<number | null>(null);
 const isCreateOpen = ref<boolean>(false);
+const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
@@ -90,14 +117,49 @@ const selectedCustomerOption = ref<CustomerOption | null>(null);
 const draft = ref({
     customerId: null as number | null,
     walkInName: '',
-    newMemberPhone: '',
+    customerPhone: '',
     vehicle: '',
     plate: '',
     serviceIds: [] as number[],
-    rewardId: null as number | null,
 });
 
-const filterOptions = ['Semua', 'menunggu', 'proses', 'selesai'];
+const bookingStatusLabel = 'Booking Hari ini - Belum Datang';
+
+/** Stage chips first, so 'Semua' reads as the escape hatch it is. */
+const filterOptions = [
+    ...statusFlow.map((status) =>
+        status === 'booking' ? bookingStatusLabel : status,
+    ),
+    'Semua',
+];
+
+const activeFilterLabel = computed<string>(() =>
+    statusFilter.value === 'booking' ? bookingStatusLabel : statusFilter.value,
+);
+
+function applyStatusFilter(filter: string): void {
+    statusFilter.value = filter === bookingStatusLabel ? 'booking' : filter;
+}
+
+function isOpenBookingOrder(order: CarwashOrder): boolean {
+    return order.source === 'booking' && !closedStatuses.includes(order.status);
+}
+
+function displayedStatus(order: CarwashOrder): string {
+    return statusFilter.value === 'booking' && isOpenBookingOrder(order)
+        ? 'booking'
+        : order.status;
+}
+
+function orderSourceLabel(order: CarwashOrder): string {
+    if (order.source === 'booking') {
+        return 'Booking';
+    }
+
+    return order.customerId === null
+        ? 'Walk-in Non Customer'
+        : 'Walk-in Customer';
+}
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
     const query = normalizeCustomerSearch(customerQuery.value);
@@ -119,7 +181,9 @@ const filteredOrders = computed<CarwashOrder[]>(() => {
     return orderList.value.filter((order) => {
         const matchesStatus =
             statusFilter.value === 'Semua' ||
-            order.status === statusFilter.value;
+            (statusFilter.value === 'booking'
+                ? isOpenBookingOrder(order)
+                : order.status === statusFilter.value);
         const matchesQuery =
             query === '' ||
             order.orderNo.toLowerCase().includes(query) ||
@@ -136,31 +200,115 @@ const detailOrder = computed<CarwashOrder | null>(
         null,
 );
 
-/** Money actually in the drawer, so deposits count for what they are worth. */
-const todayRevenue = computed<number>(() =>
-    orderList.value.reduce((total, order) => total + order.paidAmount, 0),
+/** Only cashier-settled orders are locked; a cancellation can be corrected. */
+const isDetailReadOnly = computed<boolean>(
+    () => detailOrder.value?.status === 'selesai',
 );
 
-const unpaidTotal = computed<number>(() =>
-    orderList.value
-        .filter((order) => order.paymentStatus !== 'lunas')
-        .reduce((total, order) => total + order.total - order.paidAmount, 0),
+/** The dropdown edits a draft so nothing moves before the user saves. */
+const statusDraft = ref<string>('');
+
+watch(
+    detailOrder,
+    (order) => {
+        statusDraft.value = order?.status ?? '';
+    },
+    { immediate: true },
 );
 
-const activeCount = computed<number>(
-    () => orderList.value.filter((order) => order.status !== 'selesai').length,
+const isStatusDirty = computed<boolean>(
+    () =>
+        detailOrder.value !== null &&
+        statusDraft.value !== detailOrder.value.status,
 );
 
-const stampsIssued = computed<number>(() =>
-    orderList.value
-        .filter((order) => order.status === 'selesai')
-        .reduce((total, order) => total + order.stampsEarned, 0),
+/** Everything still on the floor: waiting, being washed, or at the cashier. */
+const runningCount = computed<number>(
+    () =>
+        orderList.value.filter((order) =>
+            runningStatuses.includes(order.status),
+        ).length,
+);
+
+type StatusCardStyle = {
+    label: string;
+    caption: string;
+    icon: LucideIcon;
+    tone: 'default' | 'emerald' | 'rose' | 'amber' | 'violet' | 'slate';
+};
+
+/** How each lifecycle stage is presented; the stages themselves come from the server. */
+const statusCardStyles: Record<string, StatusCardStyle> = {
+    booking: {
+        label: bookingStatusLabel,
+        caption: 'berasal dari Booking Order',
+        icon: CalendarClock,
+        tone: 'slate',
+    },
+    menunggu: {
+        label: 'Menunggu',
+        caption: 'antre, belum dikerjakan',
+        icon: Hourglass,
+        tone: 'amber',
+    },
+    proses: {
+        label: 'Proses',
+        caption: 'sedang dikerjakan crew',
+        icon: Car,
+        tone: 'default',
+    },
+    pelunasan: {
+        label: 'Pelunasan',
+        caption: 'menunggu kasir',
+        icon: Wallet,
+        tone: 'violet',
+    },
+    selesai: {
+        label: 'Selesai',
+        caption: 'lunas & sudah keluar',
+        icon: CircleCheck,
+        tone: 'emerald',
+    },
+    batal: {
+        label: 'Batal',
+        caption: 'dibatalkan, tidak ditagih',
+        icon: Ban,
+        tone: 'rose',
+    },
+};
+
+/** Spelled-out names for stages the one-word card label leaves ambiguous. */
+const statusLongLabels: Record<string, string> = {
+    booking: bookingStatusLabel,
+};
+
+function statusLabel(status: string): string {
+    return (
+        statusLongLabels[status] ?? statusCardStyles[status]?.label ?? status
+    );
+}
+
+type StatusCard = StatusCardStyle & { status: string; count: number };
+
+/** One card per stage so the summary mirrors the order lifecycle exactly. */
+const statusCards = computed<StatusCard[]>(() =>
+    statusFlow.map((status) => ({
+        status,
+        label: statusCardStyles[status]?.label ?? status,
+        caption: statusCardStyles[status]?.caption ?? '',
+        icon: statusCardStyles[status]?.icon ?? ClipboardList,
+        tone: statusCardStyles[status]?.tone ?? 'default',
+        count: orderList.value.filter((order) =>
+            status === 'booking'
+                ? isOpenBookingOrder(order)
+                : order.status === status,
+        ).length,
+    })),
 );
 
 /** Keeps the headline numbers visible while the summary cards stay collapsed. */
 const summaryCaption = computed<string>(
-    () =>
-        `${activeCount.value} order aktif • ${formatCurrency(todayRevenue.value)} diterima`,
+    () => `${orderList.value.length} order • ${runningCount.value} berjalan`,
 );
 
 const draftCustomer = computed<CarwashCustomer | null>(
@@ -180,51 +328,7 @@ const draftSubtotal = computed<number>(() =>
     draftServices.value.reduce((total, service) => total + service.price, 0),
 );
 
-/**
- * Rewards the registered member has enough stamps for (BR-04, BR-13). Redeeming
- * happens here at intake, not at the till, so the cashier only ever sees the
- * amount actually payable.
- */
-const redeemableRewards = computed<CarwashReward[]>(() => {
-    const customer = draftCustomer.value;
-
-    if (customerMode.value !== 'existing' || !customer) {
-        return [];
-    }
-
-    return props.rewards.filter(
-        (reward) =>
-            reward.status === 'aktif' &&
-            reward.requiredStamps <= customer.stamps,
-    );
-});
-
-const appliedReward = computed<CarwashReward | null>(
-    () =>
-        redeemableRewards.value.find(
-            (reward) => reward.id === draft.value.rewardId,
-        ) ?? null,
-);
-
-/**
- * A redeemed reward covers the cheapest service on the order, capped at the
- * subtotal — enough to make the discount believable in the demo.
- */
-const rewardDiscount = computed<number>(() => {
-    if (!appliedReward.value || draftServices.value.length === 0) {
-        return 0;
-    }
-
-    const cheapest = Math.min(
-        ...draftServices.value.map((service) => service.price),
-    );
-
-    return Math.min(cheapest, draftSubtotal.value);
-});
-
-const draftTotal = computed<number>(() =>
-    Math.max(draftSubtotal.value - rewardDiscount.value, 0),
-);
+const draftTotal = computed<number>(() => draftSubtotal.value);
 
 const draftStamps = computed<number>(() =>
     draft.value.customerId === null
@@ -240,14 +344,10 @@ const hasCustomer = computed<boolean>(() => {
         return draft.value.customerId !== null;
     }
 
-    if (customerMode.value === 'new-member') {
-        return (
-            draft.value.walkInName.trim() !== '' &&
-            draft.value.newMemberPhone.trim() !== ''
-        );
-    }
-
-    return draft.value.walkInName.trim() !== '';
+    return (
+        draft.value.walkInName.trim() !== '' &&
+        draft.value.customerPhone.trim() !== ''
+    );
 });
 
 const canCreate = computed<boolean>(
@@ -261,41 +361,30 @@ function normalizeCustomerSearch(value: string): string {
     return value.toLocaleLowerCase('id-ID').replace(/[^a-z0-9]/g, '');
 }
 
-/** Moves an order along menunggu → proses → selesai, awarding stamps at the end. */
-function advanceStatus(order: CarwashOrder): void {
-    const index = statusFlow.indexOf(
-        order.status as (typeof statusFlow)[number],
-    );
+/**
+ * Moves an order between the stages the floor owns, up to 'pelunasan'. Closing
+ * an order to 'selesai' happens in the cashier module once the bill is settled.
+ */
+function setStatus(order: CarwashOrder, status: string): void {
+    order.status = status;
+}
 
-    if (index === -1 || index === statusFlow.length - 1) {
+/** Writes the dropdown choice onto the open order. */
+function saveStatus(): void {
+    if (detailOrder.value === null) {
         return;
     }
 
-    order.status = statusFlow[index + 1];
-
-    if (order.status === 'proses' && order.bay === '—') {
-        order.bay = 'Bay 1';
-        order.crew = props.crew[0].name.split(' ')[0];
-    }
-}
-
-function markPaid(order: CarwashOrder): void {
-    order.paymentStatus = 'lunas';
-    order.paidAmount = order.total;
-
-    if (order.invoice === '—') {
-        order.invoice = order.orderNo.replace('ORD', 'ZW');
-    }
+    setStatus(detailOrder.value, statusDraft.value);
 }
 
 function pickCustomer(option: CustomerOption): void {
     selectedCustomerOption.value = option;
     draft.value.customerId = option.customer.id;
     draft.value.walkInName = '';
-    draft.value.newMemberPhone = '';
+    draft.value.customerPhone = '';
     draft.value.vehicle = option.vehicle.name;
     draft.value.plate = option.vehicle.plate;
-    draft.value.rewardId = null;
 }
 
 function updateCustomerQuery(query: string): void {
@@ -308,10 +397,9 @@ function clearCustomer(): void {
     selectedCustomerOption.value = null;
     draft.value.customerId = null;
     draft.value.walkInName = '';
-    draft.value.newMemberPhone = '';
+    draft.value.customerPhone = '';
     draft.value.vehicle = '';
     draft.value.plate = '';
-    draft.value.rewardId = null;
 }
 
 function selectCustomerMode(mode: CustomerMode): void {
@@ -333,11 +421,10 @@ function resetDraft(): void {
     draft.value = {
         customerId: null,
         walkInName: '',
-        newMemberPhone: '',
+        customerPhone: '',
         vehicle: '',
         plate: '',
         serviceIds: [],
-        rewardId: null,
     };
     customerQuery.value = '';
     customerMode.value = 'existing';
@@ -351,23 +438,21 @@ function createOrder(): void {
 
     const sequence = orderList.value.length + 13;
     const customer = draftCustomer.value;
-    const reward = appliedReward.value;
-
-    /* The stamps are spent the moment the reward is written onto the order. */
-    if (customer && reward) {
-        customer.stamps -= reward.requiredStamps;
-    }
+    const orderNo = `ORD-${formatDateCode(props.filters.today)}${String(sequence).padStart(2, '0')}`;
+    const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
+    const customerName =
+        customer?.name ?? `${draft.value.walkInName.trim()}${walkInLabel}`;
 
     orderList.value = [
         {
             id: sequence,
-            orderNo: `ORD-2608${String(sequence).padStart(4, '0')}`,
+            orderNo,
             invoice: '—',
+            date: props.filters.today,
             time: 'Baru saja',
             customerId: customer?.id ?? null,
-            customer: customer?.name ?? draft.value.walkInName,
-            phone:
-                (customer?.phone ?? draft.value.newMemberPhone.trim()) || '—',
+            customer: customerName,
+            phone: customer?.phone ?? draft.value.customerPhone.trim(),
             vehicle: draft.value.vehicle || '—',
             plate: draft.value.plate.toUpperCase(),
             items: draftServices.value
@@ -375,8 +460,8 @@ function createOrder(): void {
                 .join(', '),
             serviceIds: [...draft.value.serviceIds],
             total: draftTotal.value,
-            discount: rewardDiscount.value,
-            reward: reward?.name ?? '—',
+            discount: 0,
+            reward: '—',
             paidAmount: 0,
             payment: '—',
             paymentStatus: 'belum bayar',
@@ -385,49 +470,58 @@ function createOrder(): void {
             crew: 'Menunggu crew',
             bay: '—',
             source: 'walk-in',
+            transactions: [],
         },
         ...orderList.value,
     ];
 
     resetDraft();
     isCreateOpen.value = false;
+    createdOrderAlert.value = { orderNo, customer: customerName };
+}
+
+/** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
+function applyDate(date: string): void {
+    router.get(
+        admin.orders.url(),
+        { date },
+        { preserveScroll: true, replace: true },
+    );
 }
 </script>
 
 <template>
-    <Head :title="`${brand.name} — Order / Transaksi`" />
+    <Head :title="`${brand.name} — Order`" />
 
     <div class="space-y-4">
+        <DateFilterBar :filters="filters" @change="applyDate" />
+
         <!-- Summary -->
         <CollapsibleSummary
             title="Ringkasan hari ini"
             :caption="summaryCaption"
+            :columns="7"
         >
             <StatCard
-                label="Order aktif"
-                :value="String(activeCount)"
-                caption="menunggu & sedang dikerjakan"
-                :icon="Car"
+                label="Total Order"
+                :value="String(orderList.length)"
+                caption="seluruh order hari ini"
+                :icon="ClipboardList"
+                interactive
+                :active="statusFilter === 'Semua'"
+                @click="statusFilter = 'Semua'"
             />
             <StatCard
-                label="Pembayaran diterima"
-                :value="formatCurrency(todayRevenue)"
-                :caption="`${orderList.length} order tercatat`"
-                :icon="Wallet"
-                tone="emerald"
-            />
-            <StatCard
-                label="Belum dibayar"
-                :value="formatCurrency(unpaidTotal)"
-                caption="sisa tagihan di kasir"
-                :icon="Clock"
-                tone="amber"
-            />
-            <StatCard
-                label="Stempel diberikan"
-                :value="String(stampsIssued)"
-                caption="dari order yang selesai"
-                :icon="Sparkles"
+                v-for="card in statusCards"
+                :key="card.status"
+                :label="card.label"
+                :value="String(card.count)"
+                :caption="card.caption"
+                :icon="card.icon"
+                :tone="card.tone"
+                interactive
+                :active="statusFilter === card.status"
+                @click="statusFilter = card.status"
             />
         </CollapsibleSummary>
 
@@ -451,8 +545,8 @@ function createOrder(): void {
                         v-model:search="search"
                         placeholder="Cari order / plat"
                         :filters="filterOptions"
-                        :active-filter="statusFilter"
-                        @filter="statusFilter = $event"
+                        :active-filter="activeFilterLabel"
+                        @filter="applyStatusFilter"
                     />
                     <button
                         type="button"
@@ -476,7 +570,6 @@ function createOrder(): void {
                             <th class="px-5 py-3">Kendaraan</th>
                             <th class="px-5 py-3">Layanan</th>
                             <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3">Pembayaran</th>
                             <th class="px-5 py-3 text-right">Total</th>
                             <th class="px-5 py-3"></th>
                         </tr>
@@ -485,14 +578,16 @@ function createOrder(): void {
                         <tr
                             v-for="order in filteredOrders"
                             :key="order.id"
-                            class="transition hover:bg-slate-50/70"
+                            class="cursor-pointer transition hover:bg-slate-50/70"
+                            @click="detailOrderId = order.id"
                         >
                             <td class="px-5 py-3.5">
                                 <p class="font-medium text-slate-900">
                                     {{ order.orderNo }}
                                 </p>
                                 <p class="text-[11px] text-slate-500">
-                                    {{ order.time }} • {{ order.source }}
+                                    {{ formatDate(order.date) }} •
+                                    {{ orderSourceLabel(order) }}
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
@@ -517,16 +612,7 @@ function createOrder(): void {
                                 {{ order.items }}
                             </td>
                             <td class="px-5 py-3.5">
-                                <StatusPill :status="order.status" />
-                                <p class="mt-1 text-[11px] text-slate-400">
-                                    {{ order.bay }}
-                                </p>
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <StatusPill :status="order.paymentStatus" />
-                                <p class="mt-1 text-[11px] text-slate-400">
-                                    {{ order.payment }}
-                                </p>
+                                <StatusPill :status="displayedStatus(order)" />
                             </td>
                             <td
                                 class="px-5 py-3.5 text-right font-medium text-slate-900 tabular-nums"
@@ -564,30 +650,48 @@ function createOrder(): void {
         @close="detailOrderId = null"
     >
         <div v-if="detailOrder" class="space-y-5">
-            <div class="flex gap-2">
-                <StatusPill :status="detailOrder.status" />
-                <StatusPill :status="detailOrder.paymentStatus" />
+            <div>
+                <p class="text-xs font-medium text-slate-500">Status order</p>
+                <div v-if="isDetailReadOnly" class="mt-2 flex gap-2">
+                    <StatusPill :status="detailOrder.status" />
+                </div>
+                <template v-else>
+                    <div class="mt-2 flex gap-2">
+                        <select
+                            v-model="statusDraft"
+                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 focus:outline-none"
+                        >
+                            <option
+                                v-for="status in editableOrderStatuses"
+                                :key="status"
+                                :value="status"
+                            >
+                                {{ statusLabel(status) }}
+                            </option>
+                        </select>
+                        <button
+                            type="button"
+                            :disabled="!isStatusDirty"
+                            class="shrink-0 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                            @click="saveStatus"
+                        >
+                            Simpan
+                        </button>
+                    </div>
+                    <p class="mt-2 text-[11px] text-slate-400">
+                        Status selesai dicatat kasir saat pembayaran diterima.
+                    </p>
+                </template>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div class="rounded-xl bg-slate-50 p-3">
-                    <p class="text-[11px] text-slate-500">Kendaraan</p>
-                    <p class="mt-0.5 text-sm font-medium text-slate-900">
-                        {{ detailOrder.vehicle }}
-                    </p>
-                    <p class="text-[11px] text-slate-500">
-                        {{ detailOrder.plate }}
-                    </p>
-                </div>
-                <div class="rounded-xl bg-slate-50 p-3">
-                    <p class="text-[11px] text-slate-500">Crew & bay</p>
-                    <p class="mt-0.5 text-sm font-medium text-slate-900">
-                        {{ detailOrder.crew }}
-                    </p>
-                    <p class="text-[11px] text-slate-500">
-                        {{ detailOrder.bay }}
-                    </p>
-                </div>
+            <div class="rounded-xl bg-slate-50 p-3">
+                <p class="text-[11px] text-slate-500">Kendaraan</p>
+                <p class="mt-0.5 text-sm font-medium text-slate-900">
+                    {{ detailOrder.vehicle }}
+                </p>
+                <p class="text-[11px] text-slate-500">
+                    {{ detailOrder.plate }}
+                </p>
             </div>
 
             <div>
@@ -647,18 +751,6 @@ function createOrder(): void {
                     </dd>
                 </div>
                 <div
-                    v-if="detailOrder.discount > 0"
-                    class="flex justify-between gap-4"
-                >
-                    <dt class="shrink-0 text-slate-500">Reward dipakai</dt>
-                    <dd class="min-w-0 text-right text-cyan-700">
-                        {{ detailOrder.reward }}
-                        <span class="text-emerald-600 tabular-nums">
-                            (−{{ formatCurrency(detailOrder.discount) }})
-                        </span>
-                    </dd>
-                </div>
-                <div
                     class="flex justify-between border-t border-slate-200 pt-2 text-base"
                 >
                     <dt class="font-medium text-slate-600">Total</dt>
@@ -693,32 +785,19 @@ function createOrder(): void {
                 <CircleCheck class="h-4 w-4 shrink-0" />
                 Order selesai — stempel sudah masuk ke akun customer.
             </p>
+
+            <p
+                v-else-if="detailOrder.status === 'batal'"
+                class="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs font-medium text-rose-700"
+            >
+                <Ban class="h-4 w-4 shrink-0" />
+                Order dibatalkan — tidak ada tagihan yang ditutup.
+            </p>
         </div>
 
         <template #footer>
             <div v-if="detailOrder" class="flex gap-2">
                 <button
-                    v-if="detailOrder.paymentStatus !== 'lunas'"
-                    type="button"
-                    class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                    @click="markPaid(detailOrder)"
-                >
-                    Tandai lunas
-                </button>
-                <button
-                    v-if="detailOrder.status !== 'selesai'"
-                    type="button"
-                    class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700"
-                    @click="advanceStatus(detailOrder)"
-                >
-                    {{
-                        detailOrder.status === 'menunggu'
-                            ? 'Mulai pengerjaan'
-                            : 'Selesaikan order'
-                    }}
-                </button>
-                <button
-                    v-else
                     type="button"
                     class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                     @click="detailOrderId = null"
@@ -748,7 +827,7 @@ function createOrder(): void {
                 </label>
 
                 <div
-                    class="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+                    class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
                     role="tablist"
                 >
                     <button
@@ -831,15 +910,12 @@ function createOrder(): void {
                         </template>
                         <template #noResult>
                             <p class="px-3 py-3 text-sm text-slate-500">
-                                Tidak ada customer yang cocok — pakai tab
+                                Member tidak ditemukan. Daftarkan terlebih
+                                dahulu di modul
                                 <span class="font-medium text-slate-700">
-                                    Member baru
+                                    Customer
                                 </span>
-                                atau
-                                <span class="font-medium text-slate-700">
-                                    Non member
-                                </span>
-                                .
+                                atau pilih Non-Member.
                             </p>
                         </template>
                     </Multiselect>
@@ -907,39 +983,43 @@ function createOrder(): void {
                         </div>
                     </div>
                 </div>
-                <div
-                    v-else-if="customerMode === 'walk-in'"
-                    class="mt-3 space-y-1.5"
-                >
-                    <input
-                        v-model="draft.walkInName"
-                        type="text"
-                        placeholder="Nama pelanggan walk-in"
-                        class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
-                    <p class="text-[11px] text-slate-400">
-                        Order dicatat tanpa membuat data member.
-                    </p>
-                </div>
-
                 <div v-else class="mt-3 space-y-1.5">
                     <div class="grid gap-2 sm:grid-cols-2">
-                        <input
-                            v-model="draft.walkInName"
-                            type="text"
-                            placeholder="Nama member baru"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        />
-                        <input
-                            v-model="draft.newMemberPhone"
-                            type="tel"
-                            inputmode="tel"
-                            placeholder="Nomor telepon"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        />
+                        <div class="space-y-1.5">
+                            <label
+                                for="order-customer-name"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Nama
+                            </label>
+                            <input
+                                id="order-customer-name"
+                                v-model="draft.walkInName"
+                                type="text"
+                                placeholder="Nama pelanggan"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                        <div class="space-y-1.5">
+                            <label
+                                for="order-customer-phone"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Nomor Telpon
+                            </label>
+                            <input
+                                id="order-customer-phone"
+                                v-model="draft.customerPhone"
+                                type="tel"
+                                inputmode="tel"
+                                placeholder="Nomor telepon"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
                     </div>
                     <p class="text-[11px] text-slate-400">
-                        Data member dan order diinput bersamaan.
+                        Data ini hanya dicatat pada order dan tidak membuat
+                        member baru.
                     </p>
                 </div>
             </div>
@@ -952,18 +1032,36 @@ function createOrder(): void {
                     Kendaraan
                 </p>
                 <div class="mt-2 grid grid-cols-2 gap-3">
-                    <input
-                        v-model="draft.plate"
-                        type="text"
-                        placeholder="Plat nomor"
-                        class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
-                    />
-                    <input
-                        v-model="draft.vehicle"
-                        type="text"
-                        placeholder="Merk / tipe"
-                        class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
+                    <div class="space-y-1.5">
+                        <label
+                            for="order-vehicle-plate"
+                            class="block text-xs font-medium text-slate-600"
+                        >
+                            Plat Nomor
+                        </label>
+                        <input
+                            id="order-vehicle-plate"
+                            v-model="draft.plate"
+                            type="text"
+                            placeholder="Plat nomor"
+                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                        />
+                    </div>
+                    <div class="space-y-1.5">
+                        <label
+                            for="order-vehicle-type"
+                            class="block text-xs font-medium text-slate-600"
+                        >
+                            Tipe Mobil
+                        </label>
+                        <input
+                            id="order-vehicle-type"
+                            v-model="draft.vehicle"
+                            type="text"
+                            placeholder="Merk / tipe mobil"
+                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        />
+                    </div>
                 </div>
             </div>
 
@@ -1011,68 +1109,8 @@ function createOrder(): void {
                 </div>
             </div>
 
-            <!-- Reward redemption (BR-13) -->
-            <div v-if="redeemableRewards.length > 0">
-                <p
-                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
-                >
-                    Tukar reward
-                </p>
-                <p class="mt-1 text-[11px] text-slate-500">
-                    {{ draftCustomer?.name }} punya
-                    {{ draftCustomer?.stamps }} stempel — potongan langsung
-                    dipakai di order ini.
-                </p>
-                <div
-                    class="mt-2 grid max-h-40 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
-                >
-                    <button
-                        v-for="reward in redeemableRewards"
-                        :key="reward.id"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                        :class="
-                            draft.rewardId === reward.id
-                                ? 'border-cyan-400 bg-cyan-50/60'
-                                : 'border-slate-200 hover:border-slate-300'
-                        "
-                        @click="
-                            draft.rewardId =
-                                draft.rewardId === reward.id ? null : reward.id
-                        "
-                    >
-                        <span class="text-lg">{{ reward.icon }}</span>
-                        <span class="min-w-0 flex-1 leading-tight">
-                            <span
-                                class="block truncate text-xs font-medium text-slate-800"
-                            >
-                                {{ reward.name }}
-                            </span>
-                            <span class="block text-[10px] text-slate-500">
-                                Tukar {{ reward.requiredStamps }} stempel
-                            </span>
-                        </span>
-                        <CircleCheck
-                            v-if="draft.rewardId === reward.id"
-                            class="h-4 w-4 shrink-0 text-cyan-600"
-                        />
-                    </button>
-                </div>
-            </div>
-
             <!-- Summary -->
             <div class="space-y-2 rounded-2xl bg-slate-50 p-4">
-                <div
-                    v-if="rewardDiscount > 0"
-                    class="flex justify-between text-sm"
-                >
-                    <span class="min-w-0 truncate text-slate-500">
-                        Reward: {{ appliedReward?.name }}
-                    </span>
-                    <span class="shrink-0 text-emerald-600 tabular-nums">
-                        −{{ formatCurrency(rewardDiscount) }}
-                    </span>
-                </div>
                 <div class="flex items-center justify-between">
                     <div>
                         <p class="text-[11px] text-slate-500">
@@ -1112,6 +1150,46 @@ function createOrder(): void {
                 Simpan order
             </button>
         </template>
+    </ModalDialog>
+
+    <!-- SweetAlert-style success confirmation -->
+    <ModalDialog
+        :open="createdOrderAlert !== null"
+        size="sm"
+        @close="createdOrderAlert = null"
+    >
+        <div v-if="createdOrderAlert" class="text-center">
+            <div
+                class="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 ring-8 ring-emerald-50"
+            >
+                <CircleCheck class="h-11 w-11 text-emerald-600" />
+            </div>
+            <h3 class="mt-6 text-xl font-semibold text-slate-900">
+                Order berhasil disimpan
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-slate-500">
+                Order untuk
+                <span class="font-medium text-slate-700">
+                    {{ createdOrderAlert.customer }}
+                </span>
+                sudah masuk ke antrean.
+            </p>
+            <div
+                class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-100"
+            >
+                <p class="text-[11px] text-slate-500">Nomor order</p>
+                <p class="mt-0.5 font-semibold text-slate-900">
+                    {{ createdOrderAlert.orderNo }}
+                </p>
+            </div>
+            <button
+                type="button"
+                class="mt-6 w-full rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
+                @click="createdOrderAlert = null"
+            >
+                Oke
+            </button>
+        </div>
     </ModalDialog>
 </template>
 

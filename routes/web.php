@@ -1,8 +1,13 @@
 <?php
 
+use App\Http\Controllers\Carwash\EntryController;
 use Illuminate\Support\Facades\Route;
 
-Route::inertia('/', 'Welcome')->name('home');
+/*
+ * The role picker is the landing page: visitors reach the console without an
+ * extra hop through a business selector.
+ */
+Route::get('/', [EntryController::class, 'index'])->name('home');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');

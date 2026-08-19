@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Carwash;
 
 use App\Support\Carwash\Brand;
-use App\Support\Carwash\Customers;
+use App\Support\Carwash\DateFilter;
 use App\Support\Carwash\Finance;
 use App\Support\Carwash\Operations;
 use App\Support\Carwash\Reports;
@@ -17,15 +17,15 @@ class DashboardController extends AdminController
 {
     public function index(Request $request): Response
     {
+        // No date in the URL means the day the module is being used on.
+        $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
+
         return $this->page($request, 'carwash/admin/Dashboard', [
-            'stats' => Reports::todayStats(),
-            'revenueTrend' => Reports::revenueTrend(),
-            'topServices' => Reports::topServices(),
+            'stats' => Reports::periodStats($date, $date),
+            'filters' => DateFilter::meta($date),
             'shifts' => Brand::shifts(),
             'queue' => Operations::queue(),
-            'crew' => Operations::crew(),
             'cashSummary' => Finance::summary(),
-            'customerCount' => count(Customers::all()),
         ]);
     }
 }

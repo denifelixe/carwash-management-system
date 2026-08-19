@@ -9,14 +9,15 @@ use Carbon\Exceptions\InvalidFormatException;
  * Aggregated figures for the dashboard (BR-12) and reports module.
  *
  * The prototype has no transaction tables, so the running week is hand-tuned in
- * {@see self::CURATED_DAYS} and every other date is synthesised from a hash of
- * the date itself. That keeps a report deterministic: the same range always
- * reports the same figures, so a shared report URL stays stable between visits.
+ * {@see self::CURATED_DAYS} — relative to today, so the figures move with the
+ * calendar — and every other date is synthesised from a hash of the date
+ * itself. That keeps a report deterministic: the same range always reports the
+ * same figures, so a shared report URL stays stable between visits.
  */
 class Reports
 {
-    /** The prototype's fixed "today"; every report range is anchored to it. */
-    public const TODAY = '2026-08-03';
+    /** The shop's timezone, which decides when a business day turns over. */
+    public const TIMEZONE = 'Asia/Jakarta';
 
     /** Days of history a report may reach back over. */
     private const HISTORY_DAYS = 730;
@@ -27,15 +28,15 @@ class Reports
     /** Widest range still charted day by day; anything longer rolls up to months. */
     private const DAILY_RANGE_LIMIT = 62;
 
-    /** Hand-tuned figures for the running week. */
+    /** Hand-tuned figures for the running week, keyed by days back from today. */
     private const CURATED_DAYS = [
-        '2026-07-28' => ['day' => 'Sen', 'revenue' => 3250000, 'transactions' => 27, 'expense' => 1340000],
-        '2026-07-29' => ['day' => 'Sel', 'revenue' => 2980000, 'transactions' => 24, 'expense' => 1210000],
-        '2026-07-30' => ['day' => 'Rab', 'revenue' => 3760000, 'transactions' => 31, 'expense' => 1520000],
-        '2026-07-31' => ['day' => 'Kam', 'revenue' => 4120000, 'transactions' => 33, 'expense' => 1680000],
-        '2026-08-01' => ['day' => 'Jum', 'revenue' => 5240000, 'transactions' => 41, 'expense' => 2100000],
-        '2026-08-02' => ['day' => 'Sab', 'revenue' => 6480000, 'transactions' => 52, 'expense' => 2610000],
-        '2026-08-03' => ['day' => 'Min', 'revenue' => 4850000, 'transactions' => 38, 'expense' => 1940000],
+        6 => ['revenue' => 3250000, 'transactions' => 27, 'expense' => 1340000],
+        5 => ['revenue' => 2980000, 'transactions' => 24, 'expense' => 1210000],
+        4 => ['revenue' => 3760000, 'transactions' => 31, 'expense' => 1520000],
+        3 => ['revenue' => 4120000, 'transactions' => 33, 'expense' => 1680000],
+        2 => ['revenue' => 5240000, 'transactions' => 41, 'expense' => 2100000],
+        1 => ['revenue' => 6480000, 'transactions' => 52, 'expense' => 2610000],
+        0 => ['revenue' => 4850000, 'transactions' => 38, 'expense' => 1940000],
     ];
 
     /** @var array<int, string> */
@@ -49,9 +50,34 @@ class Reports
      */
     public static function todayStats(): array
     {
+        return self::periodStats(self::todayDate(), self::todayDate());
+    }
+
+    /**
+     * The four headline numbers for a range. Money and cars are flows, so they
+     * add up over the days picked; the loyalty totals describe the customer
+     * base as a whole and stay put whatever the range.
+     *
+     * @return list<array{label: string, value: string, caption: string, delta: float, trend: string, icon: string}>
+     */
+    public static function periodStats(string $from, string $to): array
+    {
+        $start = CarbonImmutable::createFromFormat('!Y-m-d', $from);
+        $end = CarbonImmutable::createFromFormat('!Y-m-d', $to);
+        $isToday = $from === self::todayDate() && $to === self::todayDate();
+
+        $revenue = 0;
+        $transactions = 0;
+
+        for ($date = $start; $date->lessThanOrEqualTo($end); $date = $date->addDay()) {
+            $figures = self::dayFigures($date);
+            $revenue += $figures['revenue'];
+            $transactions += $figures['transactions'];
+        }
+
         return [
-            ['label' => 'Pendapatan Hari Ini', 'value' => 'Rp 4.850.000', 'caption' => 'dari 38 transaksi', 'delta' => 12.4, 'trend' => 'up', 'icon' => 'wallet'],
-            ['label' => 'Kendaraan Dilayani', 'value' => '38', 'caption' => '6 unit masih antre', 'delta' => 8.6, 'trend' => 'up', 'icon' => 'car'],
+            ['label' => $isToday ? 'Pendapatan Hari Ini' : 'Pendapatan', 'value' => 'Rp '.number_format($revenue, 0, ',', '.'), 'caption' => 'dari '.number_format($transactions, 0, ',', '.').' transaksi', 'delta' => 12.4, 'trend' => 'up', 'icon' => 'wallet'],
+            ['label' => 'Kendaraan Dilayani', 'value' => number_format($transactions, 0, ',', '.'), 'caption' => $isToday ? '6 unit masih antre' : 'sepanjang '.self::rangeDays($start, $end).' hari', 'delta' => 8.6, 'trend' => 'up', 'icon' => 'car'],
             ['label' => 'Customer Aktif', 'value' => '1.284', 'caption' => '+24 member bulan ini', 'delta' => 3.1, 'trend' => 'up', 'icon' => 'users'],
             ['label' => 'Stempel Ditukar', 'value' => '142', 'caption' => '19 reward diklaim', 'delta' => -2.8, 'trend' => 'down', 'icon' => 'gift'],
         ];
@@ -60,7 +86,26 @@ class Reports
     /** The date the whole prototype treats as today. */
     public static function today(): CarbonImmutable
     {
-        return CarbonImmutable::createFromFormat('!Y-m-d', self::TODAY);
+        return CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+    }
+
+    /** Today as an ISO date, the shape every module filters by. */
+    public static function todayDate(): string
+    {
+        return self::today()->toDateString();
+    }
+
+    /**
+     * Whole days between a date and today, counting backwards: 0 is today, 1 is
+     * yesterday. Both sides are read as bare dates, so a timezone can never
+     * shift the answer by a day.
+     */
+    public static function daysBack(CarbonImmutable $date): int
+    {
+        $today = CarbonImmutable::createFromFormat('!Y-m-d', self::todayDate());
+        $then = CarbonImmutable::createFromFormat('!Y-m-d', $date->toDateString());
+
+        return intdiv($today->getTimestamp() - $then->getTimestamp(), 86400);
     }
 
     /**
@@ -72,10 +117,12 @@ class Reports
     {
         $points = [];
 
-        foreach (self::CURATED_DAYS as $date => $figures) {
+        foreach (self::CURATED_DAYS as $back => $figures) {
+            $date = self::today()->subDays($back);
+
             $points[] = [
-                'day' => $figures['day'],
-                'date' => self::shortDate(CarbonImmutable::createFromFormat('!Y-m-d', $date)),
+                'day' => $date->locale('id')->isoFormat('ddd'),
+                'date' => self::shortDate($date),
                 'revenue' => $figures['revenue'],
                 'transactions' => $figures['transactions'],
                 'expense' => $figures['expense'],
@@ -132,9 +179,15 @@ class Reports
             'label' => self::rangeLabel($from, $to),
             'granularity' => $days <= self::DAILY_RANGE_LIMIT ? 'harian' : 'bulanan',
             'days' => $days,
-            'today' => self::TODAY,
+            'today' => self::todayDate(),
             'earliest' => self::today()->subDays(self::HISTORY_DAYS)->toDateString(),
         ];
+    }
+
+    /** Oldest day any filter may reach back to. */
+    public static function earliest(): string
+    {
+        return self::today()->subDays(self::HISTORY_DAYS)->toDateString();
     }
 
     /** Whole days covered by the range, both ends inclusive. */
@@ -275,17 +328,13 @@ class Reports
      */
     private static function dayFigures(CarbonImmutable $date): array
     {
-        $key = $date->toDateString();
+        $back = self::daysBack($date);
 
-        if (isset(self::CURATED_DAYS[$key])) {
-            return [
-                'revenue' => self::CURATED_DAYS[$key]['revenue'],
-                'expense' => self::CURATED_DAYS[$key]['expense'],
-                'transactions' => self::CURATED_DAYS[$key]['transactions'],
-            ];
+        if (isset(self::CURATED_DAYS[$back])) {
+            return self::CURATED_DAYS[$back];
         }
 
-        $seed = crc32($key);
+        $seed = crc32($date->toDateString());
         $wobble = ($seed % 1000) / 1000;
         $weekendLift = $date->isWeekend() ? 1.45 : 1.0;
 

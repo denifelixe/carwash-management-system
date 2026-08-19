@@ -8,12 +8,12 @@ use Inertia\Testing\AssertableInertia;
  * plus the shell props every module shares (BR-05 … BR-13).
  */
 dataset('admin modules', [
-    'dashboard' => ['carwash.admin.dashboard', 'carwash/admin/Dashboard', ['stats', 'revenueTrend', 'shifts', 'cashSummary', 'queue']],
-    'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'services', 'customers', 'rewards', 'crew']],
-    'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['orders', 'services', 'customers', 'paymentMethods']],
+    'dashboard' => ['carwash.admin.dashboard', 'carwash/admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'queue']],
+    'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
+    'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
     'customers' => ['carwash.admin.customers', 'carwash/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],
-    'finance' => ['carwash.admin.finance', 'carwash/admin/Finance', ['moneyIn', 'moneyOut', 'incomeCategories', 'expenseCategories', 'cashSummary']],
-    'bookings' => ['carwash.admin.bookings', 'carwash/admin/Bookings', ['bookings', 'slots', 'services', 'customers']],
+    'finance' => ['carwash.admin.finance', 'carwash/admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary']],
+    'bookings' => ['carwash.admin.bookings', 'carwash/admin/Bookings', ['bookings', 'today', 'services', 'customers']],
     'inventory' => ['carwash.admin.inventory', 'carwash/admin/Inventory', ['items', 'movements', 'categories', 'movementTypes']],
     'rewards' => ['carwash.admin.rewards', 'carwash/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
     'users' => ['carwash.admin.users', 'carwash/admin/Users', ['staff', 'roles', 'matrix', 'allModules']],
@@ -52,7 +52,7 @@ test('the sidebar only offers modules the active role may reach', function () {
 });
 
 test('the entry screen exposes the roles and the full access matrix', function () {
-    $this->get(route('carwash.entry'))
+    $this->get(route('home'))
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page

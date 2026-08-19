@@ -2,7 +2,7 @@
 import { Head, Link, router } from '@inertiajs/vue3';
 import { ArrowLeft, Eye, EyeOff, Lock, Phone, Sparkles } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import carwash from '@/routes/carwash';
+import { home } from '@/routes';
 import member from '@/routes/carwash/member';
 import type { CarwashBrand } from '@/types/carwash';
 
@@ -55,7 +55,7 @@ function submit(): void {
     >
         <div class="w-full max-w-sm">
             <Link
-                :href="carwash.entry.url()"
+                :href="home.url()"
                 class="mb-6 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 transition hover:text-slate-700"
             >
                 <ArrowLeft class="h-3.5 w-3.5" />

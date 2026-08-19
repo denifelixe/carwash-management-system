@@ -14,8 +14,12 @@ use App\Http\Controllers\Carwash\RewardController;
 use App\Http\Controllers\Carwash\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
+/*
+ * The role picker now lives at the site root; keep the old entry URL working.
+ */
+Route::permanentRedirect('carwash', '/');
+
 Route::prefix('carwash')->name('carwash.')->group(function () {
-    Route::get('/', [EntryController::class, 'index'])->name('entry');
     Route::post('session/role', [EntryController::class, 'store'])->name('session.role');
     Route::post('session/exit', [EntryController::class, 'destroy'])->name('session.exit');
 

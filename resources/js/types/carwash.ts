@@ -4,6 +4,7 @@
 
 export interface CarwashBrand {
     name: string;
+    system: string;
     logo: string;
     whatsapp: string;
     instagram: string;
@@ -63,6 +64,7 @@ export interface CarwashReward {
     name: string;
     description: string;
     requiredStamps: number;
+    applicableServiceIds: number[];
     icon: string;
     category: string;
     status: string;
@@ -146,14 +148,33 @@ export interface CarwashVoucher {
 
 /**
  * Derived from how much of the order has been collected: nothing yet, a partial
- * deposit, or the full amount.
+ * payment, or the full amount.
  */
-export type CarwashPaymentStatus = 'belum bayar' | 'dp' | 'lunas';
+export type CarwashPaymentStatus = 'belum bayar' | 'sebagian' | 'lunas';
+
+export interface CarwashTransaction {
+    id: string;
+    orderId: number;
+    /** ISO day the payment was received. */
+    date: string;
+    time: string;
+    type: 'Pembayaran Sebagian' | 'Pembayaran Lunas';
+    amount: number;
+    channels: string;
+    channelBreakdown: CarwashTransactionChannel[];
+}
+
+export interface CarwashTransactionChannel {
+    label: string;
+    amount: number;
+}
 
 export interface CarwashOrder {
     id: number;
     orderNo: string;
     invoice: string;
+    /** ISO day the order belongs to. */
+    date: string;
     time: string;
     customerId: number | null;
     customer: string;
@@ -162,10 +183,10 @@ export interface CarwashOrder {
     plate: string;
     items: string;
     serviceIds: number[];
-    /** Already net of `discount` — this is what the cashier bills. */
+    /** Current bill total after any discount applied by the cashier. */
     total: number;
     discount: number;
-    /** Name of the reward the front office traded in, or `'—'`. */
+    /** Name of the reward redeemed by the cashier, or `'—'`. */
     reward: string;
     paidAmount: number;
     payment: string;
@@ -175,6 +196,7 @@ export interface CarwashOrder {
     crew: string;
     bay: string;
     source: string;
+    transactions: CarwashTransaction[];
 }
 
 export interface CarwashQueueItem {
@@ -199,11 +221,11 @@ export interface CarwashBooking {
     vehicle: string;
     plate: string;
     service: string;
-    serviceId: number;
+    serviceIds: number[];
+    /** ISO date the customer is expected. */
     date: string;
-    time: string;
-    dayLabel: string;
-    status: string;
+    /** Where the job stands, read back from the order module. */
+    orderStatus: string;
     estimate: number;
     notes: string;
 }
@@ -217,7 +239,7 @@ export interface CarwashCrewMember {
 }
 
 export interface CarwashMoneyEntry {
-    id: number;
+    id: number | string;
     ref: string;
     date: string;
     time: string;
@@ -225,8 +247,14 @@ export interface CarwashMoneyEntry {
     description: string;
     amount: number;
     method: string;
+    channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
     source?: string;
+    orderId?: number | null;
+    orderNo?: string | null;
+    customer?: string | null;
+    vehicle?: string | null;
+    plate?: string | null;
     attachment?: CarwashAttachment | null;
 }
 
@@ -331,6 +359,15 @@ export interface CarwashTrendPoint {
 }
 
 /** The active report range, plus the bounds the filter may select within. */
+/** The day an operational module is focused on; '' shows every date. */
+export interface CarwashDateFilter {
+    date: string;
+    today: string;
+    earliest: string;
+    latest: string;
+    label: string;
+}
+
 export interface CarwashReportFilters {
     from: string;
     to: string;

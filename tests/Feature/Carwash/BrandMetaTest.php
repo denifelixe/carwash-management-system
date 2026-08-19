@@ -6,6 +6,25 @@ use App\Support\Carwash\Brand;
  * The root template must ship the brand's document metadata and the full
  * favicon set on every page, so crawlers and link unfurlers see the brand.
  */
+test('the brand identity carries the ZenWash naming', function () {
+    $identity = Brand::identity();
+
+    expect($identity['name'])->toBe('ZenWash Auto Care')
+        ->and($identity['system'])->toBe('ZenWash Auto Care Management System')
+        ->and(Brand::meta()['title'])->toBe($identity['system']);
+});
+
+test('the entry page separates the brand name from the smaller system label', function () {
+    $entryPage = file_get_contents(
+        resource_path('js/pages/carwash/auth/Entry.vue'),
+    );
+
+    expect($entryPage)
+        ->toContain('{{ brand.name }}')
+        ->toContain("{{ brand.system.replace(brand.name, '').trim() }}")
+        ->toContain('text-base font-medium text-slate-300 sm:text-lg');
+});
+
 test('the root template renders the document metadata', function () {
     $meta = Brand::meta();
 
@@ -34,9 +53,10 @@ test('the root template links the whole favicon set', function () {
 test('the title carries the brand name', function () {
     expect(config('app.name'))->toBe(Brand::identity()['name']);
 
-    $this->get(route('home'))
-        ->assertOk()
-        ->assertSee('<title>'.e(Brand::identity()['name']).'</title>', false);
+    $html = $this->get(route('home'))->assertOk()->getContent();
+
+    // Server-side rendering may append a page suffix, so match the tag loosely.
+    expect($html)->toMatch('/<title[^>]*>[^<]*'.preg_quote(e(Brand::identity()['name']), '/').'[^<]*<\/title>/');
 });
 
 dataset('favicon assets', [
