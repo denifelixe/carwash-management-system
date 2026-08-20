@@ -7,7 +7,9 @@ const props = defineProps<{
 
 /** Status words the `capitalize` class alone would render badly. */
 const statusLabels: Record<string, string> = {
-    sebagian: 'Pembayaran Sebagian',
+    sebagian: 'Pembayaran Sebagian/Booking',
+    pelunasan: 'Pembayaran Lunas/Sisa',
+    lunas: 'Pembayaran Lunas/Sisa',
     booking: 'Booking - Belum Datang',
 };
 

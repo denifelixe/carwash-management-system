@@ -44,13 +44,13 @@ class Finance
                 }
 
                 $category = $transaction['type'] === 'Pembayaran Sebagian'
-                    ? 'Pembayaran Sebagian Order'
-                    : 'Pembayaran Lunas Order';
+                    ? 'Pembayaran Sebagian/Booking Order'
+                    : 'Pembayaran Lunas/Sisa Order';
 
                 $entries[] = [
                     'id' => 'pos-'.$transaction['id'],
                     'ref' => self::transactionRef(
-                        $category,
+                        $transaction['type'].' Order',
                         $transaction['date'],
                         $order['orderNo'].'-TRX-'.($transactionIndex + 1),
                     ),
@@ -140,7 +140,7 @@ class Finance
      */
     public static function incomeCategories(): array
     {
-        return ['Pembayaran Lunas Order', 'Pembayaran Sebagian Order', 'Penjualan Produk', 'Sewa Tempat', 'Pendapatan Lain'];
+        return ['Pembayaran Lunas/Sisa Order', 'Pembayaran Sebagian/Booking Order', 'Penjualan Produk', 'Sewa Tempat', 'Pendapatan Lain'];
     }
 
     /**

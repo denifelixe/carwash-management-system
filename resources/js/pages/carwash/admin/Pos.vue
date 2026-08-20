@@ -530,6 +530,12 @@ const selectedOrder = computed<CarwashOrder | null>(
         null,
 );
 
+const paymentAmountLabel = computed<string>(() =>
+    paymentIntent.value === 'partial'
+        ? 'Pembayaran Sebagian/Booking'
+        : 'Pembayaran Sebagian/Lunas',
+);
+
 const orderCustomer = computed<CarwashCustomer | null>(
     () =>
         customerList.value.find(
@@ -830,8 +836,9 @@ function updatePaymentTotalAmount(event: Event): void {
     const input = event.target as HTMLInputElement;
     const digits = input.value.replace(/\D/g, '');
     const amount = digits === '' ? 0 : Number.parseInt(digits, 10);
+    const safeAmount = Number.isSafeInteger(amount) ? amount : 0;
 
-    paymentTotalInput.value = Number.isSafeInteger(amount) ? amount : 0;
+    paymentTotalInput.value = Math.min(safeAmount, amountAfterDiscount.value);
     input.value = formatPaymentTotalAmount();
     markPaymentTotalEdited();
 }
@@ -994,7 +1001,7 @@ function applyDate(date: string): void {
         <!-- Summary -->
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatCard
-                label="Sisa Pelunasan"
+                label="Pembayaran Lunas/Sisa"
                 :value="formatCurrency(outstandingTotal)"
                 caption="sisa tagihan seluruh order"
                 :icon="Clock"
@@ -1435,7 +1442,7 @@ function applyDate(date: string): void {
                         </span>
                         <div>
                             <h3 class="text-sm font-semibold text-violet-950">
-                                Pelunasan
+                                Pembayaran Lunas/Sisa
                             </h3>
                             <p class="mt-0.5 text-xs text-violet-700/70">
                                 {{ visibleOrders.length }} order ditampilkan —
@@ -1511,7 +1518,7 @@ function applyDate(date: string): void {
                                     :key="transaction.id"
                                 >
                                     {{ formatDate(transaction.date) }} ·
-                                    Pembayaran sebagian sebesar
+                                    Pembayaran Sebagian/Booking sebesar
                                     {{ formatCurrency(transaction.amount) }}.
                                 </li>
                             </ul>
@@ -1526,7 +1533,7 @@ function applyDate(date: string): void {
                                     v-if="order.paymentStatus === 'lunas'"
                                     class="text-sm font-semibold text-emerald-600"
                                 >
-                                    Lunas
+                                    Pembayaran Lunas/Sisa
                                 </span>
                                 <span v-else class="text-right">
                                     <span
@@ -1552,8 +1559,8 @@ function applyDate(date: string): void {
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    title="Tidak ada order untuk pelunasan"
-                    caption="Belum ada order berstatus Pelunasan atau pencarian tidak cocok."
+                    title="Tidak ada order untuk pembayaran lunas/sisa"
+                    caption="Belum ada order berstatus Pembayaran Lunas/Sisa atau pencarian tidak cocok."
                 />
             </section>
 
@@ -1570,7 +1577,7 @@ function applyDate(date: string): void {
                         </span>
                         <div>
                             <h3 class="text-sm font-semibold text-orange-950">
-                                Pembayaran Sebagian
+                                Pembayaran Sebagian/Booking
                             </h3>
                             <p class="mt-0.5 text-xs text-orange-700/70">
                                 {{ visiblePartialPaymentBookings.length }}
@@ -1652,7 +1659,7 @@ function applyDate(date: string): void {
                                     :key="transaction.id"
                                 >
                                     {{ formatDate(transaction.date) }} ·
-                                    Pembayaran Sebagian sebesar
+                                    Pembayaran Sebagian/Booking sebesar
                                     {{ formatCurrency(transaction.amount) }}.
                                 </li>
                             </ul>
@@ -1693,7 +1700,7 @@ function applyDate(date: string): void {
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    title="Tidak ada booking untuk pembayaran sebagian"
+                    title="Tidak ada booking untuk Pembayaran Sebagian/Booking"
                     caption="Booking hari ini atau mendatang akan tampil di sini."
                 />
             </section>
@@ -2000,9 +2007,11 @@ function applyDate(date: string): void {
 
                         <section class="bg-white px-6 py-5">
                             <label class="block">
-                                <span class="text-base font-bold text-slate-950"
-                                    >Pembayaran Sebagian/Lunas</span
+                                <span
+                                    class="text-base font-bold text-slate-950"
                                 >
+                                    {{ paymentAmountLabel }}
+                                </span>
                                 <span
                                     class="mt-3 flex items-center gap-3 rounded-2xl bg-amber-100/80 px-5 py-5 ring-2 ring-amber-300 transition focus-within:bg-amber-50 focus-within:ring-amber-500"
                                 >

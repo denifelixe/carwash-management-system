@@ -48,8 +48,8 @@ test('POS income records every received payment on its transaction date', functi
                 'date' => $transaction['date'],
                 'time' => $transaction['time'],
                 'category' => $transaction['type'] === 'Pembayaran Sebagian'
-                    ? 'Pembayaran Sebagian Order'
-                    : 'Pembayaran Lunas Order',
+                    ? 'Pembayaran Sebagian/Booking Order'
+                    : 'Pembayaran Lunas/Sisa Order',
                 'amount' => $transaction['amount'],
                 'method' => $transaction['channels'],
                 'orderId' => $order['id'],
@@ -64,8 +64,10 @@ test('POS income records every received payment on its transaction date', functi
         ->each->not->toContain('Setoran POS');
 
     expect(Finance::incomeCategories())
-        ->toContain('Pembayaran Sebagian Order', 'Pembayaran Lunas Order')
+        ->toContain('Pembayaran Sebagian/Booking Order', 'Pembayaran Lunas/Sisa Order')
         ->not->toContain(
+            'Pembayaran Sebagian Order',
+            'Pembayaran Lunas Order',
             'Pembayaran Sebagian Booking',
             'Pelunasan Order',
             'Penjualan Layanan',
@@ -83,9 +85,9 @@ test('finance references use one category date and identifier format', function 
     }
 
     $partialPayment = collect(Finance::moneyIn())
-        ->firstWhere('category', 'Pembayaran Sebagian Order');
+        ->firstWhere('category', 'Pembayaran Sebagian/Booking Order');
     $finalPayment = collect(Finance::moneyIn())
-        ->firstWhere('category', 'Pembayaran Lunas Order');
+        ->firstWhere('category', 'Pembayaran Lunas/Sisa Order');
     $productSale = collect(Finance::moneyIn())
         ->firstWhere('category', 'Penjualan Produk');
     $materialPurchase = collect(Finance::moneyOut())
