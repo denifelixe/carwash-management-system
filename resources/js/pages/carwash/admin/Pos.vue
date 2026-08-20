@@ -325,14 +325,17 @@ const paymentRecapFinalOrderCount = computed<number>(
         ).size,
 );
 
+const partialPaymentRecapLabel = 'Pembayaran Sebagian/Booking';
+const finalPaymentRecapLabel = 'Pembayaran Lunas/Sisa';
+
 const paymentRecapByType = computed<PaymentRecapRow[]>(() => [
     {
-        label: 'Pembayaran Sebagian Order',
+        label: partialPaymentRecapLabel,
         count: activePaymentRecapPartialTransactions.value.length,
         amount: activePaymentRecapPartialTotal.value,
     },
     {
-        label: 'Pembayaran Lunas Order',
+        label: finalPaymentRecapLabel,
         count: paymentRecapFinalOrderCount.value,
         amount: activePaymentRecapFinalTotal.value,
     },
@@ -398,7 +401,7 @@ const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
 
         if (selection.category === 'type') {
             const matchesSelection =
-                selection.label === 'Pembayaran Sebagian Order'
+                selection.label === partialPaymentRecapLabel
                     ? transaction.type === 'Pembayaran Sebagian'
                     : fullyPaidOrderIds.has(order.id);
 
@@ -867,6 +870,18 @@ function transactionChannelsLabel(transaction: CarwashTransaction): string {
         .join(' + ');
 }
 
+function paymentTransactionLabel(transaction: CarwashTransaction): string {
+    return transaction.type === 'Pembayaran Sebagian'
+        ? partialPaymentRecapLabel
+        : finalPaymentRecapLabel;
+}
+
+function paymentHistoryTypeLabel(transaction: CarwashTransaction): string {
+    return transaction.type === 'Pembayaran Sebagian'
+        ? 'Pembayaran Sebagian/Booking'
+        : transaction.type;
+}
+
 function toggleReward(rewardId: number): void {
     selectedRewardId.value =
         selectedRewardId.value === rewardId ? null : rewardId;
@@ -1151,7 +1166,7 @@ function applyDate(date: string): void {
                             :class="
                                 isPaymentRecapSelected(
                                     'type',
-                                    'Pembayaran Lunas Order',
+                                    finalPaymentRecapLabel,
                                 )
                                     ? 'border-cyan-200 bg-cyan-50 ring-1 ring-cyan-200'
                                     : ''
@@ -1159,18 +1174,18 @@ function applyDate(date: string): void {
                             :aria-pressed="
                                 isPaymentRecapSelected(
                                     'type',
-                                    'Pembayaran Lunas Order',
+                                    finalPaymentRecapLabel,
                                 )
                             "
                             @click="
                                 selectPaymentRecap(
                                     'type',
-                                    'Pembayaran Lunas Order',
+                                    finalPaymentRecapLabel,
                                 )
                             "
                         >
                             <p class="text-xs text-slate-500">
-                                Pembayaran Lunas Order
+                                {{ finalPaymentRecapLabel }}
                             </p>
                             <p
                                 class="mt-1 text-xl font-semibold text-slate-900 tabular-nums"
@@ -1354,7 +1369,11 @@ function applyDate(date: string): void {
                                     <p
                                         class="mt-1 text-sm font-medium text-slate-900"
                                     >
-                                        {{ detail.transaction.type }}
+                                        {{
+                                            paymentTransactionLabel(
+                                                detail.transaction,
+                                            )
+                                        }}
                                     </p>
                                     <p class="mt-0.5 text-xs text-slate-500">
                                         {{
@@ -1821,7 +1840,11 @@ function applyDate(date: string): void {
                                         <p
                                             class="text-xs font-semibold text-slate-800"
                                         >
-                                            {{ transaction.type }}
+                                            {{
+                                                paymentHistoryTypeLabel(
+                                                    transaction,
+                                                )
+                                            }}
                                         </p>
                                         <p
                                             class="truncate text-[11px] text-slate-500"
