@@ -24,9 +24,9 @@ class RoleAccess
     {
         return [
             ['key' => 'dashboard', 'label' => 'Dashboard', 'caption' => 'Ringkasan operasional', 'icon' => 'dashboard', 'route' => 'carwash.admin.dashboard'],
-            ['key' => 'bookings', 'label' => 'Booking Order', 'caption' => 'Jadwal pelanggan', 'icon' => 'bookings', 'route' => 'carwash.admin.bookings'],
             ['key' => 'orders', 'label' => 'Order', 'caption' => 'Proses kendaraan masuk', 'icon' => 'orders', 'route' => 'carwash.admin.orders'],
             ['key' => 'pos', 'label' => 'Kasir POS', 'caption' => 'Pembayaran order', 'icon' => 'pos', 'route' => 'carwash.admin.pos'],
+            ['key' => 'bookings', 'label' => 'Booking Order', 'caption' => 'Jadwal pelanggan', 'icon' => 'bookings', 'route' => 'carwash.admin.bookings'],
             ['key' => 'finance', 'label' => 'Keuangan', 'caption' => 'Arus kas harian', 'icon' => 'finance', 'route' => 'carwash.admin.finance'],
             ['key' => 'customers', 'label' => 'Member', 'caption' => 'Database & stempel', 'icon' => 'customers', 'route' => 'carwash.admin.customers'],
             ['key' => 'inventory', 'label' => 'Stock Inventory', 'caption' => 'Stok operasional', 'icon' => 'inventory', 'route' => 'carwash.admin.inventory'],

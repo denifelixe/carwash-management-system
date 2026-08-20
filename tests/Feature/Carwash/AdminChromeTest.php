@@ -30,15 +30,24 @@ test('the customer module is named member throughout the console', function () {
     );
 
     expect($customerModule['label'])->toBe('Member')
-        ->and($customerPage)->toContain('`${brand.name} — Member`');
+        ->and($customerPage)->toContain('`${brand.name} — Member`')
+        ->toContain('title="Daftarkan member"')
+        ->toContain('Daftar Member')
+        ->toContain('Simpan member')
+        ->toContain(':for="`member-vehicle-${index}-plate`"')
+        ->toContain(':for="`member-vehicle-${index}-name`"')
+        ->toContain(':for="`member-vehicle-${index}-type`"')
+        ->toContain('text-sm text-slate-900 focus:border-cyan-400')
+        ->not->toContain('title="Daftarkan customer"')
+        ->not->toContain('Simpan customer');
 });
 
 test('the sidebar modules follow the operational menu order', function () {
     expect(array_column(RoleAccess::modules(), 'key'))->toBe([
         'dashboard',
-        'bookings',
         'orders',
         'pos',
+        'bookings',
         'finance',
         'customers',
         'inventory',

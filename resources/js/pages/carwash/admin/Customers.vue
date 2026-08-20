@@ -237,7 +237,7 @@ function stampToneClass(type: string): string {
     <div class="space-y-4">
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
-                label="Total customer"
+                label="Total member"
                 :value="String(customerList.length)"
                 :caption="`${activeCount} aktif`"
                 :icon="Users"
@@ -245,7 +245,7 @@ function stampToneClass(type: string): string {
             <StatCard
                 label="Punya akun portal"
                 :value="String(withAccountCount)"
-                caption="terdaftar di aplikasi customer"
+                caption="terdaftar di aplikasi member"
                 :icon="UserPlus"
                 tone="emerald"
             />
@@ -272,10 +272,10 @@ function stampToneClass(type: string): string {
             >
                 <div>
                     <h3 class="text-sm font-semibold text-slate-900">
-                        Database customer
+                        Database member
                     </h3>
                     <p class="mt-0.5 text-xs text-slate-500">
-                        {{ filteredCustomers.length }} customer ditampilkan
+                        {{ filteredCustomers.length }} member ditampilkan
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
@@ -292,7 +292,7 @@ function stampToneClass(type: string): string {
                         @click="isCreateOpen = true"
                     >
                         <Plus class="h-4 w-4" />
-                        Daftar Customer
+                        Daftar Member
                     </button>
                 </div>
             </div>
@@ -303,7 +303,7 @@ function stampToneClass(type: string): string {
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
                         >
-                            <th class="px-5 py-3">Customer</th>
+                            <th class="px-5 py-3">Member</th>
                             <th class="px-5 py-3">Kendaraan</th>
                             <th class="px-5 py-3">Stempel</th>
                             <th class="px-5 py-3">Kunjungan</th>
@@ -421,8 +421,8 @@ function stampToneClass(type: string): string {
             <EmptyState
                 v-else
                 :icon="Users"
-                title="Customer tidak ditemukan"
-                caption="Ubah kata kunci atau daftarkan customer baru."
+                title="Member tidak ditemukan"
+                caption="Ubah kata kunci atau daftarkan member baru."
             />
         </section>
     </div>
@@ -661,7 +661,7 @@ function stampToneClass(type: string): string {
                         v-else
                         class="rounded-xl border border-dashed border-slate-200 py-6 text-center text-xs text-slate-400"
                     >
-                        Belum ada transaksi tercatat untuk customer ini.
+                        Belum ada transaksi tercatat untuk member ini.
                     </p>
                 </div>
             </div>
@@ -671,7 +671,7 @@ function stampToneClass(type: string): string {
     <!-- Register customer -->
     <ModalDialog
         :open="isCreateOpen"
-        title="Daftarkan customer"
+        title="Daftarkan member"
         caption="Data dasar untuk mulai mengumpulkan stempel"
         @close="isCreateOpen = false"
     >
@@ -687,8 +687,8 @@ function stampToneClass(type: string): string {
                     id="cust-name"
                     v-model="draft.name"
                     type="text"
-                    placeholder="Nama customer"
-                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    placeholder="Nama member"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
                 />
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -704,7 +704,7 @@ function stampToneClass(type: string): string {
                         v-model="draft.phone"
                         type="tel"
                         placeholder="0812-xxxx-xxxx"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
                     />
                 </div>
                 <div>
@@ -720,7 +720,7 @@ function stampToneClass(type: string): string {
                         v-model="draft.email"
                         type="email"
                         placeholder="nama@email.com"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
                     />
                 </div>
             </div>
@@ -728,7 +728,7 @@ function stampToneClass(type: string): string {
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs font-medium text-slate-600">
-                            Kendaraan customer
+                            Kendaraan member
                         </p>
                         <p class="text-[11px] text-slate-400">
                             Kendaraan pertama menjadi kendaraan utama.
@@ -767,28 +767,56 @@ function stampToneClass(type: string): string {
                         </button>
                     </div>
                     <div class="grid gap-2 sm:grid-cols-[1fr_1fr_90px]">
-                        <input
-                            v-model="vehicle.plate"
-                            type="text"
-                            :aria-label="`Plat nomor kendaraan ${index + 1}`"
-                            placeholder="B 1234 CDE"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
-                        />
-                        <input
-                            v-model="vehicle.name"
-                            type="text"
-                            :aria-label="`Nama kendaraan ${index + 1}`"
-                            placeholder="Toyota Avanza"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        />
-                        <select
-                            v-model="vehicle.type"
-                            :aria-label="`Jenis kendaraan ${index + 1}`"
-                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        >
-                            <option>Mobil</option>
-                            <option>Motor</option>
-                        </select>
+                        <div>
+                            <label
+                                class="text-[11px] font-medium text-slate-600"
+                                :for="`member-vehicle-${index}-plate`"
+                            >
+                                Plat nomor
+                            </label>
+                            <input
+                                :id="`member-vehicle-${index}-plate`"
+                                v-model="vehicle.plate"
+                                type="text"
+                                placeholder="B 1234 CDE"
+                                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 uppercase placeholder:text-slate-400 placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label
+                                class="text-[11px] font-medium text-slate-600"
+                                :for="`member-vehicle-${index}-name`"
+                            >
+                                Nama kendaraan
+                            </label>
+                            <input
+                                :id="`member-vehicle-${index}-name`"
+                                v-model="vehicle.name"
+                                type="text"
+                                placeholder="Toyota Avanza"
+                                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                        <div>
+                            <label
+                                class="text-[11px] font-medium text-slate-600"
+                                :for="`member-vehicle-${index}-type`"
+                            >
+                                Jenis
+                            </label>
+                            <select
+                                :id="`member-vehicle-${index}-type`"
+                                v-model="vehicle.type"
+                                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
+                            >
+                                <option class="bg-white text-slate-900">
+                                    Mobil
+                                </option>
+                                <option class="bg-white text-slate-900">
+                                    Motor
+                                </option>
+                            </select>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -796,7 +824,7 @@ function stampToneClass(type: string): string {
             <p
                 class="rounded-xl bg-cyan-50 px-3 py-2.5 text-[11px] text-cyan-800 ring-1 ring-cyan-100"
             >
-                Customer baru dimulai dengan 0 stempel. Kumpulkan
+                Member baru dimulai dengan 0 stempel. Kumpulkan
                 {{ stampTarget }} stempel untuk {{ brand.stampReward }}.
             </p>
         </div>
@@ -815,7 +843,7 @@ function stampToneClass(type: string): string {
                 :disabled="!canCreate"
                 @click="createCustomer"
             >
-                Simpan customer
+                Simpan member
             </button>
         </template>
     </ModalDialog>
