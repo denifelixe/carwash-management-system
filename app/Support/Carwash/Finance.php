@@ -156,14 +156,15 @@ class Finance
      *
      * @return array{openingBalance: int, todayIn: int, todayOut: int, closingBalance: int, pendingPayments: int}
      */
-    public static function summary(): array
+    public static function summary(?string $date = null): array
     {
+        $date ??= Reports::todayDate();
         $todayIn = array_sum(array_column(
-            DateFilter::apply(self::moneyIn(), Reports::todayDate()),
+            DateFilter::apply(self::moneyIn(), $date),
             'amount',
         ));
         $todayOut = array_sum(array_column(
-            DateFilter::apply(self::moneyOut(), Reports::todayDate()),
+            DateFilter::apply(self::moneyOut(), $date),
             'amount',
         ));
 
@@ -174,5 +175,46 @@ class Finance
             'closingBalance' => 12400000 + $todayIn - $todayOut,
             'pendingPayments' => Operations::outstandingTotal(),
         ];
+    }
+
+    /**
+     * Shift performance from the same POS payments and finance ledger entries
+     * used by their respective modules.
+     *
+     * @return list<array{id: string, name: string, time: string, cashier: string, initials: string, revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int, status: string}>
+     */
+    public static function shiftSummary(string $date): array
+    {
+        $income = DateFilter::apply(self::moneyIn(), $date);
+        $expenses = DateFilter::apply(self::moneyOut(), $date);
+        $servedOrders = Operations::servedOrders($date);
+
+        return array_map(function (array $shift) use ($income, $expenses, $servedOrders): array {
+            $isMorning = $shift['id'] === 'pagi';
+            $shiftIncome = array_values(array_filter(
+                $income,
+                fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning,
+            ));
+            $shiftExpenses = array_values(array_filter(
+                $expenses,
+                fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning,
+            ));
+            $posIncome = array_values(array_filter(
+                $shiftIncome,
+                fn (array $entry): bool => $entry['source'] === 'pos',
+            ));
+            $shiftOrders = array_values(array_filter(
+                $servedOrders,
+                fn (array $order): bool => ($order['time'] < '15.00') === $isMorning,
+            ));
+
+            return [
+                ...$shift,
+                'revenue' => array_sum(array_column($posIncome, 'amount')),
+                'vehiclesServed' => count($shiftOrders),
+                'moneyIn' => array_sum(array_column($shiftIncome, 'amount')),
+                'moneyOut' => array_sum(array_column($shiftExpenses, 'amount')),
+            ];
+        }, Brand::shifts());
     }
 }

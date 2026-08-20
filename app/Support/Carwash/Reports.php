@@ -54,6 +54,37 @@ class Reports
     }
 
     /**
+     * Headline figures for the dashboard's selected business day. Revenue is
+     * collected POS money, while vehicle counts follow the order board.
+     *
+     * @return list<array{label: string, value: string, caption: string, delta: float, trend: string, icon: string}>
+     */
+    public static function dashboardStats(string $date): array
+    {
+        $stats = self::periodStats($date, $date);
+        $posPayments = array_values(array_filter(
+            DateFilter::apply(Finance::moneyIn(), $date),
+            fn (array $entry): bool => $entry['source'] === 'pos',
+        ));
+        $orderSummary = Operations::orderSummary($date);
+        $isToday = $date === self::todayDate();
+
+        $stats[0] = [
+            ...$stats[0],
+            'label' => $isToday ? 'Pendapatan Hari Ini' : 'Pendapatan',
+            'value' => 'Rp '.number_format(array_sum(array_column($posPayments, 'amount')), 0, ',', '.'),
+            'caption' => 'dari '.number_format(count($posPayments), 0, ',', '.').' transaksi POS',
+        ];
+        $stats[1] = [
+            ...$stats[1],
+            'value' => number_format($orderSummary['served'], 0, ',', '.'),
+            'caption' => 'dari '.number_format($orderSummary['total'], 0, ',', '.').' order kendaraan',
+        ];
+
+        return $stats;
+    }
+
+    /**
      * The four headline numbers for a range. Money and cars are flows, so they
      * add up over the days picked; the loyalty totals describe the customer
      * base as a whole and stay put whatever the range.

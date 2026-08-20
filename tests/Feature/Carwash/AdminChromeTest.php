@@ -63,8 +63,13 @@ test('the dashboard only presents daily operational summaries', function () {
         ->not->toContain('Omzet minggu ini')
         ->not->toContain('Pendapatan 7 hari terakhir')
         ->not->toContain('Layanan terlaris')
-        ->toContain('{{ activeQueue.length }} kendaraan sedang dalam antrean')
-        ->toContain('hari ini.');
+        ->toContain('Total order kendaraan hari ini')
+        ->toContain('orderSummary.total')
+        ->toContain('orderSummary.served')
+        ->toContain('dilayani,')
+        ->toContain('orderSummary.awaitingBooking')
+        ->toContain('booking -')
+        ->toContain('belum datang');
 });
 
 test('the dashboard is no longer handed the crew list', function () {
@@ -74,10 +79,24 @@ test('the dashboard is no longer handed the crew list', function () {
         ->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->component('carwash/admin/Dashboard')
-                ->has('queue')
+                ->has('orderSummary')
+                ->missing('queue')
                 ->missing('crew')
                 ->missing('revenueTrend')
                 ->missing('topServices')
                 ->missing('customerCount')
         );
+});
+
+test('the shift summary shows served vehicles instead of payment transactions', function () {
+    $dashboard = file_get_contents(
+        resource_path('js/pages/carwash/admin/Dashboard.vue'),
+    );
+
+    expect($dashboard)
+        ->toContain('Kendaraan dilayani')
+        ->toContain('{{ shift.vehiclesServed }}')
+        ->toContain('{{ formatCurrency(shift.revenue) }}')
+        ->not->toContain('{{ formatShortCurrency(shift.revenue) }}')
+        ->not->toContain('{{ shift.transactions }}');
 });

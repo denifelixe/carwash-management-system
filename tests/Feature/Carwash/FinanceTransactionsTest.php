@@ -140,6 +140,37 @@ test('cash summary is calculated from individual ledger transactions', function 
         ]);
 });
 
+test('dashboard shift figures use served orders and the finance ledger for the selected day', function () {
+    $today = Reports::todayDate();
+    $shifts = collect(Finance::shiftSummary($today))->keyBy('id');
+    $todayIncome = DateFilter::apply(Finance::moneyIn(), $today);
+    $todayExpenses = DateFilter::apply(Finance::moneyOut(), $today);
+    $servedOrders = Operations::servedOrders($today);
+
+    foreach (['pagi', 'sore'] as $shiftId) {
+        $isMorning = $shiftId === 'pagi';
+        $income = collect($todayIncome)
+            ->filter(fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning);
+        $expenses = collect($todayExpenses)
+            ->filter(fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning);
+        $posIncome = $income->where('source', 'pos');
+        $shiftOrders = collect($servedOrders)
+            ->filter(fn (array $order): bool => ($order['time'] < '15.00') === $isMorning);
+
+        expect($shifts[$shiftId])
+            ->toMatchArray([
+                'revenue' => $posIncome->sum('amount'),
+                'vehiclesServed' => $shiftOrders->count(),
+                'moneyIn' => $income->sum('amount'),
+                'moneyOut' => $expenses->sum('amount'),
+            ]);
+    }
+
+    expect($shifts['pagi']['vehiclesServed'])->toBe(8)
+        ->and($shifts['sore']['vehiclesServed'])->toBe(0)
+        ->and($shifts->sum('vehiclesServed'))->toBe(8);
+});
+
 test('finance page exposes and displays related order details', function () {
     $todayEntries = DateFilter::apply(
         Finance::moneyIn(),

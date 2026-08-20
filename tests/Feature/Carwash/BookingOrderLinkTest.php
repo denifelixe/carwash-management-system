@@ -35,9 +35,9 @@ test('a booking order carries the booking it came from', function () {
             ->and($order['plate'])->toBe($booking['plate'])
             ->and($order['total'])->toBe($booking['estimate'])
             ->and($order['serviceIds'])->toBe($booking['serviceIds'])
-            // Nothing is collected before the car shows up.
-            ->and($order['paidAmount'])->toBe(0)
-            ->and($order['transactions'])->toBe([]);
+            // Advance payments may exist, but do not mean the vehicle arrived.
+            ->and($order['paidAmount'])->toBeGreaterThanOrEqual(0)
+            ->and($order['transactions'])->toBeArray();
     }
 });
 
@@ -68,16 +68,43 @@ test('the booking category contains exactly the booking orders for the selected 
         ->toBe($bookingNumbers);
 });
 
-test('the order module is what says where a booking stands', function () {
+test('today bookings reflect whether their vehicle has checked in', function () {
     $statuses = array_column(Operations::orders(), 'status', 'orderNo');
 
     foreach (Operations::scheduledBookings() as $booking) {
         expect($booking['orderStatus'])->toBe($statuses[$booking['code']]);
     }
 
-    // A booking already worked on is no longer parked on the booking stage.
+    $todayBookingStatuses = array_column(array_filter(
+        Operations::scheduledBookings(),
+        fn (array $booking): bool => $booking['date'] === Reports::todayDate(),
+    ), 'orderStatus');
+
+    expect($todayBookingStatuses)
+        ->toHaveCount(4)
+        ->toContain('booking')
+        ->toContain('pelunasan');
+
+    $todayBookingOrders = array_filter(
+        Operations::orders(),
+        fn (array $order): bool => $order['date'] === Reports::todayDate()
+            && $order['source'] === 'booking'
+            && $order['status'] === 'booking',
+    );
+
+    expect($todayBookingOrders)->toHaveCount(3);
+
+    foreach ($todayBookingOrders as $order) {
+        expect($order)
+            ->toMatchArray([
+                'status' => 'booking',
+                'time' => '—',
+                'crew' => 'Menunggu crew',
+                'bay' => '—',
+            ]);
+    }
+
     expect(array_column(Operations::scheduledBookings(), 'orderStatus'))
-        ->toContain('proses')
         ->toContain('selesai')
         ->toContain('batal');
 });

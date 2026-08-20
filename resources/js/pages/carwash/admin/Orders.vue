@@ -123,7 +123,7 @@ const draft = ref({
     serviceIds: [] as number[],
 });
 
-const bookingStatusLabel = 'Booking Hari ini - Belum Datang';
+const bookingStatusLabel = 'Booking - Belum Datang';
 
 /** Stage chips first, so 'Semua' reads as the escape hatch it is. */
 const filterOptions = [
@@ -153,12 +153,18 @@ function displayedStatus(order: CarwashOrder): string {
 
 function orderSourceLabel(order: CarwashOrder): string {
     if (order.source === 'booking') {
-        return 'Booking';
+        return order.customerId === null
+            ? 'Booking Non Member'
+            : 'Booking Member';
     }
 
-    return order.customerId === null
-        ? 'Walk-in Non Customer'
-        : 'Walk-in Customer';
+    return order.customerId === null ? 'Walk-In Non Member' : 'Walk-In Member';
+}
+
+function orderArrivalLabel(order: CarwashOrder): string {
+    return order.time === '—'
+        ? 'Belum masuk'
+        : `${formatDate(order.date)} · ${order.time}`;
 }
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
@@ -565,9 +571,8 @@ function applyDate(date: string): void {
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
                         >
-                            <th class="px-5 py-3">Order</th>
-                            <th class="px-5 py-3">Customer</th>
                             <th class="px-5 py-3">Kendaraan</th>
+                            <th class="px-5 py-3">Customer</th>
                             <th class="px-5 py-3">Layanan</th>
                             <th class="px-5 py-3">Status</th>
                             <th class="px-5 py-3 text-right">Total</th>
@@ -581,14 +586,22 @@ function applyDate(date: string): void {
                             class="cursor-pointer transition hover:bg-slate-50/70"
                             @click="detailOrderId = order.id"
                         >
-                            <td class="px-5 py-3.5">
-                                <p class="font-medium text-slate-900">
-                                    {{ order.orderNo }}
+                            <td class="min-w-52 px-5 py-3.5">
+                                <p
+                                    class="text-xl font-bold tracking-wide text-slate-900"
+                                >
+                                    {{ order.plate }}
                                 </p>
-                                <p class="text-[11px] text-slate-500">
-                                    {{ formatDate(order.date) }} •
-                                    {{ orderSourceLabel(order) }}
+                                <p class="mt-0.5 text-xs text-slate-600">
+                                    {{ order.vehicle }}
                                 </p>
+                                <div
+                                    class="mt-1.5 flex flex-col gap-0.5 text-[11px] text-slate-500"
+                                >
+                                    <span>{{ orderArrivalLabel(order) }}</span>
+                                    <span>{{ orderSourceLabel(order) }}</span>
+                                    <span>{{ order.orderNo }}</span>
+                                </div>
                             </td>
                             <td class="px-5 py-3.5">
                                 <p class="text-slate-700">
@@ -596,14 +609,6 @@ function applyDate(date: string): void {
                                 </p>
                                 <p class="text-[11px] text-slate-500">
                                     {{ order.phone }}
-                                </p>
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <p class="text-slate-700">
-                                    {{ order.vehicle }}
-                                </p>
-                                <p class="text-[11px] text-slate-500">
-                                    {{ order.plate }}
                                 </p>
                             </td>
                             <td

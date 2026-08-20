@@ -34,12 +34,12 @@ test('a booking scheduled today is marked as not arrived wherever it is shown', 
     );
 
     expect($ordersPage)
-        ->toContain("const bookingStatusLabel = 'Booking Hari ini - Belum Datang';")
+        ->toContain("const bookingStatusLabel = 'Booking - Belum Datang';")
         ->toContain('label: bookingStatusLabel,')
         ->toContain('<StatusPill :status="displayedStatus(order)" />');
 
     expect(file_get_contents(resource_path('js/components/carwash/StatusPill.vue')))
-        ->toContain("booking: 'Booking Hari ini - Belum Datang',");
+        ->toContain("booking: 'Booking - Belum Datang',");
 });
 
 test('every order sits on one of the lifecycle stages', function () {
@@ -198,9 +198,10 @@ test('the order list distinguishes customer and non customer walk-ins', function
     );
 
     expect($ordersPage)
-        ->toContain("return 'Booking';")
-        ->toContain("? 'Walk-in Non Customer'")
-        ->toContain(": 'Walk-in Customer';")
+        ->toContain("? 'Booking Non Member'")
+        ->toContain(": 'Booking Member';")
+        ->toContain("? 'Walk-In Non Member'")
+        ->toContain(": 'Walk-In Member';")
         ->toContain('{{ orderSourceLabel(order) }}');
 
     expect(array_filter(
@@ -212,6 +213,28 @@ test('the order list distinguishes customer and non customer walk-ins', function
         $walkInOrders,
         fn (array $order): bool => $order['customerId'] !== null,
     ))->not->toBeEmpty();
+});
+
+test('the order list leads with vehicle arrival information', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Orders.vue'),
+    );
+
+    $vehicleColumn = strpos($ordersPage, '<th class="px-5 py-3">Kendaraan</th>');
+    $customerColumn = strpos($ordersPage, '<th class="px-5 py-3">Customer</th>');
+
+    expect($vehicleColumn)
+        ->toBeInt()
+        ->toBeLessThan($customerColumn)
+        ->and($ordersPage)
+        ->not->toContain('<th class="px-5 py-3">Order</th>')
+        ->toContain('class="text-xl font-bold tracking-wide text-slate-900"')
+        ->toContain('{{ order.plate }}')
+        ->toContain('{{ order.vehicle }}')
+        ->toContain("order.time === '—'")
+        ->toContain('`${formatDate(order.date)} · ${order.time}`')
+        ->toContain('{{ orderArrivalLabel(order) }}')
+        ->toContain("<span>{{ orderSourceLabel(order) }}</span>\n                                    <span>{{ order.orderNo }}</span>");
 });
 
 test('non member walk-ins keep their name and phone number', function () {

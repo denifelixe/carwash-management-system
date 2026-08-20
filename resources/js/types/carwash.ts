@@ -21,6 +21,7 @@ export interface CarwashShift {
     initials: string;
     revenue: number;
     transactions: number;
+    vehiclesServed: number;
     moneyIn: number;
     moneyOut: number;
     status: string;
@@ -269,6 +270,12 @@ export interface CarwashCashSummary {
     todayOut: number;
     closingBalance: number;
     pendingPayments: number;
+}
+
+export interface CarwashOrderSummary {
+    total: number;
+    served: number;
+    awaitingBooking: number;
 }
 
 export interface CarwashStockItem {

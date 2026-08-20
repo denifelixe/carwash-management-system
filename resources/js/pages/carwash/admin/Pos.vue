@@ -2,12 +2,15 @@
 import { Head, router } from '@inertiajs/vue3';
 import {
     Banknote,
+    ChevronDown,
     CircleCheck,
     ClipboardList,
     Clock,
     CreditCard,
+    Plus,
     Printer,
     Sparkles,
+    Trash2,
     Wallet,
 } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
@@ -76,6 +79,11 @@ interface PosPaymentBreakdown {
     reference: string;
 }
 
+interface PaymentChannelRow {
+    id: number;
+    method: string;
+}
+
 interface PaymentRecapRow {
     label: string;
     count: number;
@@ -123,6 +131,10 @@ const selectedRewardId = ref<number | null>(null);
 const discountAmount = ref<number>(0);
 const paymentTotalInput = ref<number>(0);
 const isPaymentTotalEdited = ref<boolean>(false);
+let nextPaymentChannelRowId = 1;
+const paymentChannelRows = ref<PaymentChannelRow[]>([
+    { id: nextPaymentChannelRowId, method: '' },
+]);
 const paymentAmounts = ref<Record<string, number>>(
     Object.fromEntries(props.paymentMethods.map((method) => [method, 0])),
 );
@@ -633,6 +645,12 @@ const paymentProvidersAreValid = computed<boolean>(() =>
     ),
 );
 
+const canAddPaymentChannel = computed<boolean>(
+    () =>
+        paymentChannelRows.value.every((row) => row.method !== '') &&
+        paymentChannelRows.value.length < props.paymentMethods.length,
+);
+
 const tenderedTotal = computed<number>(() =>
     paymentBreakdown.value.reduce(
         (total, payment) => total + payment.amount,
@@ -702,6 +720,7 @@ function resetPaymentInputs(): void {
     discountAmount.value = 0;
     paymentTotalInput.value = 0;
     isPaymentTotalEdited.value = false;
+    paymentChannelRows.value = [{ id: ++nextPaymentChannelRowId, method: '' }];
     paymentAmounts.value = Object.fromEntries(
         props.paymentMethods.map((method) => [method, 0]),
     );
@@ -710,6 +729,69 @@ function resetPaymentInputs(): void {
     );
     paymentReferences.value = Object.fromEntries(
         props.paymentMethods.map((method) => [method, '']),
+    );
+}
+
+function clearPaymentMethod(method: string): void {
+    paymentAmounts.value[method] = 0;
+    paymentProviders.value[method] = '';
+    paymentReferences.value[method] = '';
+}
+
+function formatPaymentAmountInput(method: string): string {
+    const amount = Math.trunc(paymentAmounts.value[method] ?? 0);
+
+    return amount > 0 ? formatNumber(amount) : '';
+}
+
+function updatePaymentAmount(method: string, event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const digits = input.value.replace(/\D/g, '');
+    const amount = digits === '' ? 0 : Number.parseInt(digits, 10);
+
+    paymentAmounts.value[method] = Number.isSafeInteger(amount) ? amount : 0;
+    input.value = formatPaymentAmountInput(method);
+}
+
+function selectPaymentMethod(row: PaymentChannelRow, event: Event): void {
+    const previousMethod = row.method;
+    const method = (event.target as HTMLSelectElement).value;
+
+    row.method = method;
+
+    if (previousMethod !== '' && previousMethod !== method) {
+        clearPaymentMethod(previousMethod);
+    }
+}
+
+function isPaymentMethodDisabled(method: string, rowId: number): boolean {
+    return paymentChannelRows.value.some(
+        (row) => row.id !== rowId && row.method === method,
+    );
+}
+
+function addPaymentChannel(): void {
+    if (!canAddPaymentChannel.value) {
+        return;
+    }
+
+    paymentChannelRows.value.push({
+        id: ++nextPaymentChannelRowId,
+        method: '',
+    });
+}
+
+function removePaymentChannel(rowId: number): void {
+    const row = paymentChannelRows.value.find(
+        (paymentRow) => paymentRow.id === rowId,
+    );
+
+    if (row?.method) {
+        clearPaymentMethod(row.method);
+    }
+
+    paymentChannelRows.value = paymentChannelRows.value.filter(
+        (paymentRow) => paymentRow.id !== rowId,
     );
 }
 
@@ -736,6 +818,22 @@ function fillRemainingAmount(method: string): void {
 
 function markPaymentTotalEdited(): void {
     isPaymentTotalEdited.value = true;
+}
+
+function formatPaymentTotalAmount(): string {
+    const amount = Math.trunc(paymentTotalInput.value);
+
+    return amount > 0 ? formatNumber(amount) : '';
+}
+
+function updatePaymentTotalAmount(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const digits = input.value.replace(/\D/g, '');
+    const amount = digits === '' ? 0 : Number.parseInt(digits, 10);
+
+    paymentTotalInput.value = Number.isSafeInteger(amount) ? amount : 0;
+    input.value = formatPaymentTotalAmount();
+    markPaymentTotalEdited();
 }
 
 function requiresPaymentProvider(method: string): boolean {
@@ -1613,66 +1711,100 @@ function applyDate(date: string): void {
                 @close="resetPanel"
             >
                 <template v-if="selectedOrder">
-                    <!-- Ordered services -->
-                    <div class="max-h-56 overflow-y-auto pb-5">
-                        <ul class="space-y-3">
-                            <li
-                                v-for="service in orderServices"
-                                :key="service.id"
-                                class="flex items-center gap-3"
-                            >
-                                <div
-                                    class="flex h-9 w-9 items-center justify-center rounded-lg bg-slate-100 text-base"
-                                >
-                                    {{ service.icon }}
-                                </div>
-                                <p
-                                    class="min-w-0 flex-1 truncate text-sm font-medium text-slate-800"
-                                >
-                                    {{ service.name }}
-                                </p>
-                                <p class="text-sm text-slate-700 tabular-nums">
-                                    {{ formatCurrency(service.price) }}
-                                </p>
-                            </li>
-                        </ul>
-                    </div>
-
                     <div
-                        class="-mx-6 -mb-6 divide-y divide-slate-200 border-t border-slate-200 bg-slate-50/60"
+                        class="-mx-6 -mt-6 -mb-6 divide-y divide-slate-200 bg-slate-50/60"
                     >
-                        <section
-                            class="flex items-center justify-between gap-4 px-6 py-4"
-                        >
-                            <div>
-                                <h3
-                                    class="text-sm font-semibold text-slate-900"
-                                >
-                                    Total
-                                </h3>
-                                <p class="text-[11px] text-slate-500">
-                                    Total semua layanan dalam order.
-                                </p>
-                            </div>
-                            <p
-                                class="text-lg font-bold text-slate-900 tabular-nums"
+                        <details v-if="orderServices.length > 0" class="group">
+                            <summary
+                                class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-3.5 transition hover:bg-slate-100/80 [&::-webkit-details-marker]:hidden"
                             >
-                                {{ formatCurrency(orderServiceTotal) }}
-                            </p>
-                        </section>
-
-                        <section class="px-6 py-4">
-                            <h3 class="text-sm font-semibold text-slate-900">
-                                Riwayat transaksi
-                            </h3>
-                            <p class="text-[11px] text-slate-500">
-                                Pembayaran sebagian dan pembayaran lunas yang
-                                sudah diterima.
-                            </p>
+                                <span class="min-w-0">
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900"
+                                    >
+                                        Layanan
+                                        <span class="text-slate-400"
+                                            >({{ orderServices.length }})</span
+                                        >
+                                    </span>
+                                    <span
+                                        class="block truncate text-[11px] text-slate-500"
+                                    >
+                                        {{
+                                            orderServices
+                                                .map((service) => service.name)
+                                                .join(', ')
+                                        }}
+                                    </span>
+                                </span>
+                                <span class="flex shrink-0 items-center gap-3">
+                                    <span
+                                        class="text-sm font-bold text-slate-900 tabular-nums"
+                                    >
+                                        {{ formatCurrency(orderServiceTotal) }}
+                                    </span>
+                                    <ChevronDown
+                                        class="h-4 w-4 text-slate-400 transition group-open:rotate-180"
+                                    />
+                                </span>
+                            </summary>
                             <ul
-                                v-if="selectedOrder.transactions.length > 0"
-                                class="mt-3 space-y-2"
+                                class="max-h-44 space-y-2 overflow-y-auto px-6 pb-4"
                             >
+                                <li
+                                    v-for="service in orderServices"
+                                    :key="service.id"
+                                    class="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-slate-200"
+                                >
+                                    <span
+                                        class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm"
+                                    >
+                                        {{ service.icon }}
+                                    </span>
+                                    <span
+                                        class="min-w-0 flex-1 truncate text-xs font-medium text-slate-800"
+                                    >
+                                        {{ service.name }}
+                                    </span>
+                                    <span
+                                        class="text-xs text-slate-700 tabular-nums"
+                                    >
+                                        {{ formatCurrency(service.price) }}
+                                    </span>
+                                </li>
+                            </ul>
+                        </details>
+
+                        <details
+                            v-if="selectedOrder.transactions.length > 0"
+                            class="group"
+                        >
+                            <summary
+                                class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-3.5 transition hover:bg-slate-100/80 [&::-webkit-details-marker]:hidden"
+                            >
+                                <span>
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900"
+                                    >
+                                        Riwayat transaksi
+                                        <span class="text-slate-400">
+                                            ({{
+                                                selectedOrder.transactions
+                                                    .length
+                                            }})
+                                        </span>
+                                    </span>
+                                    <span
+                                        class="block text-[11px] text-slate-500"
+                                    >
+                                        Pembayaran yang sudah diterima.
+                                    </span>
+                                </span>
+                                <ChevronDown
+                                    class="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180"
+                                />
+                            </summary>
+                            <ul class="space-y-2 px-6 pb-4">
                                 <li
                                     v-for="transaction in selectedOrder.transactions"
                                     :key="transaction.id"
@@ -1705,42 +1837,48 @@ function applyDate(date: string): void {
                                     </p>
                                 </li>
                             </ul>
-                            <p
-                                v-else
-                                class="mt-3 rounded-xl bg-white px-4 py-3 text-xs text-slate-500 ring-1 ring-slate-200"
-                            >
-                                Belum ada transaksi untuk order ini.
-                            </p>
-                        </section>
+                        </details>
 
-                        <section class="px-6 py-4">
-                            <div class="flex items-end justify-between gap-4">
-                                <div>
-                                    <h3
-                                        class="text-sm font-semibold text-slate-900"
+                        <details
+                            v-if="
+                                redeemableRewards.length > 0 ||
+                                selectedOrder.reward !== '—'
+                            "
+                            class="group"
+                        >
+                            <summary
+                                class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-3.5 transition hover:bg-slate-100/80 [&::-webkit-details-marker]:hidden"
+                            >
+                                <span>
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900"
                                     >
                                         Tukar reward
-                                    </h3>
-                                    <p
-                                        v-if="orderCustomer"
-                                        class="text-[11px] text-slate-500"
+                                    </span>
+                                    <span
+                                        class="block text-[11px] text-slate-500"
                                     >
-                                        Saldo {{ orderCustomer.stamps }} stempel
-                                    </p>
-                                    <p
-                                        v-else
-                                        class="text-[11px] text-slate-500"
-                                    >
-                                        Reward hanya tersedia untuk member.
-                                    </p>
-                                </div>
-                                <span
-                                    v-if="rewardDiscount > 0"
-                                    class="text-sm font-semibold text-emerald-600 tabular-nums"
-                                >
-                                    −{{ formatCurrency(rewardDiscount) }}
+                                        {{
+                                            selectedOrder.reward !== '—'
+                                                ? selectedOrder.reward
+                                                : 'Saldo ' +
+                                                  (orderCustomer?.stamps ?? 0) +
+                                                  ' stempel'
+                                        }}
+                                    </span>
                                 </span>
-                            </div>
+                                <span class="flex shrink-0 items-center gap-3">
+                                    <span
+                                        v-if="rewardDiscount > 0"
+                                        class="text-sm font-semibold text-emerald-600 tabular-nums"
+                                    >
+                                        −{{ formatCurrency(rewardDiscount) }}
+                                    </span>
+                                    <ChevronDown
+                                        class="h-4 w-4 text-slate-400 transition group-open:rotate-180"
+                                    />
+                                </span>
+                            </summary>
 
                             <div
                                 v-if="
@@ -1748,7 +1886,7 @@ function applyDate(date: string): void {
                                     selectedOrder.reward === '—' &&
                                     redeemableRewards.length > 0
                                 "
-                                class="mt-3 grid max-h-44 grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+                                class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto px-6 pb-4 sm:grid-cols-2"
                             >
                                 <button
                                     v-for="reward in redeemableRewards"
@@ -1785,28 +1923,44 @@ function applyDate(date: string): void {
                             </div>
                             <p
                                 v-else-if="selectedOrder.reward !== '—'"
-                                class="mt-3 rounded-xl bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100"
+                                class="mx-6 mb-4 rounded-xl bg-emerald-50 px-4 py-3 text-xs font-medium text-emerald-700 ring-1 ring-emerald-100"
                             >
                                 {{ selectedOrder.reward }} sudah diterapkan pada
                                 order ini.
                             </p>
-                            <p
-                                v-else-if="orderCustomer"
-                                class="mt-3 rounded-xl bg-white px-4 py-3 text-xs text-slate-500 ring-1 ring-slate-200"
-                            >
-                                Belum ada reward yang sesuai dengan item order
-                                dan saldo stempel ini.
-                            </p>
-                        </section>
+                        </details>
 
-                        <section class="px-6 py-4">
-                            <label class="block">
+                        <details class="group">
+                            <summary
+                                class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-3.5 transition hover:bg-slate-100/80 [&::-webkit-details-marker]:hidden"
+                            >
+                                <span>
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900"
+                                    >
+                                        Diskon tambahan
+                                    </span>
+                                    <span
+                                        class="block text-[11px] text-slate-500"
+                                    >
+                                        Opsional, buka untuk menambahkan diskon.
+                                    </span>
+                                </span>
+                                <span class="flex shrink-0 items-center gap-3">
+                                    <span
+                                        v-if="cashierDiscount > 0"
+                                        class="text-sm font-semibold text-emerald-600 tabular-nums"
+                                    >
+                                        −{{ formatCurrency(cashierDiscount) }}
+                                    </span>
+                                    <ChevronDown
+                                        class="h-4 w-4 text-slate-400 transition group-open:rotate-180"
+                                    />
+                                </span>
+                            </summary>
+                            <label class="block px-6 pb-4">
                                 <span
-                                    class="text-sm font-semibold text-slate-900"
-                                    >Diskon tambahan</span
-                                >
-                                <span
-                                    class="mt-2 flex items-center gap-2 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200 focus-within:ring-cyan-400"
+                                    class="flex items-center gap-2 rounded-xl bg-white px-4 py-3 ring-1 ring-slate-200 focus-within:ring-cyan-400"
                                 >
                                     <span class="text-sm text-slate-500"
                                         >Rp</span
@@ -1822,7 +1976,7 @@ function applyDate(date: string): void {
                                     />
                                 </span>
                             </label>
-                        </section>
+                        </details>
 
                         <section
                             class="flex items-center justify-between gap-4 px-6 py-4"
@@ -1847,7 +2001,7 @@ function applyDate(date: string): void {
                         <section class="bg-white px-6 py-5">
                             <label class="block">
                                 <span class="text-base font-bold text-slate-950"
-                                    >Total Pembayaran</span
+                                    >Pembayaran Sebagian/Lunas</span
                                 >
                                 <span
                                     class="mt-3 flex items-center gap-3 rounded-2xl bg-amber-100/80 px-5 py-5 ring-2 ring-amber-300 transition focus-within:bg-amber-50 focus-within:ring-amber-500"
@@ -1857,13 +2011,13 @@ function applyDate(date: string): void {
                                         >Rp</span
                                     >
                                     <input
-                                        v-model.number="paymentTotalInput"
-                                        type="number"
-                                        min="0"
-                                        :max="amountAfterDiscount"
-                                        step="1000"
+                                        :value="formatPaymentTotalAmount()"
+                                        type="text"
+                                        inputmode="numeric"
+                                        autocomplete="off"
+                                        placeholder="0"
                                         class="w-full bg-transparent text-3xl font-bold tracking-tight text-slate-950 tabular-nums focus:outline-none sm:text-4xl"
-                                        @input="markPaymentTotalEdited"
+                                        @input="updatePaymentTotalAmount"
                                     />
                                 </span>
                             </label>
@@ -1887,54 +2041,129 @@ function applyDate(date: string): void {
                         </section>
 
                         <section class="px-6 py-4">
-                            <h3 class="text-sm font-semibold text-slate-900">
-                                Kanal Pembayaran
-                            </h3>
-                            <p class="text-[11px] text-slate-500">
-                                Nominal dapat dibagi ke satu atau beberapa
-                                kanal.
-                            </p>
+                            <div class="flex items-start justify-between gap-4">
+                                <div>
+                                    <h3
+                                        class="text-sm font-semibold text-slate-900"
+                                    >
+                                        Kanal Pembayaran
+                                    </h3>
+                                    <p class="text-[11px] text-slate-500">
+                                        Pilih satu kanal atau tambahkan kanal
+                                        lain untuk split pembayaran.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    :disabled="!canAddPaymentChannel"
+                                    class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-cyan-50 px-3 py-2 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                    @click="addPaymentChannel"
+                                >
+                                    <Plus class="h-4 w-4" />
+                                    <span class="hidden sm:inline"
+                                        >Tambah pembayaran</span
+                                    >
+                                    <span class="sr-only sm:hidden"
+                                        >Tambah pembayaran</span
+                                    >
+                                </button>
+                            </div>
                             <div class="mt-3 space-y-2">
                                 <div
-                                    v-for="method in paymentMethods"
-                                    :key="method"
+                                    v-for="(row, index) in paymentChannelRows"
+                                    :key="row.id"
                                     class="rounded-xl bg-white p-3 ring-1 ring-slate-200 md:flex md:flex-wrap md:items-center md:gap-x-4"
                                 >
                                     <div
-                                        class="flex items-center gap-3 md:min-w-0 md:flex-1"
+                                        class="flex items-center gap-2 md:min-w-0 md:flex-1"
                                     >
                                         <label
-                                            :for="`payment-${method}`"
-                                            class="w-20 shrink-0 text-xs font-semibold text-slate-700"
+                                            :for="`payment-channel-${row.id}`"
+                                            class="sr-only"
                                         >
-                                            {{ method }}
+                                            Kanal pembayaran
                                         </label>
-                                        <span class="text-xs text-slate-400"
-                                            >Rp</span
-                                        >
-                                        <input
-                                            :id="`payment-${method}`"
-                                            v-model.number="
-                                                paymentAmounts[method]
+                                        <select
+                                            :id="`payment-channel-${row.id}`"
+                                            :value="row.method"
+                                            :aria-label="`Kanal pembayaran ${index + 1}`"
+                                            class="min-w-0 flex-1 rounded-lg border-0 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 focus:bg-white focus:ring-2 focus:ring-cyan-400 focus:outline-none md:max-w-52"
+                                            @change="
+                                                selectPaymentMethod(row, $event)
                                             "
-                                            type="number"
-                                            min="0"
-                                            step="1000"
-                                            placeholder="0"
-                                            class="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-slate-900 tabular-nums placeholder:text-slate-300 focus:outline-none"
-                                        />
-                                        <button
-                                            v-if="remainingTenderAmount > 0"
-                                            type="button"
-                                            class="shrink-0 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-700 transition hover:bg-cyan-100"
-                                            @click="fillRemainingAmount(method)"
                                         >
-                                            Isi sisa
+                                            <option value="" disabled>
+                                                Pilih kanal pembayaran
+                                            </option>
+                                            <option
+                                                v-for="method in paymentMethods"
+                                                :key="method"
+                                                :value="method"
+                                                :disabled="
+                                                    isPaymentMethodDisabled(
+                                                        method,
+                                                        row.id,
+                                                    )
+                                                "
+                                            >
+                                                {{ method }}
+                                            </option>
+                                        </select>
+                                        <template v-if="row.method">
+                                            <span class="text-xs text-slate-400"
+                                                >Rp</span
+                                            >
+                                            <input
+                                                :id="`payment-${row.id}`"
+                                                :value="
+                                                    formatPaymentAmountInput(
+                                                        row.method,
+                                                    )
+                                                "
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                placeholder="0"
+                                                :aria-label="`Nominal pembayaran ${row.method}`"
+                                                class="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-slate-900 tabular-nums placeholder:text-slate-300 focus:outline-none"
+                                                @input="
+                                                    updatePaymentAmount(
+                                                        row.method,
+                                                        $event,
+                                                    )
+                                                "
+                                            />
+                                            <button
+                                                v-if="remainingTenderAmount > 0"
+                                                type="button"
+                                                class="shrink-0 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-[10px] font-semibold text-cyan-700 transition hover:bg-cyan-100"
+                                                @click="
+                                                    fillRemainingAmount(
+                                                        row.method,
+                                                    )
+                                                "
+                                            >
+                                                Isi sisa
+                                            </button>
+                                        </template>
+                                        <button
+                                            v-if="paymentChannelRows.length > 1"
+                                            type="button"
+                                            class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                            :aria-label="`Hapus kanal pembayaran ${index + 1}`"
+                                            @click="
+                                                removePaymentChannel(row.id)
+                                            "
+                                        >
+                                            <Trash2 class="h-4 w-4" />
                                         </button>
                                     </div>
 
                                     <div
-                                        v-if="requiresPaymentProvider(method)"
+                                        v-if="
+                                            row.method &&
+                                            requiresPaymentProvider(row.method)
+                                        "
                                         class="mt-3 space-y-2 border-t border-slate-100 pt-3 md:mt-0 md:w-80 md:shrink-0 md:border-t-0 md:border-l md:pt-0 md:pl-4"
                                     >
                                         <label
@@ -1944,27 +2173,29 @@ function applyDate(date: string): void {
                                                 class="text-[11px] font-medium text-slate-500"
                                             >
                                                 {{
-                                                    paymentProviderLabel(method)
+                                                    paymentProviderLabel(
+                                                        row.method,
+                                                    )
                                                 }}
                                             </span>
                                             <select
                                                 v-model="
-                                                    paymentProviders[method]
+                                                    paymentProviders[row.method]
                                                 "
-                                                :aria-label="`${paymentProviderLabel(method)} untuk ${method}`"
+                                                :aria-label="`${paymentProviderLabel(row.method)} untuk ${row.method}`"
                                                 class="w-full rounded-lg border-0 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 focus:bg-white focus:ring-2 focus:ring-cyan-400 focus:outline-none"
                                             >
                                                 <option value="" disabled>
                                                     Pilih
                                                     {{
                                                         paymentProviderLabel(
-                                                            method,
+                                                            row.method,
                                                         ).toLowerCase()
                                                     }}
                                                 </option>
                                                 <option
                                                     v-for="option in paymentProviderOptions(
-                                                        method,
+                                                        row.method,
                                                     )"
                                                     :key="option"
                                                     :value="option"
@@ -1983,34 +2214,37 @@ function applyDate(date: string): void {
                                             </span>
                                             <input
                                                 v-model.trim="
-                                                    paymentReferences[method]
+                                                    paymentReferences[
+                                                        row.method
+                                                    ]
                                                 "
                                                 type="text"
                                                 maxlength="32"
                                                 placeholder="No. Referensi"
-                                                :aria-label="`No. referensi untuk ${method}`"
+                                                :aria-label="`No. referensi untuk ${row.method}`"
                                                 class="w-full rounded-lg border-0 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-cyan-400 focus:outline-none"
                                             />
                                         </label>
                                     </div>
-                                    <!-- Keeps amounts aligned with rows that do have a provider column. -->
                                     <div
-                                        v-else
+                                        v-else-if="row.method"
                                         aria-hidden="true"
                                         class="hidden md:block md:w-80 md:shrink-0"
                                     ></div>
                                     <p
                                         v-if="
-                                            requiresPaymentProvider(method) &&
-                                            paymentAmounts[method] > 0 &&
-                                            !paymentProviders[method]
+                                            requiresPaymentProvider(
+                                                row.method,
+                                            ) &&
+                                            paymentAmounts[row.method] > 0 &&
+                                            !paymentProviders[row.method]
                                         "
                                         class="mt-2 text-[10px] font-medium text-rose-600 sm:pl-27 md:basis-full md:pl-0"
                                     >
                                         Pilih
                                         {{
                                             paymentProviderLabel(
-                                                method,
+                                                row.method,
                                             ).toLowerCase()
                                         }}
                                         untuk melanjutkan.

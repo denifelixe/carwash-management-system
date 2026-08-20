@@ -55,9 +55,19 @@ class Operations
         return [
             ['id' => 1, 'orderNo' => self::orderNo(0, 12), 'invoice' => self::invoiceNo(0, 12), 'date' => self::date(0), 'time' => '11.02', 'customerId' => 10, 'customer' => 'Nadia Putri', 'phone' => '0896-1122-3344', 'vehicle' => 'Honda Vario', 'plate' => 'B 2255 LM', 'items' => 'Cuci Motor + Semir', 'serviceIds' => [5], 'total' => 35000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 35000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 1, 'crew' => 'Bagas', 'bay' => 'Bay 3', 'source' => 'walk-in'],
             ['id' => 2, 'orderNo' => self::orderNo(0, 11), 'invoice' => self::invoiceNo(0, 11), 'date' => self::date(0), 'time' => '10.40', 'customerId' => 8, 'customer' => 'Andi Wijaya', 'phone' => '0852-6677-8899', 'vehicle' => 'Yamaha NMax', 'plate' => 'B 6677 TG', 'items' => 'Cuci Motor Reguler', 'serviceIds' => [4], 'total' => 20000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 20000, 'payment' => 'Tunai', 'paymentStatus' => 'lunas', 'status' => 'menunggu', 'stampsEarned' => 1, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'walk-in'],
-            ['id' => 3, 'orderNo' => self::bookingCode(0, 3), 'invoice' => self::invoiceNo(0, 10), 'date' => self::date(0), 'time' => '10.15', 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'items' => 'Deep Clean Interior, Parfum & Anti Jamur Kaca', 'serviceIds' => [9, 11], 'total' => 210000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 210000, 'payment' => 'Debit', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 2, 'crew' => 'Tim Interior', 'bay' => 'Bay 4', 'source' => 'booking'],
+            [
+                'id' => 3, 'orderNo' => self::bookingCode(0, 3), 'invoice' => self::invoiceNo(0, 10), 'date' => self::date(0), 'time' => '—', 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'items' => 'Deep Clean Interior', 'serviceIds' => [9], 'total' => 150000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 150000, 'payment' => 'Debit', 'paymentStatus' => 'lunas', 'status' => 'booking', 'stampsEarned' => 2, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'booking',
+                'transactions' => [
+                    ['id' => self::invoiceNo(0, 10), 'orderId' => 3, 'date' => self::date(0), 'time' => '10.15', 'type' => 'Pembayaran Sebagian', 'amount' => 150000, 'channels' => 'Debit', 'channelBreakdown' => [['label' => 'Debit', 'amount' => 150000]]],
+                ],
+            ],
             ['id' => 4, 'orderNo' => self::orderNo(0, 9), 'invoice' => self::invoiceNo(0, 9), 'date' => self::date(0), 'time' => '09.52', 'customerId' => null, 'customer' => 'Rudi Hartono (non-member)', 'phone' => '0812-9087-6543', 'vehicle' => 'Toyota Calya', 'plate' => 'B 1290 UY', 'items' => 'Cuci Mobil Reguler', 'serviceIds' => [1], 'total' => 45000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 45000, 'payment' => 'Tunai', 'paymentStatus' => 'lunas', 'status' => 'selesai', 'stampsEarned' => 0, 'crew' => 'Agus', 'bay' => 'Bay 1', 'source' => 'walk-in'],
-            ['id' => 5, 'orderNo' => self::bookingCode(0, 2), 'invoice' => self::invoiceNo(0, 8), 'date' => self::date(0), 'time' => '09.20', 'customerId' => 1, 'customer' => 'Hendra Gunawan', 'phone' => '0812-1100-2255', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'items' => 'Nano Ceramic Coating', 'serviceIds' => [7], 'total' => 1500000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 1500000, 'payment' => 'Transfer', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 10, 'crew' => 'Tim Detailing', 'bay' => 'Bay 1', 'source' => 'booking'],
+            [
+                'id' => 5, 'orderNo' => self::bookingCode(0, 2), 'invoice' => self::invoiceNo(0, 8), 'date' => self::date(0), 'time' => '—', 'customerId' => 1, 'customer' => 'Hendra Gunawan', 'phone' => '0812-1100-2255', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'items' => 'Nano Ceramic Coating', 'serviceIds' => [7], 'total' => 1500000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 1500000, 'payment' => 'Transfer', 'paymentStatus' => 'lunas', 'status' => 'booking', 'stampsEarned' => 10, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'booking',
+                'transactions' => [
+                    ['id' => self::invoiceNo(0, 8), 'orderId' => 5, 'date' => self::date(0), 'time' => '09.20', 'type' => 'Pembayaran Sebagian', 'amount' => 1500000, 'channels' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1500000]]],
+                ],
+            ],
             ['id' => 6, 'orderNo' => self::orderNo(0, 7), 'invoice' => self::invoiceNo(0, 7), 'date' => self::date(0), 'time' => '08.45', 'customerId' => 5, 'customer' => 'Siti Rahmawati', 'phone' => '0821-4455-6677', 'vehicle' => 'Honda Brio', 'plate' => 'B 8821 KL', 'items' => 'Cuci Mobil Reguler, Semir Ban Premium', 'serviceIds' => [1, 12], 'total' => 45000, 'discount' => 25000, 'reward' => 'Gratis Semir Ban', 'paidAmount' => 45000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'selesai', 'stampsEarned' => 1, 'crew' => 'Agus', 'bay' => 'Bay 2', 'source' => 'walk-in'],
             ['id' => 7, 'orderNo' => self::orderNo(0, 6), 'invoice' => self::invoiceNo(0, 6), 'date' => self::date(0), 'time' => '08.05', 'customerId' => 2, 'customer' => 'Rizky Pratama', 'phone' => '0813-7788-1200', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'items' => 'Snow Wash Premium, Engine Bay Cleaning', 'serviceIds' => [3, 8], 'total' => 210000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 210000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 3, 'crew' => 'Agus & Deni', 'bay' => 'Bay 2', 'source' => 'walk-in'],
             ['id' => 8, 'orderNo' => self::orderNo(0, 5), 'invoice' => self::invoiceNo(0, 5), 'date' => self::date(0), 'time' => '07.48', 'customerId' => null, 'customer' => 'Sari Wulandari (non-member)', 'phone' => '0857-4432-1098', 'vehicle' => 'Suzuki XL7', 'plate' => 'B 7742 KD', 'items' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'total' => 85000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 85000, 'payment' => 'Tunai', 'paymentStatus' => 'lunas', 'status' => 'selesai', 'stampsEarned' => 0, 'crew' => 'Deni', 'bay' => 'Bay 3', 'source' => 'walk-in'],
@@ -197,9 +207,9 @@ class Operations
     }
 
     /**
-     * Every scheduled booking whose visit is today or later. The cashier keeps
-     * the complete booking schedule visible even when an order is already paid
-     * or has also entered the settlement section.
+     * Scheduled bookings whose vehicle has not arrived yet and whose visit is
+     * today or later. Once a booking reaches settlement, the cashier handles it
+     * exclusively in the settlement section.
      *
      * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
@@ -210,6 +220,7 @@ class Operations
         return array_values(array_filter(
             self::orders(),
             fn (array $order): bool => $order['source'] === 'booking'
+                && $order['status'] === 'booking'
                 && $order['date'] >= $today,
         ));
     }
@@ -239,6 +250,43 @@ class Operations
             self::orders(),
             fn (array $order): bool => ! in_array($order['status'], ['booking', 'batal'], true),
         ));
+    }
+
+    /**
+     * Orders whose vehicle has arrived and is being or has been served.
+     *
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     */
+    public static function servedOrders(string $date): array
+    {
+        return array_values(array_filter(
+            DateFilter::apply(self::orders(), $date),
+            fn (array $order): bool => ! in_array($order['status'], ['booking', 'batal'], true),
+        ));
+    }
+
+    /**
+     * Vehicle totals for a business day, using the same rows shown on the order
+     * board. Cancelled orders no longer count as served or scheduled work.
+     *
+     * @return array{total: int, served: int, awaitingBooking: int}
+     */
+    public static function orderSummary(string $date): array
+    {
+        $orders = array_values(array_filter(
+            DateFilter::apply(self::orders(), $date),
+            fn (array $order): bool => $order['status'] !== 'batal',
+        ));
+        $awaitingBooking = count(array_filter(
+            $orders,
+            fn (array $order): bool => $order['status'] === 'booking',
+        ));
+
+        return [
+            'total' => count($orders),
+            'served' => count(self::servedOrders($date)),
+            'awaitingBooking' => $awaitingBooking,
+        ];
     }
 
     /**

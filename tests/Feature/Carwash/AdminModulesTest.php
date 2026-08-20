@@ -8,7 +8,7 @@ use Inertia\Testing\AssertableInertia;
  * plus the shell props every module shares (BR-05 … BR-13).
  */
 dataset('admin modules', [
-    'dashboard' => ['carwash.admin.dashboard', 'carwash/admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'queue']],
+    'dashboard' => ['carwash.admin.dashboard', 'carwash/admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'orderSummary']],
     'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
     'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
     'customers' => ['carwash.admin.customers', 'carwash/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],

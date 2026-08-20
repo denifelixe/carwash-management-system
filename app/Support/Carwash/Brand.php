@@ -46,13 +46,13 @@ class Brand
     /**
      * Shift breakdown powering the shift-based overview on the dashboard.
      *
-     * @return list<array{id: string, name: string, time: string, cashier: string, initials: string, revenue: int, transactions: int, moneyIn: int, moneyOut: int, status: string}>
+     * @return list<array{id: string, name: string, time: string, cashier: string, initials: string, revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int, status: string}>
      */
     public static function shifts(): array
     {
         return [
-            ['id' => 'pagi', 'name' => 'Shift Pagi', 'time' => '07.00 - 15.00', 'cashier' => 'Yuni Astuti', 'initials' => 'YA', 'revenue' => 2940000, 'transactions' => 23, 'moneyIn' => 2940000, 'moneyOut' => 480000, 'status' => 'selesai'],
-            ['id' => 'sore', 'name' => 'Shift Sore', 'time' => '15.00 - 22.00', 'cashier' => 'Rina Marlina', 'initials' => 'RM', 'revenue' => 1910000, 'transactions' => 15, 'moneyIn' => 1910000, 'moneyOut' => 165000, 'status' => 'berjalan'],
+            ['id' => 'pagi', 'name' => 'Shift Pagi', 'time' => '07.00 - 15.00', 'cashier' => 'Yuni Astuti', 'initials' => 'YA', 'revenue' => 2940000, 'transactions' => 23, 'vehiclesServed' => 23, 'moneyIn' => 2940000, 'moneyOut' => 480000, 'status' => 'selesai'],
+            ['id' => 'sore', 'name' => 'Shift Sore', 'time' => '15.00 - 22.00', 'cashier' => 'Rina Marlina', 'initials' => 'RM', 'revenue' => 1910000, 'transactions' => 15, 'vehiclesServed' => 15, 'moneyIn' => 1910000, 'moneyOut' => 165000, 'status' => 'berjalan'],
         ];
     }
 

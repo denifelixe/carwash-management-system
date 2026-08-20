@@ -9,7 +9,6 @@ import {
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed } from 'vue';
 import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import StatusPill from '@/components/carwash/StatusPill.vue';
@@ -22,18 +21,18 @@ import type {
     CarwashBrand,
     CarwashDateFilter,
     CarwashCashSummary,
-    CarwashQueueItem,
+    CarwashOrderSummary,
     CarwashShift,
     CarwashStat,
 } from '@/types/carwash';
 
-const props = defineProps<{
+defineProps<{
     brand: CarwashBrand;
     persona: { name: string; title: string; initials: string };
     stats: CarwashStat[];
     filters: CarwashDateFilter;
     shifts: CarwashShift[];
-    queue: CarwashQueueItem[];
+    orderSummary: CarwashOrderSummary;
     cashSummary: CarwashCashSummary;
 }>();
 
@@ -43,11 +42,6 @@ const statIcons: Record<string, LucideIcon> = {
     users: Users,
     gift: Gift,
 };
-
-/** Cars still on the floor, counted for the greeting. */
-const activeQueue = computed<CarwashQueueItem[]>(() =>
-    props.queue.filter((item) => item.status !== 'selesai'),
-);
 
 /** Filtering is a fresh visit, so the numbers rebuild for the picked day. */
 function applyDate(date: string): void {
@@ -85,8 +79,12 @@ function applyDate(date: string): void {
                         Halo, {{ persona.name.split(' ')[0] }} 👋
                     </h2>
                     <p class="mt-2 text-sm text-slate-300">
-                        {{ activeQueue.length }} kendaraan sedang dalam antrean
-                        hari ini.
+                        Total order kendaraan hari ini
+                        {{ orderSummary.total }} ({{
+                            orderSummary.served
+                        }}
+                        dilayani, {{ orderSummary.awaitingBooking }} booking -
+                        belum datang)
                     </p>
                 </div>
             </div>
@@ -216,17 +214,17 @@ function applyDate(date: string): void {
                                 <p
                                     class="text-sm font-semibold text-slate-900 tabular-nums"
                                 >
-                                    {{ formatShortCurrency(shift.revenue) }}
+                                    {{ formatCurrency(shift.revenue) }}
                                 </p>
                             </div>
                             <div>
                                 <p class="text-[10px] text-slate-500">
-                                    Transaksi
+                                    Kendaraan dilayani
                                 </p>
                                 <p
                                     class="text-sm font-semibold text-slate-900 tabular-nums"
                                 >
-                                    {{ shift.transactions }}
+                                    {{ shift.vehiclesServed }}
                                 </p>
                             </div>
                             <div>

@@ -86,16 +86,35 @@ test('an empty date brings every row back', function () {
 });
 
 test('the dashboard figures follow the picked day', function () {
-    $today = Reports::periodStats(Reports::todayDate(), Reports::todayDate());
-    $other = Reports::periodStats('2026-07-29', '2026-07-29');
+    $today = Reports::dashboardStats(Reports::todayDate());
+    $other = Reports::dashboardStats('2026-07-29');
 
     expect($today[0]['label'])->toBe('Pendapatan Hari Ini')
-        ->and($today[0]['value'])->toBe('Rp 4.850.000')
-        ->and($today[1]['value'])->toBe('38')
+        ->and($today[0]['value'])->toBe('Rp 2.125.000')
+        ->and($today[0]['caption'])->toBe('dari 10 transaksi POS')
+        ->and($today[1]['value'])->toBe('8')
+        ->and($today[1]['caption'])->toBe('dari 11 order kendaraan')
         // A different day reports that day's figures, not today's.
         ->and($other[0]['label'])->toBe('Pendapatan')
-        ->and($other[0]['value'])->toBe('Rp 2.980.000')
-        ->and($other[1]['value'])->toBe('24');
+        ->and($other[0]['value'])->toBe('Rp 0')
+        ->and($other[1]['value'])->toBe('0');
+});
+
+test('the dashboard order caption separates served vehicles from bookings that have not arrived', function () {
+    expect(Operations::orderSummary(Reports::todayDate()))->toBe([
+        'total' => 11,
+        'served' => 8,
+        'awaitingBooking' => 3,
+    ]);
+
+    $this->withSession(['carwash_role' => 'owner'])
+        ->get(route('carwash.admin.dashboard'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('orderSummary.total', 11)
+                ->where('orderSummary.served', 8)
+                ->where('orderSummary.awaitingBooking', 3)
+        );
 });
 
 test('the dashboard date filter is shown above the hero with a clear return action', function () {

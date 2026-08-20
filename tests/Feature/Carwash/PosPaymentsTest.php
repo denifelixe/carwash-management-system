@@ -74,10 +74,10 @@ test('the POS recap uses received payments from the selected transaction date', 
         ->and($receivedTransactions)->toHaveCount(10)
         ->and($partialPaymentTransactions)->toHaveCount(7)
         ->and($finalPaymentTransactions)->toHaveCount(3)
-        ->and($receivedPaymentTotal)->toBe(2185000)
+        ->and($receivedPaymentTotal)->toBe(2125000)
         ->and($channelRecap['Transfer'])->toBe(['count' => 1, 'amount' => 1500000])
         ->and($channelRecap['QRIS'])->toBe(['count' => 4, 'amount' => 305000])
-        ->and($channelRecap['Debit'])->toBe(['count' => 1, 'amount' => 210000])
+        ->and($channelRecap['Debit'])->toBe(['count' => 1, 'amount' => 150000])
         ->and($channelRecap['Tunai'])->toBe(['count' => 5, 'amount' => 170000])
         ->and(array_sum(array_column($channelRecap, 'amount')))
         ->toBe($receivedPaymentTotal);
@@ -99,11 +99,12 @@ test('the POS recap uses received payments from the selected transaction date', 
         ->toContain('row.amount += channel.amount');
 });
 
-test('the cashier booking list matches todays and upcoming booking schedule', function () {
+test('the cashier booking list only contains todays and upcoming bookings that have not arrived', function () {
     $bookings = Operations::partialPaymentBookingOrders();
     $scheduledBookingNumbers = array_column(array_filter(
         Operations::scheduledBookings(),
-        fn (array $booking): bool => $booking['date'] >= Reports::todayDate(),
+        fn (array $booking): bool => $booking['date'] >= Reports::todayDate()
+            && $booking['orderStatus'] === 'booking',
     ), 'code');
     $cashierBookingNumbers = array_column($bookings, 'orderNo');
     $todayBookings = array_filter(
@@ -119,7 +120,7 @@ test('the cashier booking list matches todays and upcoming booking schedule', fu
     sort($cashierBookingNumbers);
 
     expect($bookings)->not->toBeEmpty()
-        ->and($todayBookings)->toHaveCount(4)
+        ->and($todayBookings)->toHaveCount(3)
         ->and($upcomingBookings)->toHaveCount(3)
         ->and($cashierBookingNumbers)->toBe($scheduledBookingNumbers);
 
@@ -129,7 +130,7 @@ test('the cashier booking list matches todays and upcoming booking schedule', fu
     }
 });
 
-test('pelunasan bookings stay visible in the booking schedule and settlement', function () {
+test('a booking that has reached settlement leaves the not-arrived booking list', function () {
     $settlementBookingNumbers = array_column(array_filter(
         Operations::settlementOrders(),
         fn (array $order): bool => $order['source'] === 'booking',
@@ -139,9 +140,12 @@ test('pelunasan bookings stay visible in the booking schedule and settlement', f
         'orderNo',
     );
 
-    expect($settlementBookingNumbers)->not->toBeEmpty()
+    $budiOrderNumber = 'ORD-BK-'.Reports::today()->format('ymd').'01';
+
+    expect($settlementBookingNumbers)->toContain($budiOrderNumber)
+        ->and($partialPaymentBookingNumbers)->not->toContain($budiOrderNumber)
         ->and(array_intersect($settlementBookingNumbers, $partialPaymentBookingNumbers))
-        ->toBe($settlementBookingNumbers);
+        ->toBe([]);
 });
 
 test('the partial payment section sits below settlement and opens the same payment flow', function () {
@@ -372,6 +376,14 @@ test('partial payments keep their dates and one order may have multiple installm
         $demoOrder['transactions'],
         fn (array $transaction): bool => $transaction['type'] === 'Pembayaran Sebagian',
     );
+
+    expect($demoOrder)
+        ->toMatchArray([
+            'source' => 'booking',
+            'status' => 'pelunasan',
+            'paidAmount' => 55000,
+            'paymentStatus' => 'sebagian',
+        ]);
     $todayPartialPayments = array_values(array_filter(
         $demoPartialPayments,
         fn (array $partialPayment): bool => $partialPayment['date'] === Reports::todayDate(),
@@ -483,11 +495,26 @@ test('the payment modal follows the order transaction payment sequence', functio
         ->toContain('Riwayat transaksi')
         ->toContain('selectedOrder.transactions')
         ->toContain('v-model.number="discountAmount"')
-        ->toContain('v-model.number="paymentTotalInput"')
-        ->toContain('paymentAmounts[method]')
-        ->toContain('paymentProviders[method]')
+        ->toContain('formatPaymentTotalAmount')
+        ->toContain('updatePaymentTotalAmount')
+        ->toContain(':value="formatPaymentTotalAmount()"')
+        ->toContain('@input="updatePaymentTotalAmount"')
+        ->toContain('paymentAmounts[row.method]')
+        ->toContain('paymentProviders[row.method]')
+        ->toContain('formatPaymentAmountInput')
+        ->toContain('updatePaymentAmount')
+        ->toContain('return amount > 0 ?')
+        ->toContain('formatNumber(amount)')
+        ->not->toContain('positionPaymentAmountCaret')
+        ->toContain('inputmode="numeric"')
+        ->toContain('placeholder="0"')
+        ->toContain('paymentChannelRows')
+        ->toContain('Pilih kanal pembayaran')
+        ->toContain('@click="addPaymentChannel"')
+        ->toContain('Tambah pembayaran')
+        ->toContain('removePaymentChannel(row.id)')
         ->toContain('Total Sisa Pembayaran')
-        ->toContain('Total Pembayaran')
+        ->toContain('Pembayaran Sebagian/Lunas')
         ->toContain('bg-amber-100/80')
         ->toContain('text-3xl font-bold')
         ->toContain('Sisa Tagihan setelah pembayaran ini:')
@@ -497,6 +524,15 @@ test('the payment modal follows the order transaction payment sequence', functio
         ->toContain('bg-orange-100')
         ->toContain('paymentProvidersAreValid')
         ->toContain('remainingAfterPayment')
+        ->toContain('<details')
+        ->toContain('<summary')
+        ->toContain('v-if="orderServices.length > 0"')
+        ->toContain('-mt-6')
+        ->toContain('v-if="selectedOrder.transactions.length > 0"')
+        ->toContain('redeemableRewards.length > 0')
+        ->toContain('Opsional, buka untuk menambahkan diskon.')
+        ->not->toContain('Belum ada transaksi untuk order ini.')
+        ->not->toContain('Belum ada reward yang sesuai dengan item order')
         ->toContain('Proses')
         ->not->toContain('Pembayaran split');
 });
@@ -613,7 +649,8 @@ test('cashier rewards are limited to services already in the order', function ()
     expect($posPage)
         ->toContain('reward.applicableServiceIds.some')
         ->toContain('order.serviceIds.includes(serviceId)')
-        ->toContain('Belum ada reward yang sesuai dengan item order');
+        ->toContain('redeemableRewards.length > 0')
+        ->not->toContain('Belum ada reward yang sesuai dengan item order');
 });
 
 test('the front office order screen has no reward redemption', function () {
@@ -657,9 +694,10 @@ test('channels that need a bank or card also capture a reference number', functi
     expect($posPage)
         ->toContain('const paymentReferences = ref<Record<string, string>>(')
         ->toContain('v-model.trim=')
-        ->toContain('paymentReferences[method]')
+        ->toContain('paymentReferences[')
+        ->toContain('row.method')
         ->toContain('No. Referensi')
-        ->toContain(':aria-label="`No. referensi untuk ${method}`"')
+        ->toContain(':aria-label="`No. referensi untuk ${row.method}`"')
         ->toContain("reference: paymentReferences.value[method]?.trim() ?? ''")
         ->toContain('paymentReferences.value = Object.fromEntries(')
         ->toContain('Ref. {{ payment.reference }}');

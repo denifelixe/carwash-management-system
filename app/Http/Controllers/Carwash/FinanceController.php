@@ -26,7 +26,7 @@ class FinanceController extends AdminController
             'filters' => DateFilter::meta($date),
             'incomeCategories' => Finance::incomeCategories(),
             'expenseCategories' => Finance::expenseCategories(),
-            'cashSummary' => Finance::summary(),
+            'cashSummary' => Finance::summary($date),
             'paymentMethods' => Operations::paymentMethods(),
             'shifts' => Brand::shifts(),
         ]);

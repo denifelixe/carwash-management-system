@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Carwash;
 
-use App\Support\Carwash\Brand;
 use App\Support\Carwash\DateFilter;
 use App\Support\Carwash\Finance;
 use App\Support\Carwash\Operations;
@@ -21,11 +20,11 @@ class DashboardController extends AdminController
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
         return $this->page($request, 'carwash/admin/Dashboard', [
-            'stats' => Reports::periodStats($date, $date),
+            'stats' => Reports::dashboardStats($date),
             'filters' => DateFilter::meta($date),
-            'shifts' => Brand::shifts(),
-            'queue' => Operations::queue(),
-            'cashSummary' => Finance::summary(),
+            'shifts' => Finance::shiftSummary($date),
+            'orderSummary' => Operations::orderSummary($date),
+            'cashSummary' => Finance::summary($date),
         ]);
     }
 }
