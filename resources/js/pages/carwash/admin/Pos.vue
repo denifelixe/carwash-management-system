@@ -586,6 +586,19 @@ const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
         );
 });
 
+/**
+ * The queue mixes cars due today with ones booked for later, so the panel
+ * header splits the total rather than leaving the cashier to count rows.
+ */
+const partialPaymentBookingCaption = computed<string>(() => {
+    const bookings = visiblePartialPaymentBookings.value;
+    const today = bookings.filter(
+        (order) => order.date === props.filters.today,
+    ).length;
+
+    return `${bookings.length} Booking (${today} Hari Ini - ${bookings.length - today} Mendatang)`;
+});
+
 const selectedOrder = computed<CarwashOrder | null>(
     () =>
         orderList.value.find((order) => order.id === selectedOrderId.value) ??
@@ -2365,7 +2378,7 @@ function applyDate(date: string): void {
             <!-- Booking payments before arrival -->
             <AccordionSection
                 title="Pembayaran Sebagian/Booking"
-                :caption="`${visiblePartialPaymentBookings.length} booking hari ini & mendatang`"
+                :caption="partialPaymentBookingCaption"
                 :icon="CreditCard"
                 tone="orange"
             >

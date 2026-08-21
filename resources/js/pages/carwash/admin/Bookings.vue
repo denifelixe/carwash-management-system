@@ -41,7 +41,7 @@ const props = defineProps<{
     customers: CarwashCustomer[];
 }>();
 
-type CustomerMode = 'existing' | 'walk-in' | 'new-member';
+type CustomerMode = 'existing' | 'walk-in';
 
 type CustomerOption = {
     key: `customer-${number}-vehicle-${number}`;
@@ -51,9 +51,8 @@ type CustomerOption = {
 };
 
 const customerTabs: { key: CustomerMode; label: string }[] = [
-    { key: 'existing', label: 'Customer terdaftar' },
-    { key: 'walk-in', label: 'Non member' },
-    { key: 'new-member', label: 'Member baru' },
+    { key: 'existing', label: 'Member' },
+    { key: 'walk-in', label: 'Non-Member' },
 ];
 
 const bookingList = ref<CarwashBooking[]>(
@@ -85,7 +84,7 @@ const selectedCustomerOption = ref<CustomerOption | null>(null);
 const draft = ref({
     customerId: null as number | null,
     walkInName: '',
-    newMemberPhone: '',
+    customerPhone: '',
     vehicle: '',
     plate: '',
     serviceIds: [] as number[],
@@ -236,14 +235,10 @@ const hasCustomer = computed<boolean>(() => {
         return draft.value.customerId !== null;
     }
 
-    if (customerMode.value === 'new-member') {
-        return (
-            draft.value.walkInName.trim() !== '' &&
-            draft.value.newMemberPhone.trim() !== ''
-        );
-    }
-
-    return draft.value.walkInName.trim() !== '';
+    return (
+        draft.value.walkInName.trim() !== '' &&
+        draft.value.customerPhone.trim() !== ''
+    );
 });
 
 const hasBookableDate = computed<boolean>(
@@ -287,7 +282,7 @@ function pickCustomer(option: CustomerOption): void {
     selectedCustomerOption.value = option;
     draft.value.customerId = option.customer.id;
     draft.value.walkInName = '';
-    draft.value.newMemberPhone = '';
+    draft.value.customerPhone = '';
     draft.value.vehicle = option.vehicle.name;
     draft.value.plate = option.vehicle.plate;
 }
@@ -302,7 +297,7 @@ function clearCustomer(): void {
     selectedCustomerOption.value = null;
     draft.value.customerId = null;
     draft.value.walkInName = '';
-    draft.value.newMemberPhone = '';
+    draft.value.customerPhone = '';
     draft.value.vehicle = '';
     draft.value.plate = '';
 }
@@ -326,7 +321,7 @@ function resetDraft(): void {
     draft.value = {
         customerId: null,
         walkInName: '',
-        newMemberPhone: '',
+        customerPhone: '',
         vehicle: '',
         plate: '',
         serviceIds: [],
@@ -365,15 +360,11 @@ function startEditingBooking(): void {
     editingBookingId.value = booking.id;
     customerQuery.value = '';
     selectedCustomerOption.value = customerOption ?? null;
-    customerMode.value = customerOption
-        ? 'existing'
-        : booking.phone === '—'
-          ? 'walk-in'
-          : 'new-member';
+    customerMode.value = customerOption ? 'existing' : 'walk-in';
     draft.value = {
         customerId: customerOption?.customer.id ?? null,
         walkInName: customerOption ? '' : booking.customer,
-        newMemberPhone:
+        customerPhone:
             customerOption || booking.phone === '—' ? '' : booking.phone,
         vehicle: booking.vehicle,
         plate: booking.plate,
@@ -393,7 +384,7 @@ function saveBooking(): void {
     const bookingFields = {
         customerId: customer?.id ?? null,
         customer: customer?.name ?? draft.value.walkInName,
-        phone: (customer?.phone ?? draft.value.newMemberPhone.trim()) || '—',
+        phone: (customer?.phone ?? draft.value.customerPhone.trim()) || '—',
         vehicle: draft.value.vehicle || '—',
         plate: draft.value.plate.toUpperCase(),
         service: draftServices.value.map((service) => service.name).join(', '),
@@ -646,7 +637,7 @@ function saveBooking(): void {
                 </label>
 
                 <div
-                    class="mt-2 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+                    class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
                     role="tablist"
                 >
                     <button
@@ -698,14 +689,32 @@ function saveBooking(): void {
                     >
                         <template #singleLabel="{ option }">
                             <span class="block truncate text-sm text-slate-700">
-                                {{ option.label }} — {{ option.vehicle.plate }}
+                                <span
+                                    class="font-bold tracking-wide text-slate-950"
+                                >
+                                    {{ option.vehicle.plate }}
+                                </span>
+                                · {{ option.vehicle.name }} —
+                                {{ option.customer.name }}
                             </span>
                         </template>
                         <template #option="{ option }">
                             <div
                                 class="flex items-center justify-between gap-3 px-3 py-2.5"
                             >
-                                <div class="min-w-0">
+                                <div class="min-w-0 shrink-0">
+                                    <p
+                                        class="text-base font-bold tracking-wide text-slate-950"
+                                    >
+                                        {{ option.vehicle.plate }}
+                                    </p>
+                                    <p
+                                        class="truncate text-xs font-medium text-slate-600"
+                                    >
+                                        {{ option.vehicle.name }}
+                                    </p>
+                                </div>
+                                <div class="min-w-0 text-right">
                                     <p
                                         class="truncate text-sm font-medium text-slate-800"
                                     >
@@ -713,16 +722,6 @@ function saveBooking(): void {
                                     </p>
                                     <p class="truncate text-xs text-slate-500">
                                         {{ option.customer.phone }}
-                                    </p>
-                                </div>
-                                <div class="shrink-0 text-right">
-                                    <p
-                                        class="text-xs font-semibold text-slate-700"
-                                    >
-                                        {{ option.vehicle.plate }}
-                                    </p>
-                                    <p class="text-[10px] text-slate-400">
-                                        {{ option.vehicle.name }}
                                     </p>
                                 </div>
                             </div>
@@ -806,63 +805,76 @@ function saveBooking(): void {
                     </div>
                 </div>
 
-                <div
-                    v-else-if="customerMode === 'walk-in'"
-                    class="mt-3 space-y-1.5"
-                >
-                    <input
-                        v-model="draft.walkInName"
-                        type="text"
-                        placeholder="Nama pelanggan walk-in"
-                        class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
-                    <p class="text-[11px] text-slate-400">
-                        Booking dicatat tanpa membuat data member.
-                    </p>
-                </div>
-
-                <div v-else class="mt-3 space-y-1.5">
+                <div v-else class="mt-3 space-y-3">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="space-y-1.5">
+                            <label
+                                for="booking-vehicle-plate"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Plat Nomor
+                            </label>
+                            <input
+                                id="booking-vehicle-plate"
+                                v-model="draft.plate"
+                                type="text"
+                                placeholder="Plat nomor"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                        <div class="space-y-1.5">
+                            <label
+                                for="booking-vehicle-type"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Tipe Mobil
+                            </label>
+                            <input
+                                id="booking-vehicle-type"
+                                v-model="draft.vehicle"
+                                type="text"
+                                placeholder="Merk / tipe mobil"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                    </div>
                     <div class="grid gap-2 sm:grid-cols-2">
-                        <input
-                            v-model="draft.walkInName"
-                            type="text"
-                            placeholder="Nama member baru"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        />
-                        <input
-                            v-model="draft.newMemberPhone"
-                            type="tel"
-                            inputmode="tel"
-                            placeholder="Nomor telepon"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        />
+                        <div class="space-y-1.5">
+                            <label
+                                for="booking-customer-name"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Nama
+                            </label>
+                            <input
+                                id="booking-customer-name"
+                                v-model="draft.walkInName"
+                                type="text"
+                                placeholder="Nama pelanggan"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                        <div class="space-y-1.5">
+                            <label
+                                for="booking-customer-phone"
+                                class="block text-xs font-medium text-slate-600"
+                            >
+                                Nomor Telpon
+                            </label>
+                            <input
+                                id="booking-customer-phone"
+                                v-model="draft.customerPhone"
+                                type="tel"
+                                inputmode="tel"
+                                placeholder="Nomor telepon"
+                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
                     </div>
                     <p class="text-[11px] text-slate-400">
-                        Data member dan booking diinput bersamaan.
+                        Data ini hanya dicatat pada booking dan tidak membuat
+                        member baru.
                     </p>
-                </div>
-            </div>
-
-            <!-- Vehicle -->
-            <div v-if="customerMode !== 'existing'">
-                <p
-                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
-                >
-                    Kendaraan
-                </p>
-                <div class="mt-2 grid grid-cols-2 gap-3">
-                    <input
-                        v-model="draft.plate"
-                        type="text"
-                        placeholder="Plat nomor"
-                        class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
-                    />
-                    <input
-                        v-model="draft.vehicle"
-                        type="text"
-                        placeholder="Merk / tipe"
-                        class="rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
                 </div>
             </div>
 
@@ -940,19 +952,12 @@ function saveBooking(): void {
                 </p>
             </div>
 
-            <!-- Summary -->
-            <div class="space-y-2 rounded-2xl bg-slate-50 p-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-[11px] text-slate-500">
-                            {{ draftServices.length }} layanan dipilih
-                        </p>
-                        <p
-                            class="text-lg font-semibold text-slate-900 tabular-nums"
-                        >
-                            {{ formatCurrency(draftTotal) }}
-                        </p>
-                    </div>
+            <!-- Selected services -->
+            <div class="rounded-2xl bg-slate-50 p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <p class="text-[11px] font-medium text-slate-500">
+                        {{ draftServices.length }} layanan dipilih
+                    </p>
                     <p
                         v-if="draftStamps > 0"
                         class="flex items-center gap-1 text-xs font-medium text-emerald-600"
@@ -961,6 +966,21 @@ function saveBooking(): void {
                         +{{ draftStamps }} stempel
                     </p>
                 </div>
+                <ul
+                    v-if="draftServices.length > 0"
+                    class="mt-2 flex flex-wrap gap-2"
+                >
+                    <li
+                        v-for="service in draftServices"
+                        :key="service.id"
+                        class="rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
+                    >
+                        {{ service.name }}
+                    </li>
+                </ul>
+                <p v-else class="mt-1 text-sm text-slate-400">
+                    Belum ada layanan dipilih
+                </p>
             </div>
         </div>
 

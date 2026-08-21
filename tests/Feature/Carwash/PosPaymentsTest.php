@@ -160,7 +160,8 @@ test('the partial payment section sits below settlement and opens the same payme
         ->toContain('partialPaymentTransactions(order).length > 0')
         ->toContain('Pembayaran Sebagian/Booking sebesar')
         ->not->toContain('Pembayaran sudah lunas.')
-        ->toContain('hari ini & mendatang')
+        // The header splits the queue into cars due today and later ones.
+        ->toContain('Booking (${today} Hari Ini - ${bookings.length - today} Mendatang)')
         // Both lists are accordion panels now; the tones live in the component.
         ->toContain('title="Pelunasan"')
         ->toContain('title="Pembayaran Sebagian/Booking"')

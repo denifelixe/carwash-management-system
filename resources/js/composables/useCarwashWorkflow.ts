@@ -46,6 +46,15 @@ function cloneMoneyEntry(entry: CarwashMoneyEntry): CarwashMoneyEntry {
     };
 }
 
+/**
+ * Adds whatever the store has not seen yet.
+ *
+ * A page may hydrate from several lists that overlap — the POS passes the day's
+ * orders alongside the booking queue, and a booking scheduled for that day sits
+ * in both — so every id has to be banked as it is taken, not just the ones the
+ * store already held. Snapshotting the set up front lets a repeat inside
+ * `source` through and the record renders twice.
+ */
 function mergeMissing<T>(
     target: T[],
     source: T[],
@@ -55,9 +64,14 @@ function mergeMissing<T>(
     const knownIds = new Set(target.map(identity));
 
     for (const item of source) {
-        if (!knownIds.has(identity(item))) {
-            target.push(clone(item));
+        const id = identity(item);
+
+        if (knownIds.has(id)) {
+            continue;
         }
+
+        knownIds.add(id);
+        target.push(clone(item));
     }
 }
 
