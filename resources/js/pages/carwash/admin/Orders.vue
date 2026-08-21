@@ -28,6 +28,7 @@ import {
     formatDate,
     formatDateCode,
 } from '@/composables/useCarwashFormat';
+import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import admin from '@/routes/carwash/admin';
 import type {
     CarwashDateFilter,
@@ -85,9 +86,11 @@ const customerTabs: { key: CustomerMode; label: string }[] = [
 ];
 
 /** Local copies used by the member and vehicle picker. */
-const customerList = ref<CarwashCustomer[]>(
-    props.customers.map((customer) => ({ ...customer })),
-);
+const workflow = useCarwashWorkflow();
+workflow.hydrateCustomers(props.customers);
+workflow.hydrateOrders(props.orders);
+
+const customerList = workflow.customers;
 
 /** Built from the local copies so the picker reflects a spent stamp balance. */
 const customerOptions: CustomerOption[] = customerList.value.flatMap(
@@ -100,8 +103,16 @@ const customerOptions: CustomerOption[] = customerList.value.flatMap(
         })),
 );
 
-const orderList = ref<CarwashOrder[]>(
-    props.orders.map((order) => ({ ...order })),
+const orderList = workflow.orders;
+
+/** Orders belonging to the date selected on this page. Other modules may load
+ * future bookings into the shared workflow store, but they must not inflate
+ * this page's daily summary. */
+const scopedOrders = computed<CarwashOrder[]>(() =>
+    orderList.value.filter(
+        (order) =>
+            props.filters.date === '' || order.date === props.filters.date,
+    ),
 );
 
 const search = ref<string>('');
@@ -189,7 +200,7 @@ const visibleCustomerOptions = computed<CustomerOption[]>(() => {
 const filteredOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
-    return orderList.value.filter((order) => {
+    return scopedOrders.value.filter((order) => {
         const matchesStatus =
             statusFilter.value === 'Semua' ||
             (statusFilter.value === 'booking'
@@ -236,7 +247,7 @@ const isStatusDirty = computed<boolean>(
 /** Everything still on the floor: waiting, being washed, or at the cashier. */
 const runningCount = computed<number>(
     () =>
-        orderList.value.filter((order) =>
+        scopedOrders.value.filter((order) =>
             runningStatuses.includes(order.status),
         ).length,
 );
@@ -309,7 +320,7 @@ const statusCards = computed<StatusCard[]>(() =>
         caption: statusCardStyles[status]?.caption ?? '',
         icon: statusCardStyles[status]?.icon ?? ClipboardList,
         tone: statusCardStyles[status]?.tone ?? 'default',
-        count: orderList.value.filter((order) =>
+        count: scopedOrders.value.filter((order) =>
             status === 'booking'
                 ? isAwaitingArrivalBooking(order)
                 : order.status === status,
@@ -319,7 +330,7 @@ const statusCards = computed<StatusCard[]>(() =>
 
 /** Keeps the headline numbers visible while the summary cards stay collapsed. */
 const summaryCaption = computed<string>(
-    () => `${orderList.value.length} order • ${runningCount.value} berjalan`,
+    () => `${scopedOrders.value.length} order • ${runningCount.value} berjalan`,
 );
 
 const draftCustomer = computed<CarwashCustomer | null>(
@@ -454,38 +465,33 @@ function createOrder(): void {
     const customerName =
         customer?.name ?? `${draft.value.walkInName.trim()}${walkInLabel}`;
 
-    orderList.value = [
-        {
-            id: sequence,
-            orderNo,
-            invoice: '—',
-            date: props.filters.today,
-            time: 'Baru saja',
-            bookingDate: null,
-            customerId: customer?.id ?? null,
-            customer: customerName,
-            phone: customer?.phone ?? draft.value.customerPhone.trim(),
-            vehicle: draft.value.vehicle || '—',
-            plate: draft.value.plate.toUpperCase(),
-            items: draftServices.value
-                .map((service) => service.name)
-                .join(', '),
-            serviceIds: [...draft.value.serviceIds],
-            total: draftTotal.value,
-            discount: 0,
-            reward: '—',
-            paidAmount: 0,
-            payment: '—',
-            paymentStatus: 'belum bayar',
-            status: 'menunggu',
-            stampsEarned: draftStamps.value,
-            crew: 'Menunggu crew',
-            bay: '—',
-            source: 'walk-in',
-            transactions: [],
-        },
-        ...orderList.value,
-    ];
+    workflow.addOrder({
+        id: sequence,
+        orderNo,
+        invoice: '—',
+        date: props.filters.today,
+        time: 'Baru saja',
+        bookingDate: null,
+        customerId: customer?.id ?? null,
+        customer: customerName,
+        phone: customer?.phone ?? draft.value.customerPhone.trim(),
+        vehicle: draft.value.vehicle || '—',
+        plate: draft.value.plate.toUpperCase(),
+        items: draftServices.value.map((service) => service.name).join(', '),
+        serviceIds: [...draft.value.serviceIds],
+        total: draftTotal.value,
+        discount: 0,
+        reward: '—',
+        paidAmount: 0,
+        payment: '—',
+        paymentStatus: 'belum bayar',
+        status: 'menunggu',
+        stampsEarned: draftStamps.value,
+        crew: 'Menunggu crew',
+        bay: '—',
+        source: 'walk-in',
+        transactions: [],
+    });
 
     resetDraft();
     isCreateOpen.value = false;
@@ -516,7 +522,7 @@ function applyDate(date: string): void {
         >
             <StatCard
                 label="Total Order"
-                :value="String(orderList.length)"
+                :value="String(scopedOrders.length)"
                 caption="seluruh order hari ini"
                 :icon="ClipboardList"
                 interactive

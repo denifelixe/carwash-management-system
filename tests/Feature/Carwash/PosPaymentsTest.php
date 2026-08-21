@@ -161,12 +161,19 @@ test('the partial payment section sits below settlement and opens the same payme
         ->toContain('Pembayaran Sebagian/Booking sebesar')
         ->not->toContain('Pembayaran sudah lunas.')
         ->toContain('hari ini & mendatang')
-        ->toContain('border-violet-200/80 bg-violet-50/30')
-        ->toContain('border-orange-200/80 bg-amber-50/40')
-        ->and(mb_strpos($posPage, 'border-violet-200/80 bg-violet-50/30'))
+        // Both lists are accordion panels now; the tones live in the component.
+        ->toContain('title="Pelunasan"')
+        ->toContain('title="Pembayaran Sebagian/Booking"')
+        ->and(mb_strpos($posPage, 'title="Pelunasan"'))
         ->toBeLessThan(
-            mb_strpos($posPage, 'border-orange-200/80 bg-amber-50/40'),
+            mb_strpos($posPage, 'title="Pembayaran Sebagian/Booking"'),
         );
+
+    expect(file_get_contents(
+        resource_path('js/components/carwash/AccordionSection.vue'),
+    ))
+        ->toContain('border-violet-200/80 bg-violet-50/30')
+        ->toContain('border-orange-200/80 bg-amber-50/40');
 });
 
 test('cashier bookings use today and upcoming schedule statuses', function () {
@@ -212,8 +219,9 @@ test('order cards lead with the plate and classify the customer source', functio
         ->toContain('{{ orderTypeLabel(order) }}')
         ->and(substr_count($posPage, 'No. order {{ order.orderNo }}'))
         ->toBe(2)
-        ->and(substr_count($posPage, 'mt-1 text-base font-bold tracking-wide text-slate-950'))
-        ->toBe(2);
+        // Settlement, booking, and the settled list all lead with the plate.
+        ->and(substr_count($posPage, 'mt-1 text-xl font-bold tracking-wide text-slate-950'))
+        ->toBe(3);
 });
 
 test('the cashier summary only shows settlement balance and received payments', function () {
@@ -397,8 +405,9 @@ test('the POS shows one lifecycle chip and describes an existing partial payment
         resource_path('js/pages/carwash/admin/Pos.vue'),
     );
 
+    /* The heading now belongs to the accordion panel wrapping the list. */
     expect(preg_match(
-        '/<h3 class="text-sm font-semibold text-violet-950">\s+Pelunasan\s+<\/h3>/',
+        '/<AccordionSection\s+title="Pelunasan"/',
         $posPage,
     ))->toBe(1);
 

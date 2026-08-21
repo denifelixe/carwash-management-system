@@ -20,6 +20,7 @@ import {
     formatDate,
     formatDateCode,
 } from '@/composables/useCarwashFormat';
+import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import admin from '@/routes/carwash/admin';
 import type {
     CarwashDateFilter,
@@ -27,6 +28,7 @@ import type {
     CarwashCashSummary,
     CarwashMoneyEntry,
     CarwashOrder,
+    CarwashPersona,
     CarwashShift,
     CarwashTransaction,
 } from '@/types/carwash';
@@ -42,6 +44,7 @@ const props = defineProps<{
     paymentMethods: string[];
     shifts: CarwashShift[];
     orders: CarwashOrder[];
+    persona: CarwashPersona;
 }>();
 
 type Ledger = 'in' | 'out';
@@ -56,12 +59,14 @@ const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedOrder = ref<CarwashOrder | null>(null);
 const highlightedTransactionId = ref<string | null>(null);
 
-const incomeList = ref<CarwashMoneyEntry[]>(
-    props.moneyIn.map((entry) => ({ ...entry })),
-);
-const expenseList = ref<CarwashMoneyEntry[]>(
-    props.moneyOut.map((entry) => ({ ...entry })),
-);
+const workflow = useCarwashWorkflow();
+workflow.hydrateOrders(props.orders);
+workflow.hydrateMoneyIn(props.moneyIn);
+workflow.hydrateMoneyOut(props.moneyOut);
+
+const incomeList = workflow.moneyIn;
+const expenseList = workflow.moneyOut;
+const orderList = workflow.orders;
 
 const draft = ref({
     category: props.incomeCategories[0],
@@ -91,17 +96,31 @@ function isInActiveShift(entry: CarwashMoneyEntry): boolean {
         return true;
     }
 
-    const isMorning = entry.time < '15.00';
+    if (entry.shift) {
+        return entry.shift
+            .toLocaleLowerCase('id-ID')
+            .includes(activeShift.value);
+    }
 
-    return activeShift.value === 'pagi' ? isMorning : !isMorning;
+    const inferredShift = entry.time < '15.00' ? 'pagi' : 'sore';
+
+    return activeShift.value === inferredShift;
 }
 
 const scopedIncome = computed<CarwashMoneyEntry[]>(() =>
-    incomeList.value.filter(isInActiveShift),
+    incomeList.value.filter(
+        (entry) =>
+            (props.filters.date === '' || entry.date === props.filters.date) &&
+            isInActiveShift(entry),
+    ),
 );
 
 const scopedExpenses = computed<CarwashMoneyEntry[]>(() =>
-    expenseList.value.filter(isInActiveShift),
+    expenseList.value.filter(
+        (entry) =>
+            (props.filters.date === '' || entry.date === props.filters.date) &&
+            isInActiveShift(entry),
+    ),
 );
 
 const activeEntries = computed<CarwashMoneyEntry[]>(() =>
@@ -217,7 +236,7 @@ function findRelatedOrder(entry: CarwashMoneyEntry): CarwashOrder | null {
         return null;
     }
 
-    return props.orders.find((order) => order.id === entry.orderId) ?? null;
+    return orderList.value.find((order) => order.id === entry.orderId) ?? null;
 }
 
 function transactionIdFromEntry(entry: CarwashMoneyEntry): string | null {
@@ -322,16 +341,17 @@ function saveEntry(): void {
         channelBreakdown: [
             { label: draft.value.method, amount: draft.value.amount },
         ],
-        recordedBy: 'Sesi demo',
+        recordedBy: props.persona.name,
+        shift: props.persona.shift,
         attachment: isIncome
             ? null
             : { name: draft.value.attachmentName, size: '—' },
     };
 
     if (isIncome) {
-        incomeList.value = [entry, ...incomeList.value];
+        workflow.addMoneyIn(entry);
     } else {
-        expenseList.value = [entry, ...expenseList.value];
+        workflow.addMoneyOut(entry);
     }
 
     isFormOpen.value = false;
@@ -643,6 +663,12 @@ function applyDate(date: string): void {
                             </td>
                             <td class="px-5 py-3.5 text-slate-600">
                                 {{ entry.recordedBy }}
+                                <p
+                                    v-if="entry.shift"
+                                    class="mt-0.5 text-[11px] text-slate-400"
+                                >
+                                    {{ entry.shift }}
+                                </p>
                             </td>
                             <td
                                 v-if="activeLedger === 'out'"
@@ -751,6 +777,9 @@ function applyDate(date: string): void {
                     </dt>
                     <dd class="mt-1 text-xs font-medium text-slate-700">
                         {{ selectedTransactionEntry.recordedBy }}
+                        <span v-if="selectedTransactionEntry.shift">
+                            · {{ selectedTransactionEntry.shift }}
+                        </span>
                     </dd>
                 </div>
                 <div class="sm:col-span-2">

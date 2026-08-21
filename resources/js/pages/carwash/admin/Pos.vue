@@ -14,6 +14,7 @@ import {
     Wallet,
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
+import AccordionSection from '@/components/carwash/AccordionSection.vue';
 import DataToolbar from '@/components/carwash/DataToolbar.vue';
 import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import EmptyState from '@/components/carwash/EmptyState.vue';
@@ -25,12 +26,16 @@ import {
     formatDate,
     formatNumber,
 } from '@/composables/useCarwashFormat';
+import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { openPosReceiptWindow, paymentChannelLabel } from '@/lib/posReceipt';
+import type { PosPaymentBreakdown, PosReceipt } from '@/lib/posReceipt';
 import admin from '@/routes/carwash/admin';
 import type {
     CarwashDateFilter,
     CarwashBrand,
     CarwashCustomer,
     CarwashOrder,
+    CarwashPersona,
     CarwashReward,
     CarwashService,
     CarwashTransaction,
@@ -46,38 +51,8 @@ const props = defineProps<{
     customers: CarwashCustomer[];
     rewards: CarwashReward[];
     paymentMethods: string[];
+    persona: CarwashPersona;
 }>();
-
-interface PosReceipt {
-    orderNo: string;
-    invoice: string;
-    customer: string;
-    items: string;
-    subtotal: number;
-    rewardDiscount: number;
-    cashierDiscount: number;
-    total: number;
-    tenderedTotal: number;
-    change: number;
-    paidTotal: number;
-    dueAfter: number;
-    isSettled: boolean;
-    payment: string;
-    paymentBreakdown: PosPaymentBreakdown[];
-    stampsEarned: number;
-    stampsSpent: number;
-    stampsAfter: number | null;
-    /** Redeemed by the cashier, shown here so the customer sees it on the slip. */
-    reward: string;
-}
-
-interface PosPaymentBreakdown {
-    method: string;
-    amount: number;
-    provider: string;
-    /** EDC trace, approval, or transfer reference the cashier keys in. */
-    reference: string;
-}
 
 interface PaymentChannelRow {
     id: number;
@@ -129,6 +104,7 @@ const eMoneyOptions = [
 
 const search = ref<string>('');
 const partialPaymentSearch = ref<string>('');
+const completedSearch = ref<string>('');
 const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
 const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
 const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
@@ -154,37 +130,26 @@ const paymentReferences = ref<Record<string, string>>(
     Object.fromEntries(props.paymentMethods.map((method) => [method, ''])),
 );
 const receipt = ref<PosReceipt | null>(null);
+/** Set when the browser refuses the slip window so the cashier can retry. */
+const isReceiptWindowBlocked = ref<boolean>(false);
 const isPaymentRecapOpen = ref<boolean>(false);
 
-const settlementOrderIds = new Set(props.orders.map((order) => order.id));
 const partialPaymentBookingIds = new Set(
     props.partialPaymentBookings.map((order) => order.id),
 );
 
-/** Local copies so taking a payment can mutate orders and stamps without a backend. */
-const orderList = ref<CarwashOrder[]>(
-    Array.from(
-        new Map(
-            [...props.dailyOrders, ...props.partialPaymentBookings].map(
-                (order) => [
-                    order.id,
-                    {
-                        ...order,
-                        transactions: order.transactions.map((transaction) => ({
-                            ...transaction,
-                        })),
-                    },
-                ],
-            ),
-        ).values(),
-    ),
-);
-const customerList = ref<CarwashCustomer[]>(
-    props.customers.map((customer) => ({ ...customer })),
-);
+const workflow = useCarwashWorkflow();
+workflow.hydrateOrders([...props.dailyOrders, ...props.partialPaymentBookings]);
+workflow.hydrateCustomers(props.customers);
+
+const orderList = workflow.orders;
+const customerList = workflow.customers;
 
 const settlementOrderList = computed<CarwashOrder[]>(() =>
-    orderList.value.filter((order) => settlementOrderIds.has(order.id)),
+    orderList.value.filter(
+        (order) =>
+            props.filters.date === '' || order.date === props.filters.date,
+    ),
 );
 
 const outstandingTotal = computed<number>(() =>
@@ -248,6 +213,10 @@ function isTransactionInShift(
 ): boolean {
     if (shift === 'total') {
         return true;
+    }
+
+    if (transaction.shift) {
+        return transaction.shift.toLocaleLowerCase('id-ID').includes(shift);
     }
 
     const [hours = 0, minutes = 0] = transaction.time.split(/[.:]/).map(Number);
@@ -553,6 +522,47 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
 
         return isReadyForSettlement && matchesQuery;
     });
+});
+
+const receiptHeadline = computed<string>(() => {
+    if (!receipt.value) {
+        return '';
+    }
+
+    if (receipt.value.isReprint) {
+        return 'Salinan struk';
+    }
+
+    return receipt.value.isSettled
+        ? 'Pembayaran berhasil'
+        : 'Pembayaran sebagian diterima';
+});
+
+/**
+ * Settled orders for the filtered day, newest first. The cashier only comes
+ * here to reprint, so the most recent settlement sits at the top.
+ */
+const visibleCompletedOrders = computed<CarwashOrder[]>(() => {
+    const query = completedSearch.value.trim().toLowerCase();
+
+    return settlementOrderList.value
+        .filter((order) => {
+            const isCompleted =
+                order.status === 'selesai' && order.paymentStatus === 'lunas';
+            const matchesQuery =
+                query === '' ||
+                order.orderNo.toLowerCase().includes(query) ||
+                order.invoice.toLowerCase().includes(query) ||
+                order.customer.toLowerCase().includes(query) ||
+                order.plate.toLowerCase().includes(query);
+
+            return isCompleted && matchesQuery;
+        })
+        .sort(
+            (first, second) =>
+                second.date.localeCompare(first.date) ||
+                second.orderNo.localeCompare(first.orderNo),
+        );
 });
 
 const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
@@ -907,12 +917,6 @@ function paymentProviderLabel(method: string): string {
     return method === 'E-Money' ? 'Kartu' : 'Bank';
 }
 
-function paymentChannelLabel(payment: PosPaymentBreakdown): string {
-    return payment.provider === ''
-        ? payment.method
-        : `${payment.method} · ${payment.provider}`;
-}
-
 function transactionChannelsLabel(transaction: CarwashTransaction): string {
     return transaction.channelBreakdown
         .map((channel) => `${channel.label} ${formatCurrency(channel.amount)}`)
@@ -945,7 +949,18 @@ function paymentTransactionReference(
 }
 
 function paymentTransactionRecorder(transaction: CarwashTransaction): string {
-    return transaction.time >= '15.00' ? 'Rina Marlina' : 'Yuni Astuti';
+    return (
+        transaction.recordedBy ??
+        (transaction.time >= '15.00' ? 'Rina Marlina' : 'Yuni Astuti')
+    );
+}
+
+/** Seeded payments predate shift tracking, so the clock stands in for it. */
+function paymentTransactionShift(transaction: CarwashTransaction): string {
+    return (
+        transaction.shift ??
+        (transaction.time >= '15.00' ? 'Shift Sore' : 'Shift Pagi')
+    );
 }
 
 function paymentHistoryTypeLabel(transaction: CarwashTransaction): string {
@@ -979,6 +994,29 @@ function submitPayment(): void {
     const manualDiscount = cashierDiscount.value;
     const discount = totalDiscount.value;
     const subtotal = order.total;
+    const previouslyPaid = order.paidAmount;
+    /*
+     * Settling the order drives `dueAmount` to zero, which collapses
+     * `paymentTotal` and would report the whole tender as change. Both figures
+     * are therefore read before the order is touched.
+     */
+    const tendered = tenderedTotal.value;
+    const change = changeAmount.value;
+    /* Discounts an earlier payment already took off the printed service list. */
+    const priorDiscount = Math.max(orderServiceTotal.value - subtotal, 0);
+    const receiptLines = orderServices.value.map((service) => ({
+        name: service.name,
+        price: service.price,
+    }));
+    /* Snapshotted before this payment joins the list. */
+    const paymentHistory = order.transactions.map((entry) => ({
+        date: entry.date,
+        time: entry.time,
+        type: paymentHistoryTypeLabel(entry),
+        channels: transactionChannelsLabel(entry),
+        cashier: paymentTransactionRecorder(entry),
+        amount: entry.amount,
+    }));
     const breakdown = paymentBreakdown.value.map((payment) => ({
         ...payment,
     }));
@@ -1012,11 +1050,18 @@ function submitPayment(): void {
     const isFullyPaid = order.paidAmount >= order.total;
     const completesOrder = isFullyPaid && paymentIntent.value === 'settlement';
 
-    order.transactions.push({
+    const transactionTime = new Intl.DateTimeFormat('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    })
+        .format(new Date())
+        .replace(':', '.');
+    const transaction: CarwashTransaction = {
         id: `${order.orderNo}-TRX-${order.transactions.length + 1}`,
         orderId: order.id,
         date: props.filters.today,
-        time: 'Baru saja',
+        time: transactionTime,
         type: completesOrder ? 'Pembayaran Lunas' : 'Pembayaran Sebagian',
         amount,
         channels: usedPaymentMethods.join(' + ') || fallbackChannel,
@@ -1024,6 +1069,33 @@ function submitPayment(): void {
             transactionChannelBreakdown.length > 0
                 ? transactionChannelBreakdown
                 : [{ label: fallbackChannel, amount }],
+        recordedBy: props.persona.name,
+        shift: props.persona.shift,
+    };
+
+    order.transactions.push(transaction);
+
+    workflow.addMoneyIn({
+        id: `pos-${transaction.id}`,
+        ref: paymentTransactionReference(transaction, order),
+        date: transaction.date,
+        time: transaction.time,
+        category:
+            transaction.type === 'Pembayaran Sebagian'
+                ? 'Pembayaran Sebagian/Booking Order'
+                : 'Pembayaran Sisa/Lunas (Order Selesai)',
+        description: `${transaction.type} ${order.orderNo}`,
+        amount: transaction.amount,
+        method: transaction.channels,
+        channelBreakdown: transaction.channelBreakdown,
+        recordedBy: props.persona.name,
+        shift: props.persona.shift,
+        source: 'pos',
+        orderId: order.id,
+        orderNo: order.orderNo,
+        customer: order.customer,
+        vehicle: order.vehicle,
+        plate: order.plate,
     });
 
     order.paymentStatus = isFullyPaid ? 'lunas' : 'sebagian';
@@ -1047,17 +1119,29 @@ function submitPayment(): void {
     receipt.value = {
         orderNo: order.orderNo,
         invoice: order.invoice,
+        reference: paymentTransactionReference(transaction, order),
+        date: transaction.date,
+        time: transaction.time,
+        cashier: transaction.recordedBy ?? props.persona.name,
+        shift: transaction.shift ?? props.persona.shift,
         customer: order.customer,
+        vehicle: order.vehicle,
+        plate: order.plate,
         items: order.items,
+        lines: receiptLines,
         subtotal,
+        priorDiscount,
         rewardDiscount: redeemedRewardDiscount,
         cashierDiscount: manualDiscount,
         total: order.total,
-        tenderedTotal: tenderedTotal.value,
-        change: changeAmount.value,
+        tenderedTotal: tendered,
+        change,
+        history: paymentHistory,
+        previouslyPaid,
         paidTotal: order.paidAmount,
         dueAfter: Math.max(order.total - order.paidAmount, 0),
         isSettled: completesOrder,
+        isReprint: false,
         payment: order.payment,
         paymentBreakdown: breakdown,
         stampsEarned: completesOrder ? order.stampsEarned : 0,
@@ -1066,7 +1150,141 @@ function submitPayment(): void {
         reward: order.reward,
     };
 
+    /*
+     * Still inside the cashier's click, so the browser lets the slip window
+     * through instead of treating it as an unsolicited popup.
+     */
+    printReceipt();
+
     resetPanel();
+}
+
+/**
+ * Hands a slip to its own window, sized to the 78mm roll. A blocked window is
+ * not fatal, so it is flagged for the dialog the cashier is looking at.
+ */
+function openReceipt(slip: PosReceipt): void {
+    isReceiptWindowBlocked.value =
+        openPosReceiptWindow(slip, props.brand) === null;
+}
+
+/** Reopens the slip behind the confirmation the cashier still has on screen. */
+function printReceipt(): void {
+    if (!receipt.value) {
+        return;
+    }
+
+    openReceipt(receipt.value);
+}
+
+function closeReceipt(): void {
+    receipt.value = null;
+    isReceiptWindowBlocked.value = false;
+}
+
+/**
+ * Rebuilds the slip one payment produced, from what the order still carries.
+ *
+ * The chosen payment takes the place of the settlement and everything before
+ * it becomes history, which is how the original slip was laid out. Passing
+ * `null` picks the order's last payment. Figures the order never kept are left
+ * out rather than guessed: the EDC references, the cash actually tendered, and
+ * the member's stamp balance at the time all fall away, and a single discount
+ * line stands in for the reward-versus-cashier split. The bill printed is the
+ * order's total as it stands now, which is why every copy says SALINAN.
+ */
+function transactionReceipt(
+    order: CarwashOrder,
+    transaction: CarwashTransaction | null,
+): PosReceipt {
+    const transactions = order.transactions;
+    const found = transaction
+        ? transactions.findIndex((entry) => entry.id === transaction.id)
+        : -1;
+    const index = found === -1 ? transactions.length - 1 : found;
+    const settlement = transactions[index] ?? null;
+    const history = index > 0 ? transactions.slice(0, index) : [];
+    const previouslyPaid = history.reduce(
+        (total, entry) => total + entry.amount,
+        0,
+    );
+    const paidTotal = previouslyPaid + (settlement?.amount ?? 0);
+    const services = props.services.filter((service) =>
+        order.serviceIds.includes(service.id),
+    );
+
+    return {
+        orderNo: order.orderNo,
+        invoice: order.invoice,
+        reference: settlement
+            ? paymentTransactionReference(settlement, order)
+            : '—',
+        date: settlement?.date ?? order.date,
+        time: settlement?.time ?? order.time,
+        cashier: settlement ? paymentTransactionRecorder(settlement) : '—',
+        shift: settlement ? paymentTransactionShift(settlement) : '—',
+        customer: order.customer,
+        vehicle: order.vehicle,
+        plate: order.plate,
+        items: order.items,
+        lines: services.map((service) => ({
+            name: service.name,
+            price: service.price,
+        })),
+        subtotal: order.total,
+        priorDiscount: order.discount,
+        rewardDiscount: 0,
+        cashierDiscount: 0,
+        total: order.total,
+        tenderedTotal: settlement?.amount ?? order.paidAmount,
+        change: 0,
+        history: history.map((entry) => ({
+            date: entry.date,
+            time: entry.time,
+            type: paymentHistoryTypeLabel(entry),
+            channels: transactionChannelsLabel(entry),
+            cashier: paymentTransactionRecorder(entry),
+            amount: entry.amount,
+        })),
+        previouslyPaid,
+        paidTotal,
+        dueAfter: Math.max(order.total - paidTotal, 0),
+        /* Only the payment that closed the order prints as a settled slip. */
+        isSettled: settlement?.type === 'Pembayaran Lunas',
+        isReprint: true,
+        payment: order.payment,
+        paymentBreakdown:
+            settlement?.channelBreakdown.map((channel) => ({
+                method: channel.label,
+                amount: channel.amount,
+                provider: '',
+                reference: '',
+            })) ?? [],
+        stampsEarned: order.stampsEarned,
+        stampsSpent: 0,
+        /* The balance printed then is not the balance now, so it is omitted. */
+        stampsAfter: null,
+        reward: order.reward,
+    };
+}
+
+/**
+ * Reprints one payment from a transaction history. The cashier is already
+ * inside a dialog here, so the slip goes straight to its own window rather
+ * than stacking the confirmation on top.
+ */
+function reprintTransaction(
+    order: CarwashOrder,
+    transaction: CarwashTransaction,
+): void {
+    openReceipt(transactionReceipt(order, transaction));
+}
+
+/** Reprints a settled order from its last payment, with the recap on screen. */
+function reprintReceipt(order: CarwashOrder): void {
+    receipt.value = transactionReceipt(order, null);
+
+    printReceipt();
 }
 
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
@@ -1757,17 +1975,45 @@ function applyDate(date: string): void {
                                                         }}
                                                     </p>
                                                 </div>
-                                                <p
-                                                    class="shrink-0 text-sm font-semibold text-emerald-700 tabular-nums"
+                                                <div
+                                                    class="flex shrink-0 items-center gap-2"
                                                 >
-                                                    {{
-                                                        formatCurrency(
-                                                            transaction.amount,
-                                                        )
-                                                    }}
-                                                </p>
+                                                    <p
+                                                        class="text-sm font-semibold text-emerald-700 tabular-nums"
+                                                    >
+                                                        {{
+                                                            formatCurrency(
+                                                                transaction.amount,
+                                                            )
+                                                        }}
+                                                    </p>
+                                                    <button
+                                                        type="button"
+                                                        class="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                                        title="Cetak ulang struk pembayaran ini"
+                                                        @click="
+                                                            reprintTransaction(
+                                                                detail.order,
+                                                                transaction,
+                                                            )
+                                                        "
+                                                    >
+                                                        <Printer
+                                                            class="h-3.5 w-3.5"
+                                                        />
+                                                        Struk
+                                                    </button>
+                                                </div>
                                             </li>
                                         </ul>
+                                        <p
+                                            v-if="isReceiptWindowBlocked"
+                                            class="mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 ring-1 ring-rose-100"
+                                        >
+                                            Jendela struk diblokir browser.
+                                            Izinkan pop-up untuk situs ini, lalu
+                                            coba lagi.
+                                        </p>
                                     </div>
                                     <template #footer>
                                         <button
@@ -1991,31 +2237,19 @@ function applyDate(date: string): void {
 
         <div class="space-y-4">
             <!-- Order picker -->
-            <section
-                class="rounded-2xl border border-violet-200/80 bg-violet-50/30 p-5 shadow-sm"
+            <AccordionSection
+                title="Pelunasan"
+                :caption="`${visibleOrders.length} order ditampilkan — ketuk untuk memproses pembayaran`"
+                :icon="Wallet"
+                tone="violet"
+                default-open
             >
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center gap-3">
-                        <span
-                            class="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"
-                        >
-                            <Wallet class="h-4.5 w-4.5" />
-                        </span>
-                        <div>
-                            <h3 class="text-sm font-semibold text-violet-950">
-                                Pelunasan
-                            </h3>
-                            <p class="mt-0.5 text-xs text-violet-700/70">
-                                {{ visibleOrders.length }} order ditampilkan —
-                                ketuk untuk memproses pembayaran
-                            </p>
-                        </div>
-                    </div>
+                <template #toolbar>
                     <DataToolbar
                         v-model:search="search"
                         placeholder="Cari order / plat"
                     />
-                </div>
+                </template>
 
                 <ul v-if="visibleOrders.length > 0" class="mt-4 space-y-2.5">
                     <li v-for="order in visibleOrders" :key="order.id">
@@ -2039,7 +2273,7 @@ function applyDate(date: string): void {
                                         No. order {{ order.orderNo }}
                                     </p>
                                     <p
-                                        class="mt-1 text-base font-bold tracking-wide text-slate-950"
+                                        class="mt-1 text-xl font-bold tracking-wide text-slate-950"
                                     >
                                         {{ order.plate }}
                                     </p>
@@ -2126,34 +2360,21 @@ function applyDate(date: string): void {
                     title="Tidak ada order untuk pembayaran sisa/lunas"
                     caption="Belum ada order berstatus Pembayaran Sisa/Lunas (Order Selesai) atau pencarian tidak cocok."
                 />
-            </section>
+            </AccordionSection>
 
             <!-- Booking payments before arrival -->
-            <section
-                class="rounded-2xl border border-orange-200/80 bg-amber-50/40 p-5 shadow-sm"
+            <AccordionSection
+                title="Pembayaran Sebagian/Booking"
+                :caption="`${visiblePartialPaymentBookings.length} booking hari ini & mendatang`"
+                :icon="CreditCard"
+                tone="orange"
             >
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div class="flex items-center gap-3">
-                        <span
-                            class="flex h-9 w-9 items-center justify-center rounded-xl bg-orange-100 text-orange-700"
-                        >
-                            <CreditCard class="h-4.5 w-4.5" />
-                        </span>
-                        <div>
-                            <h3 class="text-sm font-semibold text-orange-950">
-                                Pembayaran Sebagian/Booking
-                            </h3>
-                            <p class="mt-0.5 text-xs text-orange-700/70">
-                                {{ visiblePartialPaymentBookings.length }}
-                                booking hari ini & mendatang
-                            </p>
-                        </div>
-                    </div>
+                <template #toolbar>
                     <DataToolbar
                         v-model:search="partialPaymentSearch"
                         placeholder="Cari booking / plat"
                     />
-                </div>
+                </template>
 
                 <ul
                     v-if="visiblePartialPaymentBookings.length > 0"
@@ -2183,7 +2404,7 @@ function applyDate(date: string): void {
                                         No. order {{ order.orderNo }}
                                     </p>
                                     <p
-                                        class="mt-1 text-base font-bold tracking-wide text-slate-950"
+                                        class="mt-1 text-xl font-bold tracking-wide text-slate-950"
                                     >
                                         {{ order.plate }}
                                     </p>
@@ -2267,7 +2488,99 @@ function applyDate(date: string): void {
                     title="Tidak ada booking untuk Pembayaran Sebagian/Booking"
                     caption="Booking hari ini atau mendatang akan tampil di sini."
                 />
-            </section>
+            </AccordionSection>
+
+            <!-- Settled orders, kept around so the slip can be reprinted -->
+            <AccordionSection
+                title="Order Selesai"
+                :caption="`${visibleCompletedOrders.length} order lunas — cetak ulang struk di sini`"
+                :icon="CircleCheck"
+                tone="emerald"
+            >
+                <template #toolbar>
+                    <DataToolbar
+                        v-model:search="completedSearch"
+                        placeholder="Cari order / invoice / plat"
+                    />
+                </template>
+
+                <ul
+                    v-if="visibleCompletedOrders.length > 0"
+                    class="mt-4 space-y-2.5"
+                >
+                    <li
+                        v-for="order in visibleCompletedOrders"
+                        :key="order.id"
+                        class="rounded-2xl border border-emerald-200 bg-white p-4"
+                    >
+                        <div
+                            class="flex flex-wrap items-start justify-between gap-2"
+                        >
+                            <div class="min-w-0">
+                                <p
+                                    class="text-[11px] font-semibold tracking-wide text-emerald-700"
+                                >
+                                    {{ order.invoice }} · {{ order.orderNo }}
+                                </p>
+                                <p
+                                    class="mt-1 text-xl font-bold tracking-wide text-slate-950"
+                                >
+                                    {{ order.plate }}
+                                </p>
+                                <p
+                                    class="mt-0.5 text-sm font-medium text-slate-700"
+                                >
+                                    {{ order.vehicle }}
+                                </p>
+                            </div>
+                            <StatusPill :status="order.status" />
+                        </div>
+
+                        <p class="mt-2 text-[11px] text-slate-500">
+                            {{ formatDate(order.date) }} •
+                            {{ orderTypeLabel(order) }} •
+                            {{ order.transactions.length }} pembayaran
+                        </p>
+                        <p
+                            class="mt-3 truncate text-sm font-medium text-slate-900"
+                        >
+                            {{ order.customer }}
+                        </p>
+                        <p class="mt-1 line-clamp-1 text-xs text-slate-500">
+                            {{ order.items }}
+                        </p>
+
+                        <div
+                            class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-dashed border-slate-200 pt-2.5"
+                        >
+                            <span class="text-[11px] text-slate-500">
+                                Total
+                                <span
+                                    class="font-semibold text-slate-900 tabular-nums"
+                                >
+                                    {{ formatCurrency(order.total) }}
+                                </span>
+                                · {{ order.payment }}
+                            </span>
+                            <button
+                                type="button"
+                                class="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                @click="reprintReceipt(order)"
+                            >
+                                <Printer class="h-3.5 w-3.5" />
+                                Cetak ulang struk
+                            </button>
+                        </div>
+                    </li>
+                </ul>
+
+                <EmptyState
+                    v-else
+                    :icon="ClipboardList"
+                    title="Belum ada order selesai"
+                    caption="Order yang sudah lunas akan tampil di sini untuk cetak ulang struk."
+                />
+            </AccordionSection>
 
             <!-- Payment modal -->
             <ModalDialog
@@ -2403,15 +2716,42 @@ function applyDate(date: string): void {
                                             }}
                                         </p>
                                     </div>
-                                    <p
-                                        class="shrink-0 text-sm font-semibold text-emerald-700 tabular-nums"
+                                    <div
+                                        class="flex shrink-0 items-center gap-2"
                                     >
-                                        −{{
-                                            formatCurrency(transaction.amount)
-                                        }}
-                                    </p>
+                                        <p
+                                            class="text-sm font-semibold text-emerald-700 tabular-nums"
+                                        >
+                                            −{{
+                                                formatCurrency(
+                                                    transaction.amount,
+                                                )
+                                            }}
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="flex items-center gap-1 rounded-lg border border-slate-200 px-2 py-1.5 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                                            title="Cetak ulang struk pembayaran ini"
+                                            @click="
+                                                reprintTransaction(
+                                                    selectedOrder,
+                                                    transaction,
+                                                )
+                                            "
+                                        >
+                                            <Printer class="h-3.5 w-3.5" />
+                                            Struk
+                                        </button>
+                                    </div>
                                 </li>
                             </ul>
+                            <p
+                                v-if="isReceiptWindowBlocked"
+                                class="mx-6 mb-4 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-medium text-rose-700 ring-1 ring-rose-100"
+                            >
+                                Jendela struk diblokir browser. Izinkan pop-up
+                                untuk situs ini, lalu coba lagi.
+                            </p>
                         </details>
 
                         <details
@@ -2894,7 +3234,7 @@ function applyDate(date: string): void {
     </div>
 
     <!-- Receipt -->
-    <ModalDialog :open="receipt !== null" size="sm" @close="receipt = null">
+    <ModalDialog :open="receipt !== null" size="sm" @close="closeReceipt">
         <div v-if="receipt">
             <div
                 class="-m-6 mb-4 px-6 py-7 text-center text-white"
@@ -2907,15 +3247,15 @@ function applyDate(date: string): void {
                 <div
                     class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-white/20"
                 >
-                    <CircleCheck v-if="receipt.isSettled" class="h-8 w-8" />
+                    <Printer v-if="receipt.isReprint" class="h-8 w-8" />
+                    <CircleCheck
+                        v-else-if="receipt.isSettled"
+                        class="h-8 w-8"
+                    />
                     <Clock v-else class="h-8 w-8" />
                 </div>
                 <p class="mt-3 text-lg font-semibold">
-                    {{
-                        receipt.isSettled
-                            ? 'Pembayaran berhasil'
-                            : 'Pembayaran sebagian diterima'
-                    }}
+                    {{ receiptHeadline }}
                 </p>
                 <p class="text-sm text-white/85">
                     {{ receipt.isSettled ? receipt.invoice : receipt.orderNo }}
@@ -3075,6 +3415,14 @@ function applyDate(date: string): void {
                         </span>
                     </p>
                 </div>
+
+                <p
+                    v-if="isReceiptWindowBlocked"
+                    class="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-700 ring-1 ring-rose-100"
+                >
+                    Jendela struk diblokir browser. Izinkan pop-up untuk situs
+                    ini, lalu tekan “Buka struk”.
+                </p>
             </div>
         </div>
 
@@ -3082,15 +3430,15 @@ function applyDate(date: string): void {
             <button
                 type="button"
                 class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="receipt = null"
+                @click="printReceipt"
             >
                 <Printer class="h-4 w-4" />
-                Cetak struk
+                Buka struk
             </button>
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                @click="receipt = null"
+                @click="closeReceipt"
             >
                 Selesai
             </button>

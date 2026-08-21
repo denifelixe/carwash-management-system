@@ -1,0 +1,130 @@
+import { ref } from 'vue';
+import type {
+    CarwashCustomer,
+    CarwashMoneyEntry,
+    CarwashOrder,
+} from '@/types/carwash';
+
+/**
+ * Demo-only workflow state. Module state survives Inertia page swaps, while a
+ * full browser reload evaluates this file again and restores the server data.
+ */
+const orders = ref<CarwashOrder[]>([]);
+const customers = ref<CarwashCustomer[]>([]);
+const moneyIn = ref<CarwashMoneyEntry[]>([]);
+const moneyOut = ref<CarwashMoneyEntry[]>([]);
+
+function cloneOrder(order: CarwashOrder): CarwashOrder {
+    return {
+        ...order,
+        serviceIds: [...order.serviceIds],
+        transactions: order.transactions.map((transaction) => ({
+            ...transaction,
+            channelBreakdown: transaction.channelBreakdown.map((channel) => ({
+                ...channel,
+            })),
+        })),
+    };
+}
+
+function cloneCustomer(customer: CarwashCustomer): CarwashCustomer {
+    return {
+        ...customer,
+        vehicles: customer.vehicles.map((vehicle) => ({ ...vehicle })),
+    };
+}
+
+function cloneMoneyEntry(entry: CarwashMoneyEntry): CarwashMoneyEntry {
+    return {
+        ...entry,
+        channelBreakdown: entry.channelBreakdown.map((channel) => ({
+            ...channel,
+        })),
+        attachment: entry.attachment
+            ? { ...entry.attachment }
+            : entry.attachment,
+    };
+}
+
+function mergeMissing<T>(
+    target: T[],
+    source: T[],
+    identity: (item: T) => number | string,
+    clone: (item: T) => T,
+): void {
+    const knownIds = new Set(target.map(identity));
+
+    for (const item of source) {
+        if (!knownIds.has(identity(item))) {
+            target.push(clone(item));
+        }
+    }
+}
+
+export function useCarwashWorkflow() {
+    function hydrateOrders(initialOrders: CarwashOrder[]): void {
+        mergeMissing(
+            orders.value,
+            initialOrders,
+            (order) => order.id,
+            cloneOrder,
+        );
+    }
+
+    function hydrateCustomers(initialCustomers: CarwashCustomer[]): void {
+        mergeMissing(
+            customers.value,
+            initialCustomers,
+            (customer) => customer.id,
+            cloneCustomer,
+        );
+    }
+
+    function hydrateMoneyIn(initialEntries: CarwashMoneyEntry[]): void {
+        mergeMissing(
+            moneyIn.value,
+            initialEntries,
+            (entry) => entry.id,
+            cloneMoneyEntry,
+        );
+    }
+
+    function hydrateMoneyOut(initialEntries: CarwashMoneyEntry[]): void {
+        mergeMissing(
+            moneyOut.value,
+            initialEntries,
+            (entry) => entry.id,
+            cloneMoneyEntry,
+        );
+    }
+
+    function addOrder(order: CarwashOrder): void {
+        orders.value.unshift(order);
+    }
+
+    function addMoneyIn(entry: CarwashMoneyEntry): void {
+        if (!moneyIn.value.some((candidate) => candidate.id === entry.id)) {
+            moneyIn.value.unshift(entry);
+        }
+    }
+
+    function addMoneyOut(entry: CarwashMoneyEntry): void {
+        if (!moneyOut.value.some((candidate) => candidate.id === entry.id)) {
+            moneyOut.value.unshift(entry);
+        }
+    }
+
+    return {
+        orders,
+        customers,
+        moneyIn,
+        moneyOut,
+        hydrateOrders,
+        hydrateCustomers,
+        hydrateMoneyIn,
+        hydrateMoneyOut,
+        addOrder,
+        addMoneyIn,
+        addMoneyOut,
+    };
+}

@@ -163,6 +163,9 @@ export interface CarwashTransaction {
     amount: number;
     channels: string;
     channelBreakdown: CarwashTransactionChannel[];
+    /** User and shift that accepted the payment in this browser session. */
+    recordedBy?: string;
+    shift?: string;
 }
 
 export interface CarwashTransactionChannel {
@@ -254,6 +257,8 @@ export interface CarwashMoneyEntry {
     method: string;
     channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
+    /** Shift copied from the active user's persona, when available. */
+    shift?: string;
     source?: string;
     orderId?: number | null;
     orderNo?: string | null;
