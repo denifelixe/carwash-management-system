@@ -1,5 +1,8 @@
 <?php
 
+use App\Support\Carwash\Operations;
+use App\Support\Carwash\Reports;
+
 /*
  * The cashier's slip is printed by a standalone document opened from the POS,
  * so the width of the roll and the wiring that opens it are asserted against
@@ -189,4 +192,40 @@ test('the tender and change are read before the order is settled', function () {
     $mutation = strpos($pos, 'order.paidAmount += amount;');
 
     expect($snapshot)->toBeLessThan($mutation);
+});
+
+/*
+ * Both recap rows are counted and totalled per transaction. Matching the
+ * settled row by order instead listed that order's earlier instalments under a
+ * total that never included them, and repeated them under the partial row.
+ */
+test('the recap detail list matches the row it expands', function () {
+    $pos = posModule();
+
+    expect($pos)
+        ->toContain("? transaction.type === 'Pembayaran Sebagian'")
+        ->toContain(": transaction.type === 'Pembayaran Lunas'")
+        // Matching the settled row by order is what leaked the instalments.
+        ->not->toContain('fullyPaidOrderIds');
+
+    /*
+     * The leak needs an order that already took instalments today and is still
+     * waiting to be settled: settling it puts both types on the one order.
+     */
+    $today = Reports::todayDate();
+    $awaitingSettlement = array_filter(
+        Operations::orders(),
+        function (array $order) use ($today): bool {
+            $instalments = array_filter(
+                $order['transactions'],
+                fn (array $transaction): bool => $transaction['date'] === $today
+                    && $transaction['type'] === 'Pembayaran Sebagian',
+            );
+
+            return $order['status'] === 'pelunasan' && $instalments !== [];
+        },
+    );
+
+    // Without one of these the fixture could not catch a regression here.
+    expect($awaitingSettlement)->not->toBeEmpty();
 });

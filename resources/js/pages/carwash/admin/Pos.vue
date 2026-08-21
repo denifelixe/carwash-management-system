@@ -358,12 +358,6 @@ const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
         return [];
     }
 
-    const fullyPaidOrderIds = new Set(
-        activePaymentRecapFinalTransactions.value.map(
-            (transaction) => transaction.orderId,
-        ),
-    );
-
     return activePaymentRecapTransactions.value.flatMap((transaction) => {
         const order = orderList.value.find(
             (candidate) => candidate.id === transaction.orderId,
@@ -378,10 +372,16 @@ const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
         }
 
         if (selection.category === 'type') {
+            /*
+             * Both rows are counted per transaction, so both are listed that
+             * way too. Matching the settled row by order instead dragged the
+             * order's earlier instalments in, listing them under a total that
+             * never included them and repeating them under the partial row.
+             */
             const matchesSelection =
                 selection.label === partialPaymentRecapLabel
                     ? transaction.type === 'Pembayaran Sebagian'
-                    : fullyPaidOrderIds.has(order.id);
+                    : transaction.type === 'Pembayaran Lunas';
 
             return matchesSelection
                 ? [{ transaction, order, amount: transaction.amount }]
