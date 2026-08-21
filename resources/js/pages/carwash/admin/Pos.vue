@@ -2562,6 +2562,30 @@ function applyDate(date: string): void {
                         <p class="mt-1 line-clamp-1 text-xs text-slate-500">
                             {{ order.items }}
                         </p>
+                        <!--
+                            The whole payment run in order, so the instalments
+                            that led to the settlement stay readable next to it.
+                        -->
+                        <ul
+                            v-if="order.transactions.length > 0"
+                            class="mt-2 space-y-1 text-xs"
+                        >
+                            <li
+                                v-for="transaction in order.transactions"
+                                :key="transaction.id"
+                                :class="
+                                    transaction.type === 'Pembayaran Sebagian'
+                                        ? 'font-medium text-emerald-700'
+                                        : 'font-semibold text-emerald-800'
+                                "
+                            >
+                                {{ formatDate(transaction.date) }} ·
+                                {{ transaction.time }} ·
+                                {{ paymentTransactionLabel(transaction) }}
+                                sebesar
+                                {{ formatCurrency(transaction.amount) }}.
+                            </li>
+                        </ul>
 
                         <div
                             class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-dashed border-slate-200 pt-2.5"

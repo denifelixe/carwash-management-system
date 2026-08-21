@@ -229,3 +229,13 @@ test('the recap detail list matches the row it expands', function () {
     // Without one of these the fixture could not catch a regression here.
     expect($awaitingSettlement)->not->toBeEmpty();
 });
+
+test('a settled order card lists its whole payment run', function () {
+    expect(posModule())
+        ->toContain('v-for="transaction in order.transactions"')
+        ->toContain('{{ paymentTransactionLabel(transaction) }}')
+        // Instalments first, the settlement last and weighted heavier.
+        ->toContain("transaction.type === 'Pembayaran Sebagian'")
+        ->toContain("'font-medium text-emerald-700'")
+        ->toContain("'font-semibold text-emerald-800'");
+});
