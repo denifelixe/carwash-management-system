@@ -62,13 +62,15 @@ class DateFilter
     }
 
     /**
-     * @param  list<array<string, mixed>>  $rows
-     * @return list<array<string, mixed>>
+     * @template TRow of array<string, mixed>
+     *
+     * @param  list<TRow>  $rows
+     * @return list<TRow>
      */
     public static function apply(array $rows, string $date, string $key = 'date'): array
     {
         if ($date === '') {
-            return array_values($rows);
+            return $rows;
         }
 
         return array_values(array_filter(

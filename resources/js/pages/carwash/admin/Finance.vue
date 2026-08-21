@@ -26,7 +26,9 @@ import type {
     CarwashBrand,
     CarwashCashSummary,
     CarwashMoneyEntry,
+    CarwashOrder,
     CarwashShift,
+    CarwashTransaction,
 } from '@/types/carwash';
 
 const props = defineProps<{
@@ -39,6 +41,7 @@ const props = defineProps<{
     cashSummary: CarwashCashSummary;
     paymentMethods: string[];
     shifts: CarwashShift[];
+    orders: CarwashOrder[];
 }>();
 
 type Ledger = 'in' | 'out';
@@ -49,6 +52,9 @@ const activeShift = ref<Shift>('all');
 const search = ref<string>('');
 const categoryFilter = ref<string>('Semua');
 const isFormOpen = ref<boolean>(false);
+const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
+const selectedOrder = ref<CarwashOrder | null>(null);
+const highlightedTransactionId = ref<string | null>(null);
 
 const incomeList = ref<CarwashMoneyEntry[]>(
     props.moneyIn.map((entry) => ({ ...entry })),
@@ -204,6 +210,60 @@ function openForm(): void {
         attachmentName: '',
     };
     isFormOpen.value = true;
+}
+
+function findRelatedOrder(entry: CarwashMoneyEntry): CarwashOrder | null {
+    if (entry.orderId == null) {
+        return null;
+    }
+
+    return props.orders.find((order) => order.id === entry.orderId) ?? null;
+}
+
+function transactionIdFromEntry(entry: CarwashMoneyEntry): string | null {
+    return typeof entry.id === 'string' && entry.id.startsWith('pos-')
+        ? entry.id.slice(4)
+        : null;
+}
+
+function openTransactionRecap(entry: CarwashMoneyEntry): void {
+    selectedTransactionEntry.value = entry;
+}
+
+function openOrderRecap(entry: CarwashMoneyEntry): void {
+    const order = findRelatedOrder(entry);
+
+    if (!order) {
+        return;
+    }
+
+    selectedOrder.value = order;
+    highlightedTransactionId.value = transactionIdFromEntry(entry);
+}
+
+function closeOrderRecap(): void {
+    selectedOrder.value = null;
+    highlightedTransactionId.value = null;
+}
+
+function orderTransactionReference(
+    order: CarwashOrder,
+    transaction: CarwashTransaction,
+    transactionIndex: number,
+): string {
+    return transactionReference(
+        `${transaction.type} Order`,
+        transaction.date,
+        `${order.orderNo}-TRX-${transactionIndex + 1}`,
+    );
+}
+
+function transactionTypeLabel(entry: CarwashMoneyEntry): string {
+    if (entry.category === 'Pembayaran Sebagian/Booking Order') {
+        return 'Pembayaran Sebagian/Booking';
+    }
+
+    return entry.category;
 }
 
 /** Stands in for a real upload — records the chosen file's name and size. */
@@ -498,9 +558,14 @@ function applyDate(date: string): void {
                             class="transition hover:bg-slate-50/70"
                         >
                             <td class="px-5 py-3.5">
-                                <p class="font-medium text-slate-900">
+                                <button
+                                    type="button"
+                                    class="text-left font-semibold wrap-anywhere text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                    :aria-label="`Lihat rekap transaksi ${entry.ref}`"
+                                    @click="openTransactionRecap(entry)"
+                                >
                                     {{ entry.ref }}
-                                </p>
+                                </button>
                                 <p class="text-[11px] text-slate-500">
                                     {{ formatDate(entry.date) }} •
                                     {{ entry.time }}
@@ -508,9 +573,24 @@ function applyDate(date: string): void {
                             </td>
                             <td class="px-5 py-3.5">
                                 <span
-                                    class="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600"
+                                    class="inline-block max-w-48 rounded-lg bg-slate-100 px-2 py-1 text-[11px] leading-snug font-medium whitespace-normal text-slate-600"
                                 >
-                                    {{ entry.category }}
+                                    <template
+                                        v-if="
+                                            entry.category ===
+                                            'Pembayaran Sisa/Lunas (Order Selesai)'
+                                        "
+                                    >
+                                        <span class="block whitespace-nowrap">
+                                            Pembayaran Sisa/Lunas
+                                        </span>
+                                        <span class="block whitespace-nowrap">
+                                            (Order Selesai)
+                                        </span>
+                                    </template>
+                                    <template v-else>
+                                        {{ entry.category }}
+                                    </template>
                                 </span>
                             </td>
                             <td
@@ -520,9 +600,14 @@ function applyDate(date: string): void {
                             </td>
                             <td class="px-5 py-3.5">
                                 <template v-if="entry.orderNo">
-                                    <p class="font-medium text-slate-900">
+                                    <button
+                                        type="button"
+                                        class="text-left font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                        :aria-label="`Lihat rekap order ${entry.orderNo}`"
+                                        @click="openOrderRecap(entry)"
+                                    >
                                         {{ entry.orderNo }}
-                                    </p>
+                                    </button>
                                     <p
                                         class="mt-0.5 text-[11px] text-slate-500"
                                     >
@@ -604,6 +689,324 @@ function applyDate(date: string): void {
             />
         </section>
     </div>
+
+    <ModalDialog
+        :open="selectedTransactionEntry !== null"
+        title="Rekap Transaksi"
+        :caption="selectedTransactionEntry?.ref"
+        size="lg"
+        @close="selectedTransactionEntry = null"
+    >
+        <template v-if="selectedTransactionEntry">
+            <div
+                class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"
+            >
+                <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <p
+                            class="text-[11px] font-semibold tracking-wide text-emerald-700 uppercase"
+                        >
+                            {{ transactionTypeLabel(selectedTransactionEntry) }}
+                        </p>
+                        <p
+                            class="mt-2 text-2xl font-bold text-emerald-950 tabular-nums"
+                        >
+                            {{
+                                formatCurrency(selectedTransactionEntry.amount)
+                            }}
+                        </p>
+                        <p class="mt-1 text-xs text-emerald-800/75">
+                            {{ formatDate(selectedTransactionEntry.date) }} ·
+                            {{ selectedTransactionEntry.time }}
+                        </p>
+                    </div>
+                    <span
+                        class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+                    >
+                        <Banknote class="h-5 w-5" />
+                    </span>
+                </div>
+            </div>
+
+            <dl
+                class="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2"
+            >
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Nomor transaksi
+                    </dt>
+                    <dd
+                        class="mt-1 text-xs font-semibold wrap-anywhere text-slate-900"
+                    >
+                        {{ selectedTransactionEntry.ref }}
+                    </dd>
+                </div>
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Dicatat oleh
+                    </dt>
+                    <dd class="mt-1 text-xs font-medium text-slate-700">
+                        {{ selectedTransactionEntry.recordedBy }}
+                    </dd>
+                </div>
+                <div class="sm:col-span-2">
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Deskripsi
+                    </dt>
+                    <dd class="mt-1 text-xs font-medium text-slate-700">
+                        {{ selectedTransactionEntry.description }}
+                    </dd>
+                </div>
+            </dl>
+
+            <section
+                class="mt-4 overflow-hidden rounded-2xl border border-slate-200"
+            >
+                <div class="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Kanal pembayaran
+                    </h3>
+                </div>
+                <ul class="divide-y divide-slate-100 px-4">
+                    <li
+                        v-for="channel in selectedTransactionEntry.channelBreakdown"
+                        :key="channel.label"
+                        class="flex items-center justify-between gap-4 py-3 text-xs"
+                    >
+                        <span class="font-medium text-slate-600">
+                            {{ channel.label }}
+                        </span>
+                        <span class="font-semibold text-slate-900 tabular-nums">
+                            {{ formatCurrency(channel.amount) }}
+                        </span>
+                    </li>
+                </ul>
+            </section>
+
+            <button
+                v-if="findRelatedOrder(selectedTransactionEntry)"
+                type="button"
+                class="mt-4 flex w-full items-center justify-between gap-4 rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-100/70 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:outline-none"
+                @click="openOrderRecap(selectedTransactionEntry)"
+            >
+                <span class="min-w-0">
+                    <span
+                        class="block text-[10px] font-semibold tracking-wide text-cyan-700 uppercase"
+                    >
+                        Order terkait · lihat rekap lengkap
+                    </span>
+                    <span class="mt-1 block font-semibold text-slate-950">
+                        {{ selectedTransactionEntry.orderNo }} ·
+                        {{ selectedTransactionEntry.customer }}
+                    </span>
+                    <span class="mt-0.5 block text-xs text-slate-600">
+                        {{ selectedTransactionEntry.vehicle }} ·
+                        {{ selectedTransactionEntry.plate }}
+                    </span>
+                </span>
+                <span class="shrink-0 text-lg text-cyan-700">→</span>
+            </button>
+
+            <div
+                v-else
+                class="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-4 text-center text-xs text-slate-500"
+            >
+                Transaksi ini dicatat manual dan tidak terkait dengan order.
+            </div>
+        </template>
+
+        <template #footer>
+            <button
+                type="button"
+                class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                @click="selectedTransactionEntry = null"
+            >
+                Tutup
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="selectedOrder !== null"
+        title="Rekap Order"
+        :caption="
+            selectedOrder
+                ? `${selectedOrder.orderNo} · ${selectedOrder.customer}`
+                : undefined
+        "
+        size="lg"
+        :layer="selectedTransactionEntry ? 'nested' : 'default'"
+        @close="closeOrderRecap"
+    >
+        <template v-if="selectedOrder">
+            <div class="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4">
+                <p
+                    class="text-[11px] font-semibold tracking-wide text-cyan-700 uppercase"
+                >
+                    Detail order
+                </p>
+                <h3 class="mt-1 text-base font-semibold text-slate-950">
+                    {{ selectedOrder.orderNo }} · {{ selectedOrder.customer }}
+                </h3>
+                <p class="mt-1 text-xs text-slate-600">
+                    {{ selectedOrder.vehicle }} · {{ selectedOrder.plate }} ·
+                    {{
+                        selectedOrder.source === 'booking'
+                            ? 'Booking'
+                            : 'Walk-in'
+                    }}
+                </p>
+            </div>
+
+            <dl
+                class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-2xl bg-white p-4 ring-1 ring-slate-200 sm:grid-cols-4"
+            >
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Tanggal order
+                    </dt>
+                    <dd class="mt-1 text-xs font-medium text-slate-700">
+                        {{ formatDate(selectedOrder.date) }} ·
+                        {{ selectedOrder.time }}
+                    </dd>
+                </div>
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Total order
+                    </dt>
+                    <dd
+                        class="mt-1 text-xs font-semibold text-slate-900 tabular-nums"
+                    >
+                        {{ formatCurrency(selectedOrder.total) }}
+                    </dd>
+                </div>
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Sudah dibayar
+                    </dt>
+                    <dd
+                        class="mt-1 text-xs font-semibold text-emerald-700 tabular-nums"
+                    >
+                        {{ formatCurrency(selectedOrder.paidAmount) }}
+                    </dd>
+                </div>
+                <div>
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Sisa tagihan
+                    </dt>
+                    <dd
+                        class="mt-1 text-xs font-semibold text-amber-800 tabular-nums"
+                    >
+                        {{
+                            formatCurrency(
+                                Math.max(
+                                    selectedOrder.total -
+                                        selectedOrder.paidAmount,
+                                    0,
+                                ),
+                            )
+                        }}
+                    </dd>
+                </div>
+                <div class="col-span-2 sm:col-span-4">
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Layanan
+                    </dt>
+                    <dd class="mt-1 text-xs font-medium text-slate-700">
+                        {{ selectedOrder.items }}
+                    </dd>
+                </div>
+            </dl>
+
+            <section
+                class="mt-4 overflow-hidden rounded-2xl border border-slate-200"
+            >
+                <div
+                    class="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3"
+                >
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Riwayat transaksi
+                    </h3>
+                    <span class="text-xs text-slate-500">
+                        {{ selectedOrder.transactions.length }} transaksi
+                    </span>
+                </div>
+                <ul
+                    v-if="selectedOrder.transactions.length > 0"
+                    class="divide-y divide-slate-100"
+                >
+                    <li
+                        v-for="(
+                            transaction, transactionIndex
+                        ) in selectedOrder.transactions"
+                        :key="transaction.id"
+                        class="relative flex flex-col gap-2 px-4 py-3 transition sm:flex-row sm:items-center sm:justify-between"
+                        :class="
+                            transaction.id === highlightedTransactionId
+                                ? 'bg-cyan-50 before:absolute before:inset-y-2 before:left-0 before:w-1 before:rounded-r-full before:bg-cyan-400'
+                                : 'bg-white'
+                        "
+                    >
+                        <div class="min-w-0">
+                            <p
+                                class="text-xs font-semibold wrap-anywhere text-slate-900"
+                            >
+                                {{
+                                    orderTransactionReference(
+                                        selectedOrder,
+                                        transaction,
+                                        transactionIndex,
+                                    )
+                                }}
+                            </p>
+                            <p class="mt-0.5 text-[11px] text-slate-500">
+                                {{ transaction.type }} ·
+                                {{ formatDate(transaction.date) }} ·
+                                {{ transaction.time }} ·
+                                {{ transaction.channels }}
+                            </p>
+                        </div>
+                        <p
+                            class="shrink-0 text-sm font-semibold text-emerald-700 tabular-nums"
+                        >
+                            {{ formatCurrency(transaction.amount) }}
+                        </p>
+                    </li>
+                </ul>
+                <p v-else class="px-4 py-6 text-center text-xs text-slate-500">
+                    Belum ada pembayaran untuk order ini.
+                </p>
+            </section>
+        </template>
+
+        <template #footer>
+            <button
+                type="button"
+                class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                @click="closeOrderRecap"
+            >
+                {{
+                    selectedTransactionEntry ? 'Kembali ke transaksi' : 'Tutup'
+                }}
+            </button>
+        </template>
+    </ModalDialog>
 
     <!-- Record entry -->
     <ModalDialog

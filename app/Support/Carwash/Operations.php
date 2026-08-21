@@ -15,13 +15,12 @@ class Operations
      * `total` reflects the bill after cashier discounts; `reward` names what was
      * traded in at the cashier and is `'—'` when nothing was.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function orders(): array
     {
         $orders = array_map(function (array $order): array {
-            $isFinalSettlement = $order['paidAmount'] >= $order['total']
-                && in_array($order['status'], ['pelunasan', 'selesai'], true);
+            $isFinalSettlement = $order['paidAmount'] >= $order['total'];
             $transactions = $order['transactions'] ?? ($order['paidAmount'] > 0
                 ? [[
                     'id' => $order['invoice'] !== '—' ? $order['invoice'] : $order['orderNo'].'-TRX-1',
@@ -37,7 +36,15 @@ class Operations
                 ]]
                 : []);
 
-            return [...$order, 'transactions' => $transactions];
+            $bookingDate = $order['source'] === 'booking'
+                ? ($order['bookingDate'] ?? $transactions[0]['date'] ?? $order['date'])
+                : null;
+
+            return [
+                ...$order,
+                'bookingDate' => $bookingDate,
+                'transactions' => $transactions,
+            ];
         }, self::recordedOrders());
 
         return [...self::bookingOrders(), ...$orders];
@@ -48,13 +55,13 @@ class Operations
      * appears here once it has arrived, been settled, or been cancelled — until
      * then {@see self::bookingOrders()} derives its row from the schedule.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate?: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions?: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     private static function recordedOrders(): array
     {
         return [
-            ['id' => 1, 'orderNo' => self::orderNo(0, 12), 'invoice' => self::invoiceNo(0, 12), 'date' => self::date(0), 'time' => '11.02', 'customerId' => 10, 'customer' => 'Nadia Putri', 'phone' => '0896-1122-3344', 'vehicle' => 'Honda Vario', 'plate' => 'B 2255 LM', 'items' => 'Cuci Motor + Semir', 'serviceIds' => [5], 'total' => 35000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 35000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 1, 'crew' => 'Bagas', 'bay' => 'Bay 3', 'source' => 'walk-in'],
-            ['id' => 2, 'orderNo' => self::orderNo(0, 11), 'invoice' => self::invoiceNo(0, 11), 'date' => self::date(0), 'time' => '10.40', 'customerId' => 8, 'customer' => 'Andi Wijaya', 'phone' => '0852-6677-8899', 'vehicle' => 'Yamaha NMax', 'plate' => 'B 6677 TG', 'items' => 'Cuci Motor Reguler', 'serviceIds' => [4], 'total' => 20000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 20000, 'payment' => 'Tunai', 'paymentStatus' => 'lunas', 'status' => 'menunggu', 'stampsEarned' => 1, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'walk-in'],
+            ['id' => 1, 'orderNo' => self::orderNo(0, 12), 'invoice' => '—', 'date' => self::date(0), 'time' => '11.02', 'customerId' => 10, 'customer' => 'Nadia Putri', 'phone' => '0896-1122-3344', 'vehicle' => 'Honda Vario', 'plate' => 'B 2255 LM', 'items' => 'Cuci Motor + Semir', 'serviceIds' => [5], 'total' => 35000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 0, 'payment' => '—', 'paymentStatus' => 'belum bayar', 'status' => 'proses', 'stampsEarned' => 1, 'crew' => 'Bagas', 'bay' => 'Bay 3', 'source' => 'walk-in'],
+            ['id' => 2, 'orderNo' => self::orderNo(0, 11), 'invoice' => '—', 'date' => self::date(0), 'time' => '10.40', 'customerId' => 8, 'customer' => 'Andi Wijaya', 'phone' => '0852-6677-8899', 'vehicle' => 'Yamaha NMax', 'plate' => 'B 6677 TG', 'items' => 'Cuci Motor Reguler', 'serviceIds' => [4], 'total' => 20000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 0, 'payment' => '—', 'paymentStatus' => 'belum bayar', 'status' => 'menunggu', 'stampsEarned' => 1, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'walk-in'],
             [
                 'id' => 3, 'orderNo' => self::bookingCode(0, 3), 'invoice' => self::invoiceNo(0, 10), 'date' => self::date(0), 'time' => '—', 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'items' => 'Deep Clean Interior', 'serviceIds' => [9], 'total' => 150000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 150000, 'payment' => 'Debit', 'paymentStatus' => 'lunas', 'status' => 'booking', 'stampsEarned' => 2, 'crew' => 'Menunggu crew', 'bay' => '—', 'source' => 'booking',
                 'transactions' => [
@@ -69,7 +76,7 @@ class Operations
                 ],
             ],
             ['id' => 6, 'orderNo' => self::orderNo(0, 7), 'invoice' => self::invoiceNo(0, 7), 'date' => self::date(0), 'time' => '08.45', 'customerId' => 5, 'customer' => 'Siti Rahmawati', 'phone' => '0821-4455-6677', 'vehicle' => 'Honda Brio', 'plate' => 'B 8821 KL', 'items' => 'Cuci Mobil Reguler, Semir Ban Premium', 'serviceIds' => [1, 12], 'total' => 45000, 'discount' => 25000, 'reward' => 'Gratis Semir Ban', 'paidAmount' => 45000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'selesai', 'stampsEarned' => 1, 'crew' => 'Agus', 'bay' => 'Bay 2', 'source' => 'walk-in'],
-            ['id' => 7, 'orderNo' => self::orderNo(0, 6), 'invoice' => self::invoiceNo(0, 6), 'date' => self::date(0), 'time' => '08.05', 'customerId' => 2, 'customer' => 'Rizky Pratama', 'phone' => '0813-7788-1200', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'items' => 'Snow Wash Premium, Engine Bay Cleaning', 'serviceIds' => [3, 8], 'total' => 210000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 210000, 'payment' => 'QRIS', 'paymentStatus' => 'lunas', 'status' => 'proses', 'stampsEarned' => 3, 'crew' => 'Agus & Deni', 'bay' => 'Bay 2', 'source' => 'walk-in'],
+            ['id' => 7, 'orderNo' => self::orderNo(0, 6), 'invoice' => '—', 'date' => self::date(0), 'time' => '08.05', 'customerId' => 2, 'customer' => 'Rizky Pratama', 'phone' => '0813-7788-1200', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'items' => 'Snow Wash Premium, Engine Bay Cleaning', 'serviceIds' => [3, 8], 'total' => 210000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 0, 'payment' => '—', 'paymentStatus' => 'belum bayar', 'status' => 'proses', 'stampsEarned' => 3, 'crew' => 'Agus & Deni', 'bay' => 'Bay 2', 'source' => 'walk-in'],
             ['id' => 8, 'orderNo' => self::orderNo(0, 5), 'invoice' => self::invoiceNo(0, 5), 'date' => self::date(0), 'time' => '07.48', 'customerId' => null, 'customer' => 'Sari Wulandari (non-member)', 'phone' => '0857-4432-1098', 'vehicle' => 'Suzuki XL7', 'plate' => 'B 7742 KD', 'items' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'total' => 85000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 85000, 'payment' => 'Tunai', 'paymentStatus' => 'lunas', 'status' => 'selesai', 'stampsEarned' => 0, 'crew' => 'Deni', 'bay' => 'Bay 3', 'source' => 'walk-in'],
             ['id' => 9, 'orderNo' => self::orderNo(0, 4), 'invoice' => '—', 'date' => self::date(0), 'time' => '07.30', 'customerId' => 9, 'customer' => 'Dewi Lestari', 'phone' => '0813-2233-5566', 'vehicle' => 'Daihatsu Ayla', 'plate' => 'B 3311 QW', 'items' => 'Cuci Mobil Reguler', 'serviceIds' => [1], 'total' => 45000, 'discount' => 0, 'reward' => '—', 'paidAmount' => 0, 'payment' => '—', 'paymentStatus' => 'belum bayar', 'status' => 'pelunasan', 'stampsEarned' => 1, 'crew' => 'Bagas', 'bay' => 'Bay 3', 'source' => 'walk-in'],
             [
@@ -94,7 +101,7 @@ class Operations
      * arrived, was settled, or was cancelled — is left alone; that row carries
      * where it stands.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function bookingOrders(): array
     {
@@ -113,6 +120,7 @@ class Operations
             'invoice' => '—',
             'date' => $booking['date'],
             'time' => '—',
+            'bookingDate' => $booking['bookingDate'],
             'customerId' => $booking['customerId'],
             'customer' => $booking['customer'],
             'phone' => $booking['phone'],
@@ -196,7 +204,7 @@ class Operations
     /**
      * Orders handed to the cashier by the floor for final settlement.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function settlementOrders(): array
     {
@@ -211,7 +219,7 @@ class Operations
      * today or later. Once a booking reaches settlement, the cashier handles it
      * exclusively in the settlement section.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function partialPaymentBookingOrders(): array
     {
@@ -242,7 +250,7 @@ class Operations
      * Orders the cashier may settle: everything except the bookings still
      * waiting for their car to arrive and the orders that were cancelled.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function billableOrders(): array
     {
@@ -255,7 +263,7 @@ class Operations
     /**
      * Orders whose vehicle has arrived and is being or has been served.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
      */
     public static function servedOrders(string $date): array
     {
@@ -310,7 +318,7 @@ class Operations
      * Bookings as the booking board reads them: each one carrying the status of
      * its order, because the order module owns where a job stands.
      *
-     * @return list<array{id: int, code: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, service: string, serviceIds: list<int>, date: string, orderStatus: string, estimate: int, notes: string}>
+     * @return list<array{id: int, code: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, service: string, serviceIds: list<int>, date: string, bookingDate: string, orderStatus: string, estimate: int, notes: string}>
      */
     public static function scheduledBookings(): array
     {
@@ -330,20 +338,20 @@ class Operations
      * Where a booking stands is the order module's answer, so the board reads it
      * back through {@see self::scheduledBookings()}.
      *
-     * @return list<array{id: int, code: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, service: string, serviceIds: list<int>, date: string, estimate: int, notes: string}>
+     * @return list<array{id: int, code: string, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, service: string, serviceIds: list<int>, date: string, bookingDate: string, estimate: int, notes: string}>
      */
     public static function bookings(): array
     {
         return [
-            ['id' => 1, 'code' => self::bookingCode(0, 1), 'customerId' => 3, 'customer' => 'Budi Santoso', 'phone' => '0812-3456-7890', 'vehicle' => 'Toyota Avanza', 'plate' => 'B 1234 CDE', 'service' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'date' => self::date(0), 'estimate' => 85000, 'notes' => 'Minta lap ekstra di bagasi.'],
-            ['id' => 2, 'code' => self::bookingCode(0, 2), 'customerId' => 1, 'customer' => 'Hendra Gunawan', 'phone' => '0812-1100-2255', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'service' => 'Nano Ceramic Coating', 'serviceIds' => [7], 'date' => self::date(0), 'estimate' => 1500000, 'notes' => 'Pembayaran sebagian 50% via transfer.'],
-            ['id' => 3, 'code' => self::bookingCode(0, 3), 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'service' => 'Deep Clean Interior', 'serviceIds' => [9], 'date' => self::date(0), 'estimate' => 150000, 'notes' => 'Ada noda kopi di karpet depan.'],
-            ['id' => 4, 'code' => self::bookingCode(0, 4), 'customerId' => 7, 'customer' => 'Clara Halim', 'phone' => '0811-3030-4040', 'vehicle' => 'Suzuki Ertiga', 'plate' => 'B 1717 PO', 'service' => 'Snow Wash Premium', 'serviceIds' => [3], 'date' => self::date(0), 'estimate' => 120000, 'notes' => '—'],
-            ['id' => 5, 'code' => self::bookingCode(1, 1), 'customerId' => 2, 'customer' => 'Rizky Pratama', 'phone' => '0813-7788-1200', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'service' => 'Poles Body Detailing', 'serviceIds' => [6], 'date' => self::date(1), 'estimate' => 450000, 'notes' => 'Baret halus di pintu kanan.'],
-            ['id' => 6, 'code' => self::bookingCode(1, 2), 'customerId' => 5, 'customer' => 'Siti Rahmawati', 'phone' => '0821-4455-6677', 'vehicle' => 'Honda Brio', 'plate' => 'B 8821 KL', 'service' => 'Salon Jok & Karpet', 'serviceIds' => [10], 'date' => self::date(1), 'estimate' => 350000, 'notes' => '—'],
-            ['id' => 7, 'code' => self::bookingCode(2, 1), 'customerId' => 6, 'customer' => 'Fajar Nugroho', 'phone' => '0878-9012-3344', 'vehicle' => 'Toyota Fortuner', 'plate' => 'B 7788 JK', 'service' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'date' => self::date(2), 'estimate' => 85000, 'notes' => '—'],
-            ['id' => 8, 'code' => self::bookingCode(-1, 7), 'customerId' => 9, 'customer' => 'Dewi Lestari', 'phone' => '0813-2233-5566', 'vehicle' => 'Daihatsu Ayla', 'plate' => 'B 3311 QW', 'service' => 'Cuci Mobil Reguler', 'serviceIds' => [1], 'date' => self::date(-1), 'estimate' => 45000, 'notes' => '—'],
-            ['id' => 9, 'code' => self::bookingCode(-1, 6), 'customerId' => 11, 'customer' => 'Gilang Ramadhan', 'phone' => '0817-8899-1010', 'vehicle' => 'Wuling Almaz', 'plate' => 'B 9021 HH', 'service' => 'Snow Wash Premium', 'serviceIds' => [3], 'date' => self::date(-1), 'estimate' => 120000, 'notes' => 'Pelanggan membatalkan via WhatsApp.'],
+            ['id' => 1, 'code' => self::bookingCode(0, 1), 'customerId' => 3, 'customer' => 'Budi Santoso', 'phone' => '0812-3456-7890', 'vehicle' => 'Toyota Avanza', 'plate' => 'B 1234 CDE', 'service' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'date' => self::date(0), 'bookingDate' => self::date(-1), 'estimate' => 85000, 'notes' => 'Minta lap ekstra di bagasi.'],
+            ['id' => 2, 'code' => self::bookingCode(0, 2), 'customerId' => 1, 'customer' => 'Hendra Gunawan', 'phone' => '0812-1100-2255', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'service' => 'Nano Ceramic Coating', 'serviceIds' => [7], 'date' => self::date(0), 'bookingDate' => self::date(0), 'estimate' => 1500000, 'notes' => 'Pembayaran sebagian 50% via transfer.'],
+            ['id' => 3, 'code' => self::bookingCode(0, 3), 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'service' => 'Deep Clean Interior', 'serviceIds' => [9], 'date' => self::date(0), 'bookingDate' => self::date(0), 'estimate' => 150000, 'notes' => 'Ada noda kopi di karpet depan.'],
+            ['id' => 4, 'code' => self::bookingCode(0, 4), 'customerId' => 7, 'customer' => 'Clara Halim', 'phone' => '0811-3030-4040', 'vehicle' => 'Suzuki Ertiga', 'plate' => 'B 1717 PO', 'service' => 'Snow Wash Premium', 'serviceIds' => [3], 'date' => self::date(0), 'bookingDate' => self::date(-1), 'estimate' => 120000, 'notes' => '—'],
+            ['id' => 5, 'code' => self::bookingCode(1, 1), 'customerId' => 2, 'customer' => 'Rizky Pratama', 'phone' => '0813-7788-1200', 'vehicle' => 'Honda Civic', 'plate' => 'B 9090 RS', 'service' => 'Poles Body Detailing', 'serviceIds' => [6], 'date' => self::date(1), 'bookingDate' => self::date(0), 'estimate' => 450000, 'notes' => 'Baret halus di pintu kanan.'],
+            ['id' => 6, 'code' => self::bookingCode(1, 2), 'customerId' => 5, 'customer' => 'Siti Rahmawati', 'phone' => '0821-4455-6677', 'vehicle' => 'Honda Brio', 'plate' => 'B 8821 KL', 'service' => 'Salon Jok & Karpet', 'serviceIds' => [10], 'date' => self::date(1), 'bookingDate' => self::date(-1), 'estimate' => 350000, 'notes' => '—'],
+            ['id' => 7, 'code' => self::bookingCode(2, 1), 'customerId' => 6, 'customer' => 'Fajar Nugroho', 'phone' => '0878-9012-3344', 'vehicle' => 'Toyota Fortuner', 'plate' => 'B 7788 JK', 'service' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'date' => self::date(2), 'bookingDate' => self::date(0), 'estimate' => 85000, 'notes' => '—'],
+            ['id' => 8, 'code' => self::bookingCode(-1, 7), 'customerId' => 9, 'customer' => 'Dewi Lestari', 'phone' => '0813-2233-5566', 'vehicle' => 'Daihatsu Ayla', 'plate' => 'B 3311 QW', 'service' => 'Cuci Mobil Reguler', 'serviceIds' => [1], 'date' => self::date(-1), 'bookingDate' => self::date(-1), 'estimate' => 45000, 'notes' => '—'],
+            ['id' => 9, 'code' => self::bookingCode(-1, 6), 'customerId' => 11, 'customer' => 'Gilang Ramadhan', 'phone' => '0817-8899-1010', 'vehicle' => 'Wuling Almaz', 'plate' => 'B 9021 HH', 'service' => 'Snow Wash Premium', 'serviceIds' => [3], 'date' => self::date(-1), 'bookingDate' => self::date(-2), 'estimate' => 120000, 'notes' => 'Pelanggan membatalkan via WhatsApp.'],
         ];
     }
 

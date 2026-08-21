@@ -9,7 +9,6 @@ import {
     Hourglass,
     Plus,
     Search,
-    Sparkles,
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
@@ -141,12 +140,12 @@ function applyStatusFilter(filter: string): void {
     statusFilter.value = filter === bookingStatusLabel ? 'booking' : filter;
 }
 
-function isOpenBookingOrder(order: CarwashOrder): boolean {
-    return order.source === 'booking' && !closedStatuses.includes(order.status);
+function isAwaitingArrivalBooking(order: CarwashOrder): boolean {
+    return order.source === 'booking' && order.status === 'booking';
 }
 
 function displayedStatus(order: CarwashOrder): string {
-    return statusFilter.value === 'booking' && isOpenBookingOrder(order)
+    return statusFilter.value === 'booking' && isAwaitingArrivalBooking(order)
         ? 'booking'
         : order.status;
 }
@@ -159,6 +158,12 @@ function orderSourceLabel(order: CarwashOrder): string {
     }
 
     return order.customerId === null ? 'Walk-In Non Member' : 'Walk-In Member';
+}
+
+function transactionCaption(type: string): string {
+    return type === 'Pembayaran Sebagian'
+        ? 'Pembayaran Sebagian/Booking'
+        : 'Pembayaran Sisa/Lunas (Order Selesai)';
 }
 
 function orderArrivalLabel(order: CarwashOrder): string {
@@ -188,7 +193,7 @@ const filteredOrders = computed<CarwashOrder[]>(() => {
         const matchesStatus =
             statusFilter.value === 'Semua' ||
             (statusFilter.value === 'booking'
-                ? isOpenBookingOrder(order)
+                ? isAwaitingArrivalBooking(order)
                 : order.status === statusFilter.value);
         const matchesQuery =
             query === '' ||
@@ -306,7 +311,7 @@ const statusCards = computed<StatusCard[]>(() =>
         tone: statusCardStyles[status]?.tone ?? 'default',
         count: orderList.value.filter((order) =>
             status === 'booking'
-                ? isOpenBookingOrder(order)
+                ? isAwaitingArrivalBooking(order)
                 : order.status === status,
         ).length,
     })),
@@ -456,6 +461,7 @@ function createOrder(): void {
             invoice: '—',
             date: props.filters.today,
             time: 'Baru saja',
+            bookingDate: null,
             customerId: customer?.id ?? null,
             customer: customerName,
             phone: customer?.phone ?? draft.value.customerPhone.trim(),
@@ -575,7 +581,6 @@ function applyDate(date: string): void {
                             <th class="px-5 py-3">Customer</th>
                             <th class="px-5 py-3">Layanan</th>
                             <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3 text-right">Total</th>
                             <th class="px-5 py-3"></th>
                         </tr>
                     </thead>
@@ -619,11 +624,6 @@ function applyDate(date: string): void {
                             <td class="px-5 py-3.5">
                                 <StatusPill :status="displayedStatus(order)" />
                             </td>
-                            <td
-                                class="px-5 py-3.5 text-right font-medium text-slate-900 tabular-nums"
-                            >
-                                {{ formatCurrency(order.total) }}
-                            </td>
                             <td class="px-5 py-3.5 text-right">
                                 <button
                                     type="button"
@@ -651,7 +651,11 @@ function applyDate(date: string): void {
     <SlideOver
         :open="detailOrder !== null"
         :title="detailOrder?.orderNo"
-        :caption="`${detailOrder?.customer} • ${detailOrder?.time}`"
+        :caption="
+            detailOrder
+                ? `${formatDate(detailOrder.date)} • ${detailOrder.time}`
+                : undefined
+        "
         @close="detailOrderId = null"
     >
         <div v-if="detailOrder" class="space-y-5">
@@ -690,13 +694,24 @@ function applyDate(date: string): void {
             </div>
 
             <div class="rounded-xl bg-slate-50 p-3">
-                <p class="text-[11px] text-slate-500">Kendaraan</p>
-                <p class="mt-0.5 text-sm font-medium text-slate-900">
-                    {{ detailOrder.vehicle }}
-                </p>
-                <p class="text-[11px] text-slate-500">
+                <p class="text-[11px] text-slate-500">Info Pelanggan</p>
+                <p class="mt-1 text-xl font-bold tracking-wide text-slate-900">
                     {{ detailOrder.plate }}
                 </p>
+                <p class="mt-0.5 text-sm text-slate-600">
+                    {{ detailOrder.vehicle }}
+                </p>
+                <p class="mt-1 text-xs text-slate-500">
+                    {{ orderSourceLabel(detailOrder) }}
+                </p>
+                <div class="mt-3 border-t border-slate-200 pt-3">
+                    <p class="text-sm font-medium text-slate-800">
+                        {{ detailOrder.customer }}
+                    </p>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                        {{ detailOrder.phone }}
+                    </p>
+                </div>
             </div>
 
             <div>
@@ -724,7 +739,7 @@ function applyDate(date: string): void {
                             }}
                         </span>
                         <span
-                            class="text-sm font-medium text-slate-900 tabular-nums"
+                            class="shrink-0 text-sm font-medium text-slate-700 tabular-nums"
                         >
                             {{
                                 formatCurrency(
@@ -738,61 +753,54 @@ function applyDate(date: string): void {
                 </ul>
             </div>
 
-            <dl class="space-y-2 rounded-2xl bg-slate-50 p-4 text-sm">
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Invoice</dt>
-                    <dd class="font-medium text-slate-800">
-                        {{ detailOrder.invoice }}
-                    </dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Metode bayar</dt>
-                    <dd class="text-slate-800">{{ detailOrder.payment }}</dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Stempel diberikan</dt>
-                    <dd class="font-medium text-emerald-600 tabular-nums">
-                        +{{ detailOrder.stampsEarned }}
-                    </dd>
-                </div>
-                <div
-                    class="flex justify-between border-t border-slate-200 pt-2 text-base"
-                >
-                    <dt class="font-medium text-slate-600">Total</dt>
-                    <dd class="font-semibold text-slate-900 tabular-nums">
-                        {{ formatCurrency(detailOrder.total) }}
-                    </dd>
-                </div>
-                <template v-if="detailOrder.paymentStatus !== 'lunas'">
-                    <div class="flex justify-between">
-                        <dt class="text-slate-500">Sudah dibayar</dt>
-                        <dd class="text-emerald-600 tabular-nums">
-                            {{ formatCurrency(detailOrder.paidAmount) }}
-                        </dd>
-                    </div>
-                    <div class="flex justify-between">
-                        <dt class="font-medium text-slate-600">Sisa tagihan</dt>
-                        <dd class="font-semibold text-amber-600 tabular-nums">
-                            {{
-                                formatCurrency(
-                                    detailOrder.total - detailOrder.paidAmount,
-                                )
-                            }}
-                        </dd>
-                    </div>
-                </template>
-            </dl>
-
-            <p
-                v-if="detailOrder.status === 'selesai'"
-                class="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-700"
+            <section
+                class="overflow-hidden rounded-2xl border border-slate-200"
             >
-                <CircleCheck class="h-4 w-4 shrink-0" />
-                Order selesai — stempel sudah masuk ke akun customer.
-            </p>
+                <div
+                    class="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3"
+                >
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Riwayat transaksi
+                    </h3>
+                    <span class="text-xs text-slate-500">
+                        {{ detailOrder.transactions.length }} transaksi
+                    </span>
+                </div>
+                <ul
+                    v-if="detailOrder.transactions.length > 0"
+                    class="divide-y divide-slate-100"
+                >
+                    <li
+                        v-for="transaction in detailOrder.transactions"
+                        :key="transaction.id"
+                        class="flex items-center justify-between gap-4 px-4 py-3"
+                    >
+                        <div class="min-w-0">
+                            <p class="text-xs font-semibold text-slate-800">
+                                {{ transactionCaption(transaction.type) }}
+                            </p>
+                            <p
+                                class="mt-0.5 truncate text-[11px] text-slate-500"
+                            >
+                                {{ formatDate(transaction.date) }} ·
+                                {{ transaction.time }} ·
+                                {{ transaction.channels }}
+                            </p>
+                        </div>
+                        <p
+                            class="shrink-0 text-sm font-semibold text-emerald-700 tabular-nums"
+                        >
+                            {{ formatCurrency(transaction.amount) }}
+                        </p>
+                    </li>
+                </ul>
+                <p v-else class="px-4 py-5 text-center text-xs text-slate-400">
+                    Belum ada transaksi
+                </p>
+            </section>
 
             <p
-                v-else-if="detailOrder.status === 'batal'"
+                v-if="detailOrder.status === 'batal'"
                 class="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs font-medium text-rose-700"
             >
                 <Ban class="h-4 w-4 shrink-0" />
@@ -801,15 +809,14 @@ function applyDate(date: string): void {
         </div>
 
         <template #footer>
-            <div v-if="detailOrder" class="flex gap-2">
-                <button
-                    type="button"
-                    class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
-                    @click="detailOrderId = null"
-                >
-                    Tutup
-                </button>
-            </div>
+            <button
+                v-if="detailOrder"
+                type="button"
+                class="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                @click="detailOrderId = null"
+            >
+                Tutup
+            </button>
         </template>
     </SlideOver>
 
@@ -1114,27 +1121,26 @@ function applyDate(date: string): void {
                 </div>
             </div>
 
-            <!-- Summary -->
-            <div class="space-y-2 rounded-2xl bg-slate-50 p-4">
-                <div class="flex items-center justify-between">
-                    <div>
-                        <p class="text-[11px] text-slate-500">
-                            {{ draftServices.length }} layanan dipilih
-                        </p>
-                        <p
-                            class="text-lg font-semibold text-slate-900 tabular-nums"
-                        >
-                            {{ formatCurrency(draftTotal) }}
-                        </p>
-                    </div>
-                    <p
-                        v-if="draftStamps > 0"
-                        class="flex items-center gap-1 text-xs font-medium text-emerald-600"
+            <!-- Selected services -->
+            <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-[11px] font-medium text-slate-500">
+                    {{ draftServices.length }} layanan dipilih
+                </p>
+                <ul
+                    v-if="draftServices.length > 0"
+                    class="mt-2 flex flex-wrap gap-2"
+                >
+                    <li
+                        v-for="service in draftServices"
+                        :key="service.id"
+                        class="rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
                     >
-                        <Sparkles class="h-3.5 w-3.5" />
-                        +{{ draftStamps }} stempel
-                    </p>
-                </div>
+                        {{ service.name }}
+                    </li>
+                </ul>
+                <p v-else class="mt-1 text-sm text-slate-400">
+                    Belum ada layanan dipilih
+                </p>
             </div>
         </div>
 

@@ -77,6 +77,7 @@ const customerOptions: CustomerOption[] = customerList.value.flatMap(
 
 const detailBookingId = ref<number | null>(null);
 const isCreateOpen = ref<boolean>(false);
+const editingBookingId = ref<number | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
@@ -115,19 +116,19 @@ const upcomingBookings = computed<CarwashBooking[]>(() =>
     bookingList.value.filter((booking) => daysFromToday(booking.date) > 0),
 );
 
-/**
- * What the pill on a booking row says. Today and mendatang only mark which day
- * a booking belongs to — the real status lives in the order module, and is read
- * back once the booking is behind us and can only be selesai or batal.
- */
+/** Today follows the order lifecycle; future bookings remain scheduled. */
 function bookingPill(booking: CarwashBooking): string {
     const daysAhead = daysFromToday(booking.date);
 
-    if (daysAhead < 0) {
+    if (daysAhead <= 0) {
         return booking.orderStatus;
     }
 
-    return daysAhead === 0 ? 'hari ini' : 'mendatang';
+    return 'mendatang';
+}
+
+function bookingCustomerType(booking: CarwashBooking): string {
+    return booking.customerId === null ? 'Non-Member' : 'Member';
 }
 
 type BookingBoard = {
@@ -184,6 +185,10 @@ const detailBooking = computed<CarwashBooking | null>(
         bookingList.value.find(
             (booking) => booking.id === detailBookingId.value,
         ) ?? null,
+);
+
+const canEditDetailBooking = computed<boolean>(
+    () => detailBooking.value?.orderStatus === 'booking',
 );
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
@@ -332,38 +337,97 @@ function resetDraft(): void {
     selectedCustomerOption.value = null;
 }
 
-function createBooking(): void {
+function openCreateBooking(): void {
+    editingBookingId.value = null;
+    resetDraft();
+    isCreateOpen.value = true;
+}
+
+function closeBookingForm(): void {
+    isCreateOpen.value = false;
+    editingBookingId.value = null;
+    resetDraft();
+}
+
+function startEditingBooking(): void {
+    const booking = detailBooking.value;
+
+    if (booking === null || booking.orderStatus !== 'booking') {
+        return;
+    }
+
+    const customerOption = customerOptions.find(
+        (option) =>
+            option.customer.id === booking.customerId &&
+            option.vehicle.plate === booking.plate,
+    );
+
+    editingBookingId.value = booking.id;
+    customerQuery.value = '';
+    selectedCustomerOption.value = customerOption ?? null;
+    customerMode.value = customerOption
+        ? 'existing'
+        : booking.phone === '—'
+          ? 'walk-in'
+          : 'new-member';
+    draft.value = {
+        customerId: customerOption?.customer.id ?? null,
+        walkInName: customerOption ? '' : booking.customer,
+        newMemberPhone:
+            customerOption || booking.phone === '—' ? '' : booking.phone,
+        vehicle: booking.vehicle,
+        plate: booking.plate,
+        serviceIds: [...booking.serviceIds],
+        date: booking.date,
+    };
+    detailBookingId.value = null;
+    isCreateOpen.value = true;
+}
+
+function saveBooking(): void {
     if (!canCreate.value) {
         return;
     }
 
     const customer = draftCustomer.value;
+    const bookingFields = {
+        customerId: customer?.id ?? null,
+        customer: customer?.name ?? draft.value.walkInName,
+        phone: (customer?.phone ?? draft.value.newMemberPhone.trim()) || '—',
+        vehicle: draft.value.vehicle || '—',
+        plate: draft.value.plate.toUpperCase(),
+        service: draftServices.value.map((service) => service.name).join(', '),
+        serviceIds: [...draft.value.serviceIds],
+        date: draft.value.date,
+        estimate: draftTotal.value,
+    };
+
+    if (editingBookingId.value !== null) {
+        bookingList.value = bookingList.value.map((booking) =>
+            booking.id === editingBookingId.value
+                ? { ...booking, ...bookingFields }
+                : booking,
+        );
+        closeBookingForm();
+
+        return;
+    }
+
     const sequence = bookingList.value.length + 1;
 
     bookingList.value = [
         {
             id: 1000 + sequence,
             code: `ORD-BK-${formatDateCode(draft.value.date)}${String(sequence).padStart(2, '0')}`,
-            customerId: customer?.id ?? null,
-            customer: customer?.name ?? draft.value.walkInName,
-            phone:
-                (customer?.phone ?? draft.value.newMemberPhone.trim()) || '—',
-            vehicle: draft.value.vehicle || '—',
-            plate: draft.value.plate.toUpperCase(),
-            service: draftServices.value
-                .map((service) => service.name)
-                .join(', '),
-            serviceIds: [...draft.value.serviceIds],
-            date: draft.value.date,
+            ...bookingFields,
+            bookingDate: props.today,
             orderStatus: 'booking',
-            estimate: draftTotal.value,
             notes: '—',
         },
         ...bookingList.value,
     ];
 
-    resetDraft();
-    isCreateOpen.value = false;
+    closeBookingForm();
 }
 </script>
 
@@ -375,7 +439,7 @@ function createBooking(): void {
             <button
                 type="button"
                 class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
-                @click="isCreateOpen = true"
+                @click="openCreateBooking"
             >
                 <Plus class="h-4 w-4" />
                 Buat Booking
@@ -428,10 +492,30 @@ function createBooking(): void {
                     class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:border-cyan-200 hover:bg-white"
                 >
                     <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-sm font-semibold text-slate-900">
-                                {{ booking.customer }}
-                            </p>
+                        <p
+                            class="text-xl font-bold tracking-wide text-slate-900"
+                        >
+                            {{ booking.plate }}
+                        </p>
+                        <p class="mt-0.5 text-xs text-slate-600">
+                            {{ booking.vehicle }}
+                        </p>
+                        <p class="mt-1.5 text-sm font-medium text-slate-800">
+                            {{ booking.customer }}
+                            <span class="font-normal text-slate-400">
+                                ({{ bookingCustomerType(booking) }})
+                            </span>
+                        </p>
+                        <p
+                            class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500"
+                        >
+                            <Phone class="h-3 w-3" />
+                            {{ booking.phone }}
+                        </p>
+                        <p class="mt-1 truncate text-xs text-slate-600">
+                            {{ booking.service }}
+                        </p>
+                        <div class="mt-1.5 flex flex-wrap items-center gap-2">
                             <span
                                 class="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200"
                             >
@@ -441,24 +525,8 @@ function createBooking(): void {
                                 {{ dayLabelFor(booking.date) }}
                             </span>
                         </div>
-                        <p class="truncate text-xs text-slate-500">
-                            {{ booking.service }} • {{ booking.plate }}
-                        </p>
-                        <p
-                            class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-400"
-                        >
-                            <Phone class="h-3 w-3" />
-                            {{ booking.phone }}
-                        </p>
                     </div>
-                    <div class="text-right">
-                        <StatusPill :status="bookingPill(booking)" />
-                        <p
-                            class="mt-1 text-sm font-medium text-slate-900 tabular-nums"
-                        >
-                            {{ formatCurrency(booking.estimate) }}
-                        </p>
-                    </div>
+                    <StatusPill :status="bookingPill(booking)" />
                     <button
                         type="button"
                         class="rounded-lg px-3 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-50"
@@ -482,24 +550,34 @@ function createBooking(): void {
     <SlideOver
         :open="detailBooking !== null"
         :title="detailBooking?.code"
-        :caption="detailBooking ? formatDate(detailBooking.date) : undefined"
+        :caption="
+            detailBooking
+                ? `Tanggal Booking: ${formatDate(detailBooking.bookingDate)}`
+                : undefined
+        "
         @close="detailBookingId = null"
     >
         <div v-if="detailBooking" class="space-y-5">
             <StatusPill :status="bookingPill(detailBooking)" />
 
             <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-sm font-semibold text-slate-900">
+                <p class="text-2xl font-bold tracking-wide text-slate-900">
+                    {{ detailBooking.plate }}
+                </p>
+                <p class="mt-0.5 text-sm text-slate-600">
+                    {{ detailBooking.vehicle }}
+                </p>
+                <p class="mt-3 text-sm font-semibold text-slate-900">
                     {{ detailBooking.customer }}
+                    <span class="font-normal text-slate-400">
+                        ({{ bookingCustomerType(detailBooking) }})
+                    </span>
                 </p>
                 <p
                     class="mt-1 flex items-center gap-1.5 text-xs text-slate-500"
                 >
                     <Phone class="h-3.5 w-3.5" />
                     {{ detailBooking.phone }}
-                </p>
-                <p class="mt-0.5 text-xs text-slate-500">
-                    {{ detailBooking.vehicle }} • {{ detailBooking.plate }}
                 </p>
             </div>
 
@@ -511,34 +589,30 @@ function createBooking(): void {
                     </dd>
                 </div>
                 <div class="flex justify-between">
-                    <dt class="text-slate-500">Jadwal</dt>
+                    <dt class="text-slate-500">Tanggal Booking</dt>
+                    <dd class="text-slate-800">
+                        {{ formatDate(detailBooking.bookingDate) }}
+                    </dd>
+                </div>
+                <div class="flex justify-between">
+                    <dt class="text-slate-500">Tanggal Order</dt>
                     <dd class="text-slate-800">
                         {{ formatDate(detailBooking.date) }} •
                         {{ dayLabelFor(detailBooking.date) }}
                     </dd>
                 </div>
-                <div
-                    class="flex justify-between border-t border-slate-200 pt-2"
-                >
-                    <dt class="font-medium text-slate-600">Estimasi biaya</dt>
-                    <dd class="font-semibold text-slate-900 tabular-nums">
-                        {{ formatCurrency(detailBooking.estimate) }}
-                    </dd>
-                </div>
             </dl>
-
-            <div>
-                <p class="text-xs font-medium text-slate-500">Catatan</p>
-                <p
-                    class="mt-1.5 rounded-xl border border-slate-200 p-3 text-xs text-slate-600"
-                >
-                    {{ detailBooking.notes }}
-                </p>
-            </div>
         </div>
 
         <template #footer>
-            <!-- Status is the order module's to set, so the detail only reads. -->
+            <button
+                v-if="canEditDetailBooking"
+                type="button"
+                class="flex-1 rounded-xl border border-cyan-200 py-2.5 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-50"
+                @click="startEditingBooking"
+            >
+                Edit Booking
+            </button>
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -552,10 +626,14 @@ function createBooking(): void {
     <!-- Create booking: the order form plus the date the customer is coming -->
     <ModalDialog
         :open="isCreateOpen"
-        title="Buat booking"
-        caption="Jadwalkan kedatangan customer"
+        :title="editingBookingId === null ? 'Buat booking' : 'Edit booking'"
+        :caption="
+            editingBookingId === null
+                ? 'Jadwalkan kedatangan customer'
+                : 'Perbarui data booking sebelum diproses'
+        "
         size="lg"
-        @close="isCreateOpen = false"
+        @close="closeBookingForm"
     >
         <div class="space-y-5">
             <!-- Customer -->
@@ -890,7 +968,7 @@ function createBooking(): void {
             <button
                 type="button"
                 class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="isCreateOpen = false"
+                @click="closeBookingForm"
             >
                 Batal
             </button>
@@ -898,9 +976,13 @@ function createBooking(): void {
                 type="button"
                 class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
                 :disabled="!canCreate"
-                @click="createBooking"
+                @click="saveBooking"
             >
-                Simpan booking
+                {{
+                    editingBookingId === null
+                        ? 'Simpan booking'
+                        : 'Simpan perubahan'
+                }}
             </button>
         </template>
     </ModalDialog>

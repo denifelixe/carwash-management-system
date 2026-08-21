@@ -16,6 +16,7 @@ class UserRoleController extends AdminController
         return $this->page($request, 'carwash/admin/Users', [
             'staff' => RoleAccess::staff(),
             'roles' => RoleAccess::roles(),
+            'shifts' => RoleAccess::shifts(),
             'matrix' => RoleAccess::matrix(),
             'allModules' => RoleAccess::modules(),
         ]);

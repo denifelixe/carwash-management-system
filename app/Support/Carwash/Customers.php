@@ -10,6 +10,30 @@ use Illuminate\Support\Str;
 class Customers
 {
     /**
+     * Member and loyalty totals shared with the member module and dashboard.
+     *
+     * @return array{total: int, active: int, redeemedStamps: int, rewardsClaimed: int}
+     */
+    public static function summary(): array
+    {
+        $members = self::all();
+        $redemptions = array_values(array_filter(
+            self::stampHistory(),
+            fn (array $entry): bool => $entry['type'] === 'redeem',
+        ));
+
+        return [
+            'total' => count($members),
+            'active' => count(array_filter(
+                $members,
+                fn (array $member): bool => $member['status'] === 'aktif',
+            )),
+            'redeemedStamps' => abs(array_sum(array_column($redemptions, 'stamps'))),
+            'rewardsClaimed' => count($redemptions),
+        ];
+    }
+
+    /**
      * @return list<array{id: int, name: string, memberId: string, phone: string, email: string, vehicle: string, plate: string, vehicles: list<array{name: string, plate: string, type: string, isPrimary: bool}>, stamps: int, lifetimeStamps: int, visits: int, spend: int, joinedAt: string, lastVisit: string, initials: string, status: string, hasAccount: bool}>
      */
     public static function all(): array

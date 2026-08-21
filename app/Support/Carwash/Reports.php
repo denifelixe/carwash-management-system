@@ -54,34 +54,80 @@ class Reports
     }
 
     /**
-     * Headline figures for the dashboard's selected business day. Revenue is
-     * collected POS money, while vehicle counts follow the order board.
+     * Headline figures for the dashboard's selected business day. Revenue and
+     * cash follow the finance ledger, vehicles follow the order board, and
+     * loyalty figures follow the member module.
      *
-     * @return list<array{label: string, value: string, caption: string, delta: float, trend: string, icon: string}>
+     * @return list<array{label: string, value: string, caption: string, delta: float|null, trend: string, icon: string}>
      */
     public static function dashboardStats(string $date): array
     {
         $stats = self::periodStats($date, $date);
-        $posPayments = array_values(array_filter(
-            DateFilter::apply(Finance::moneyIn(), $date),
-            fn (array $entry): bool => $entry['source'] === 'pos',
-        ));
+        $income = DateFilter::apply(Finance::moneyIn(), $date);
         $orderSummary = Operations::orderSummary($date);
+        $memberSummary = Customers::summary();
         $isToday = $date === self::todayDate();
+        $previousDate = CarbonImmutable::createFromFormat('!Y-m-d', $date)
+            ->subDay()
+            ->toDateString();
+        $previousIncome = DateFilter::apply(Finance::moneyIn(), $previousDate);
+        $previousOrderSummary = Operations::orderSummary($previousDate);
+        $revenue = array_sum(array_column($income, 'amount'));
 
         $stats[0] = [
             ...$stats[0],
+            ...self::dailyComparison(
+                $revenue,
+                array_sum(array_column($previousIncome, 'amount')),
+            ),
             'label' => $isToday ? 'Pendapatan Hari Ini' : 'Pendapatan',
-            'value' => 'Rp '.number_format(array_sum(array_column($posPayments, 'amount')), 0, ',', '.'),
-            'caption' => 'dari '.number_format(count($posPayments), 0, ',', '.').' transaksi POS',
+            'value' => 'Rp '.number_format($revenue, 0, ',', '.'),
+            'caption' => 'dari '.number_format(count($income), 0, ',', '.').' transaksi keuangan',
         ];
         $stats[1] = [
             ...$stats[1],
+            ...self::dailyComparison(
+                $orderSummary['served'],
+                $previousOrderSummary['served'],
+            ),
             'value' => number_format($orderSummary['served'], 0, ',', '.'),
             'caption' => 'dari '.number_format($orderSummary['total'], 0, ',', '.').' order kendaraan',
         ];
+        $stats[2] = [
+            ...$stats[2],
+            ...self::dailyComparison($memberSummary['active'], $memberSummary['active']),
+            'label' => 'Member Aktif',
+            'value' => number_format($memberSummary['active'], 0, ',', '.'),
+            'caption' => 'dari '.number_format($memberSummary['total'], 0, ',', '.').' member terdaftar',
+        ];
+        $stats[3] = [
+            ...$stats[3],
+            ...self::dailyComparison($memberSummary['redeemedStamps'], $memberSummary['redeemedStamps']),
+            'value' => number_format($memberSummary['redeemedStamps'], 0, ',', '.'),
+            'caption' => number_format($memberSummary['rewardsClaimed'], 0, ',', '.').' reward diklaim',
+        ];
 
         return $stats;
+    }
+
+    /**
+     * @return array{delta: float|null, trend: string}
+     */
+    private static function dailyComparison(int $current, int $previous): array
+    {
+        if ($previous === 0) {
+            return [
+                'delta' => $current === 0 ? 0.0 : null,
+                'trend' => 'flat',
+            ];
+        }
+
+        $delta = round((($current - $previous) / $previous) * 100, 1);
+
+        return [
+            'delta' => $delta,
+            'trend' => $delta > 0 ? 'up' : ($delta < 0 ? 'down' : 'flat'),
+        ];
     }
 
     /**

@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Carwash\Reports;
 use App\Support\Carwash\RoleAccess;
 use Inertia\Testing\AssertableInertia;
 
@@ -108,4 +109,23 @@ test('the shift summary shows served vehicles instead of payment transactions', 
         ->toContain('{{ formatCurrency(shift.revenue) }}')
         ->not->toContain('{{ formatShortCurrency(shift.revenue) }}')
         ->not->toContain('{{ shift.transactions }}');
+});
+
+test('the dashboard uses finance and member metrics with the daily remaining balance', function () {
+    $dashboard = file_get_contents(
+        resource_path('js/pages/carwash/admin/Dashboard.vue'),
+    );
+    $stats = Reports::dashboardStats(Reports::todayDate());
+
+    expect($stats[0]['caption'])->toContain('transaksi keuangan')
+        ->and($stats[2]['label'])->toBe('Member Aktif')
+        ->and($stats[3]['label'])->toBe('Stempel Ditukar')
+        ->and($dashboard)
+        ->toContain('Sisa Saldo')
+        ->toContain('cashSummary.remainingBalance')
+        ->not->toContain('Saldo awal')
+        ->not->toContain('cashSummary.openingBalance')
+        ->not->toContain('Saldo akhir')
+        ->not->toContain('cashSummary.closingBalance')
+        ->not->toContain('Customer Aktif');
 });

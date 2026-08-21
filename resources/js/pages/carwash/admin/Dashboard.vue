@@ -12,10 +12,7 @@ import type { LucideIcon } from '@lucide/vue';
 import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import StatusPill from '@/components/carwash/StatusPill.vue';
-import {
-    formatCurrency,
-    formatShortCurrency,
-} from '@/composables/useCarwashFormat';
+import { formatCurrency } from '@/composables/useCarwashFormat';
 import admin from '@/routes/carwash/admin';
 import type {
     CarwashBrand,
@@ -100,6 +97,7 @@ function applyDate(date: string): void {
                 :caption="stat.caption"
                 :delta="stat.delta"
                 :trend="stat.trend"
+                comparison-label="Dibanding hari sebelumnya"
                 :icon="statIcons[stat.icon]"
             />
         </section>
@@ -112,10 +110,6 @@ function applyDate(date: string): void {
                 <h3 class="text-sm font-semibold text-slate-900">
                     Arus kas hari ini
                 </h3>
-                <p class="mt-0.5 text-xs text-slate-500">
-                    Saldo awal
-                    {{ formatShortCurrency(cashSummary.openingBalance) }}
-                </p>
 
                 <div class="mt-4 space-y-3">
                     <div class="flex items-center gap-3">
@@ -153,19 +147,17 @@ function applyDate(date: string): void {
                 <div
                     class="mt-4 flex items-end justify-between border-t border-dashed border-slate-200 pt-3"
                 >
-                    <span class="text-xs font-medium text-slate-600">
-                        Saldo akhir
-                    </span>
-                    <span
-                        class="text-lg font-semibold text-slate-900 tabular-nums"
+                    <p class="text-xs text-slate-600">Sisa Saldo</p>
+                    <p
+                        class="text-base font-semibold text-slate-900 tabular-nums"
                     >
-                        {{ formatCurrency(cashSummary.closingBalance) }}
-                    </span>
+                        {{ formatCurrency(cashSummary.remainingBalance) }}
+                    </p>
                 </div>
 
                 <p
                     v-if="cashSummary.pendingPayments > 0"
-                    class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
+                    class="mt-4 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
                 >
                     {{ formatCurrency(cashSummary.pendingPayments) }} belum
                     tertagih dari order berjalan.

@@ -3,18 +3,19 @@ import { computed } from 'vue';
 
 const props = defineProps<{
     status: string;
+    label?: string;
 }>();
 
 /** Status words the `capitalize` class alone would render badly. */
 const statusLabels: Record<string, string> = {
     sebagian: 'Pembayaran Sebagian/Booking',
-    pelunasan: 'Pembayaran Lunas/Sisa',
+    pelunasan: 'Pelunasan',
     lunas: 'Pembayaran Lunas/Sisa',
     booking: 'Booking - Belum Datang',
 };
 
 const label = computed<string>(
-    () => statusLabels[props.status] ?? props.status,
+    () => props.label ?? statusLabels[props.status] ?? props.status,
 );
 
 /** Maps every status word used across the modules onto a colour family. */

@@ -17,6 +17,83 @@ test('new orders defer crew assignment and payment to their dedicated workflows'
         ->toContain('Order berhasil disimpan');
 });
 
+test('the order form summary lists services without cashier totals', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        // Prices remain visible on the selectable service items.
+        ->toContain('{{ formatCurrency(service.price) }}')
+        // The lower summary is operational: names only, without totals or stamps.
+        ->toContain('v-for="service in draftServices"')
+        ->toContain('{{ service.name }}')
+        ->toContain('Belum ada layanan dipilih')
+        ->not->toContain('{{ formatCurrency(draftTotal) }}')
+        ->not->toContain('+{{ draftStamps }} stempel');
+});
+
+test('the order list omits totals while detail only references service prices', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->not->toContain('<th class="px-5 py-3 text-right">Total</th>')
+        ->not->toContain('{{ formatCurrency(order.total) }}')
+        ->not->toContain('<dt class="text-slate-500">Metode bayar</dt>')
+        ->not->toContain('{{ detailOrder.payment }}')
+        ->not->toContain('{{ formatCurrency(detailOrder.total) }}')
+        ->not->toContain('{{ formatCurrency(detailOrder.paidAmount) }}')
+        ->not->toContain('detailOrder.total - detailOrder.paidAmount')
+        ->not->toContain('<dt class="text-slate-500">Invoice</dt>')
+        ->not->toContain('{{ detailOrder.invoice }}')
+        ->not->toContain('<dt class="text-slate-500">Stempel diberikan</dt>')
+        ->not->toContain('+{{ detailOrder.stampsEarned }}')
+        // Prices remain as references on service choices and detail items.
+        ->toContain('{{ formatCurrency(service.price) }}')
+        ->toContain(')?.price ?? 0,');
+});
+
+test('the order detail leads with its date and highlighted vehicle information', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('`${formatDate(detailOrder.date)} • ${detailOrder.time}`')
+        ->not->toContain('`${detailOrder?.customer} • ${detailOrder?.time}`')
+        ->toContain('Info Pelanggan')
+        ->toContain('class="mt-1 text-xl font-bold tracking-wide text-slate-900"')
+        ->toContain('{{ detailOrder.plate }}')
+        ->toContain('{{ detailOrder.vehicle }}')
+        ->toContain('{{ orderSourceLabel(detailOrder) }}')
+        ->toContain('{{ detailOrder.customer }}')
+        ->toContain('{{ detailOrder.phone }}');
+});
+
+test('the order detail shows transaction history and a full width close button', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('Riwayat transaksi')
+        ->toContain('{{ detailOrder.transactions.length }} transaksi')
+        ->toContain('v-for="transaction in detailOrder.transactions"')
+        ->toContain('function transactionCaption(type: string): string')
+        ->toContain("type === 'Pembayaran Sebagian'")
+        ->toContain("? 'Pembayaran Sebagian/Booking'")
+        ->toContain(": 'Pembayaran Sisa/Lunas (Order Selesai)';")
+        ->toContain('transactionCaption(transaction.type)')
+        ->not->toContain('Pembayaran Sebagian/Walk-In')
+        ->toContain('{{ transaction.channels }}')
+        ->toContain('{{ formatCurrency(transaction.amount) }}')
+        ->toContain('Belum ada transaksi')
+        ->not->toContain('stempel sudah masuk ke akun customer')
+        ->toContain('class="w-full rounded-xl bg-slate-900');
+});
+
 test('the order lifecycle starts on booking and ends in selesai or batal', function () {
     expect(Operations::orderStatuses())
         ->toBe(['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal']);
@@ -98,33 +175,39 @@ test('the summary shows a card per lifecycle stage on top of the total', functio
     }
 });
 
-test('the booking filter includes booking orders until they are closed', function () {
+test('the booking filter only includes vehicles that have not arrived', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/carwash/admin/Orders.vue'),
     );
 
     expect($ordersPage)
-        ->toContain("order.source === 'booking' && !closedStatuses.includes(order.status)")
-        ->toContain("status === 'booking'")
-        ->toContain('isOpenBookingOrder(order)');
+        ->toContain("order.source === 'booking' && order.status === 'booking'")
+        ->toContain('isAwaitingArrivalBooking(order)')
+        ->not->toContain('isOpenBookingOrder(order)');
 });
 
-test('today booking count matches the booking order module', function () {
+test('today booking count excludes bookings that have already arrived', function () {
     $today = Reports::todayDate();
-    $closedStatuses = ['selesai', 'batal'];
 
-    $todayBookingCount = count(array_filter(
-        Operations::scheduledBookings(),
-        fn (array $booking): bool => $booking['date'] === $today,
-    ));
-    $todayOpenBookingOrderCount = count(array_filter(
+    $todayBookingOrders = array_filter(
         Operations::orders(),
         fn (array $order): bool => $order['date'] === $today
-            && $order['source'] === 'booking'
-            && ! in_array($order['status'], $closedStatuses, true),
-    ));
+            && $order['source'] === 'booking',
+    );
+    $todayAwaitingArrivalOrders = array_filter(
+        $todayBookingOrders,
+        fn (array $order): bool => $order['status'] === 'booking',
+    );
+    $todayArrivedBookingOrders = array_filter(
+        $todayBookingOrders,
+        fn (array $order): bool => $order['status'] !== 'booking',
+    );
 
-    expect($todayOpenBookingOrderCount)->toBe($todayBookingCount);
+    expect($todayAwaitingArrivalOrders)
+        ->not->toBeEmpty()
+        ->and($todayArrivedBookingOrders)->not->toBeEmpty()
+        ->and(count($todayAwaitingArrivalOrders))
+        ->toBeLessThan(count($todayBookingOrders));
 });
 
 test('summary cards filter the order list and expose their active state', function () {

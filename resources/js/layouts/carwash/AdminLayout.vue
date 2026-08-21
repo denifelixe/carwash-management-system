@@ -183,12 +183,6 @@ function leaveConsole(): void {
                             {{ role.name }}
                         </p>
                     </div>
-                    <span
-                        class="text-[10px] text-slate-400"
-                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
-                    >
-                        {{ modules.length }} modul
-                    </span>
                 </div>
             </div>
 
@@ -252,7 +246,7 @@ function leaveConsole(): void {
                             {{ persona.name }}
                         </p>
                         <p class="truncate text-[11px] text-slate-500">
-                            {{ persona.title }}
+                            {{ role.name }} - {{ persona.shift }}
                         </p>
                     </div>
                     <button

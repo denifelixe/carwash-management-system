@@ -1,3 +1,7 @@
+<script lang="ts">
+let openModalCount = 0;
+</script>
+
 <script setup lang="ts">
 import { X } from '@lucide/vue';
 import { onBeforeUnmount, watch } from 'vue';
@@ -7,6 +11,7 @@ const props = defineProps<{
     title?: string;
     caption?: string;
     size?: 'sm' | 'md' | 'lg' | 'xl';
+    layer?: 'default' | 'nested' | 'top';
 }>();
 
 const emit = defineEmits<{
@@ -20,21 +25,38 @@ const widths: Record<string, string> = {
     xl: 'max-w-4xl',
 };
 
-/** Freeze the page behind the overlay so the backdrop can't scroll out from under it. */
-function lockPageScroll(locked: boolean): void {
-    document.body.style.overflow = locked ? 'hidden' : '';
+const layers: Record<NonNullable<typeof props.layer>, string> = {
+    default: 'z-50',
+    nested: 'z-[60]',
+    top: 'z-[70]',
+};
+
+/** Each mounted dialog owns one lock so stacked modals cannot unlock each other. */
+let ownsPageScrollLock = false;
+
+function syncPageScrollLock(locked: boolean): void {
+    if (locked && !ownsPageScrollLock) {
+        openModalCount += 1;
+        ownsPageScrollLock = true;
+    } else if (!locked && ownsPageScrollLock) {
+        openModalCount = Math.max(openModalCount - 1, 0);
+        ownsPageScrollLock = false;
+    }
+
+    document.body.style.overflow = openModalCount > 0 ? 'hidden' : '';
 }
 
-watch(() => props.open, lockPageScroll);
+watch(() => props.open, syncPageScrollLock, { immediate: true });
 
-onBeforeUnmount(() => lockPageScroll(false));
+onBeforeUnmount(() => syncPageScrollLock(false));
 </script>
 
 <template>
     <Teleport to="body">
         <div
             v-if="open"
-            class="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            class="fixed inset-0 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            :class="layers[layer ?? 'default']"
             @click.self="emit('close')"
         >
             <div

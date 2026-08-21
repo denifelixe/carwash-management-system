@@ -12,11 +12,11 @@ dataset('admin modules', [
     'orders' => ['carwash.admin.orders', 'carwash/admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
     'pos' => ['carwash.admin.pos', 'carwash/admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
     'customers' => ['carwash.admin.customers', 'carwash/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],
-    'finance' => ['carwash.admin.finance', 'carwash/admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary']],
+    'finance' => ['carwash.admin.finance', 'carwash/admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'orders']],
     'bookings' => ['carwash.admin.bookings', 'carwash/admin/Bookings', ['bookings', 'today', 'services', 'customers']],
     'inventory' => ['carwash.admin.inventory', 'carwash/admin/Inventory', ['items', 'movements', 'categories', 'movementTypes']],
     'rewards' => ['carwash.admin.rewards', 'carwash/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
-    'users' => ['carwash.admin.users', 'carwash/admin/Users', ['staff', 'roles', 'matrix', 'allModules']],
+    'users' => ['carwash.admin.users', 'carwash/admin/Users', ['staff', 'roles', 'shifts', 'matrix', 'allModules']],
     'reports' => ['carwash.admin.reports', 'carwash/admin/Reports', ['stats', 'trend', 'filters', 'customerActivity', 'bookingSummary', 'inventorySummary']],
 ]);
 
@@ -70,6 +70,7 @@ test('the cashier persona is shown in the console shell', function () {
         ->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->where('persona.name', 'Yuni Astuti')
+                ->where('persona.shift', 'Shift Pagi')
                 ->where('role.name', 'Kasir')
         );
 });

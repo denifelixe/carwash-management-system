@@ -45,7 +45,7 @@ class Finance
 
                 $category = $transaction['type'] === 'Pembayaran Sebagian'
                     ? 'Pembayaran Sebagian/Booking Order'
-                    : 'Pembayaran Lunas/Sisa Order';
+                    : 'Pembayaran Sisa/Lunas (Order Selesai)';
 
                 $entries[] = [
                     'id' => 'pos-'.$transaction['id'],
@@ -140,7 +140,7 @@ class Finance
      */
     public static function incomeCategories(): array
     {
-        return ['Pembayaran Lunas/Sisa Order', 'Pembayaran Sebagian/Booking Order', 'Penjualan Produk', 'Sewa Tempat', 'Pendapatan Lain'];
+        return ['Pembayaran Sisa/Lunas (Order Selesai)', 'Pembayaran Sebagian/Booking Order', 'Penjualan Produk', 'Sewa Tempat', 'Pendapatan Lain'];
     }
 
     /**
@@ -154,7 +154,7 @@ class Finance
     /**
      * Rolling cash position used by the finance and dashboard summaries.
      *
-     * @return array{openingBalance: int, todayIn: int, todayOut: int, closingBalance: int, pendingPayments: int}
+     * @return array{openingBalance: int, todayIn: int, todayOut: int, remainingBalance: int, closingBalance: int, pendingPayments: int}
      */
     public static function summary(?string $date = null): array
     {
@@ -172,6 +172,7 @@ class Finance
             'openingBalance' => 12400000,
             'todayIn' => $todayIn,
             'todayOut' => $todayOut,
+            'remainingBalance' => $todayIn - $todayOut,
             'closingBalance' => 12400000 + $todayIn - $todayOut,
             'pendingPayments' => Operations::outstandingTotal(),
         ];

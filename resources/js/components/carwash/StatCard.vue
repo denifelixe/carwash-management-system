@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Check, TrendingDown, TrendingUp } from '@lucide/vue';
+import { Check, Minus, TrendingDown, TrendingUp } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed } from 'vue';
 
@@ -9,8 +9,9 @@ const props = defineProps<{
     label: string;
     value: string;
     caption?: string;
-    delta?: number;
-    trend?: string;
+    delta?: number | null;
+    trend?: 'up' | 'down' | 'flat';
+    comparisonLabel?: string;
     icon?: LucideIcon;
     tone?: Tone;
     interactive?: boolean;
@@ -114,16 +115,25 @@ const style = computed<ToneStyle>(() => toneStyles[props.tone ?? 'default']);
                 <component :is="icon" v-if="icon" class="h-5 w-5" />
             </div>
             <span
-                v-if="delta !== undefined"
+                v-if="delta !== undefined && delta !== null"
                 class="flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-medium"
                 :class="
                     trend === 'up'
                         ? 'bg-emerald-50 text-emerald-600'
-                        : 'bg-rose-50 text-rose-600'
+                        : trend === 'down'
+                          ? 'bg-rose-50 text-rose-600'
+                          : 'bg-slate-100 text-slate-500'
                 "
+                :title="comparisonLabel"
             >
                 <component
-                    :is="trend === 'up' ? TrendingUp : TrendingDown"
+                    :is="
+                        trend === 'up'
+                            ? TrendingUp
+                            : trend === 'down'
+                              ? TrendingDown
+                              : Minus
+                    "
                     class="h-3.5 w-3.5"
                 />
                 {{ Math.abs(delta) }}%

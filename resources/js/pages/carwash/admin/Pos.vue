@@ -13,7 +13,7 @@ import {
     Trash2,
     Wallet,
 } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import DataToolbar from '@/components/carwash/DataToolbar.vue';
 import DateFilterBar from '@/components/carwash/DateFilterBar.vue';
 import EmptyState from '@/components/carwash/EmptyState.vue';
@@ -101,6 +101,12 @@ interface PaymentRecapDetail {
     amount: number;
 }
 
+interface PaymentRecapOrderDetail {
+    order: CarwashOrder;
+    sourceTransactionId: string;
+    highlightedTransactionId: string | null;
+}
+
 type PaymentRecapShift = 'total' | 'pagi' | 'sore';
 
 const bankPaymentMethods = ['Kredit', 'Debit', 'Transfer'];
@@ -124,6 +130,9 @@ const eMoneyOptions = [
 const search = ref<string>('');
 const partialPaymentSearch = ref<string>('');
 const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
+const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
+const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
+const selectedPaymentRecapOrder = ref<PaymentRecapOrderDetail | null>(null);
 const activePaymentRecapShift = ref<PaymentRecapShift>('total');
 const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
@@ -326,7 +335,7 @@ const paymentRecapFinalOrderCount = computed<number>(
 );
 
 const partialPaymentRecapLabel = 'Pembayaran Sebagian/Booking';
-const finalPaymentRecapLabel = 'Pembayaran Lunas/Sisa';
+const finalPaymentRecapLabel = 'Pembayaran Sisa/Lunas (Order Selesai)';
 
 const paymentRecapByType = computed<PaymentRecapRow[]>(() => [
     {
@@ -427,11 +436,47 @@ const paymentRecapDetailTotal = computed<number>(() =>
     ),
 );
 
-function selectPaymentRecap(
+async function selectPaymentRecap(
     category: PaymentRecapSelection['category'],
     label: string,
-): void {
+): Promise<void> {
     selectedPaymentRecap.value = { category, label };
+    selectedPaymentRecapTransaction.value = null;
+    selectedPaymentRecapOrder.value = null;
+
+    await nextTick();
+    paymentRecapDetailsElement.value?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+    });
+}
+
+function showPaymentRecapOrder(detail: PaymentRecapDetail): void {
+    selectedPaymentRecapTransaction.value = null;
+    selectedPaymentRecapOrder.value = {
+        order: detail.order,
+        sourceTransactionId: detail.transaction.id,
+        highlightedTransactionId: null,
+    };
+}
+
+function showPaymentRecapTransaction(detail: PaymentRecapDetail): void {
+    selectedPaymentRecapTransaction.value = detail;
+    selectedPaymentRecapOrder.value = null;
+}
+
+function showSelectedPaymentRecapTransactionOrder(): void {
+    const detail = selectedPaymentRecapTransaction.value;
+
+    if (!detail) {
+        return;
+    }
+
+    selectedPaymentRecapOrder.value = {
+        order: detail.order,
+        sourceTransactionId: detail.transaction.id,
+        highlightedTransactionId: detail.transaction.id,
+    };
 }
 
 function isPaymentRecapSelected(
@@ -447,6 +492,8 @@ function isPaymentRecapSelected(
 function selectPaymentRecapShift(shift: PaymentRecapShift): void {
     activePaymentRecapShift.value = shift;
     selectedPaymentRecap.value = null;
+    selectedPaymentRecapTransaction.value = null;
+    selectedPaymentRecapOrder.value = null;
 }
 
 /** Arrow-key roving between shift tabs, as expected of a `role="tablist"`. */
@@ -470,6 +517,8 @@ function movePaymentRecapShift(offset: number): void {
 function closePaymentRecap(): void {
     isPaymentRecapOpen.value = false;
     selectedPaymentRecap.value = null;
+    selectedPaymentRecapTransaction.value = null;
+    selectedPaymentRecapOrder.value = null;
     activePaymentRecapShift.value = 'total';
 }
 
@@ -876,6 +925,29 @@ function paymentTransactionLabel(transaction: CarwashTransaction): string {
         : finalPaymentRecapLabel;
 }
 
+/** Uses the same public transaction reference shown by the Finance ledger. */
+function paymentTransactionReference(
+    transaction: CarwashTransaction,
+    order: CarwashOrder,
+): string {
+    const categoryCode =
+        transaction.type === 'Pembayaran Sebagian' ? 'PSO' : 'PLO';
+    const dateCode = transaction.date.replaceAll('-', '').slice(2);
+    const transactionIndex = order.transactions.findIndex(
+        (candidate) => candidate.id === transaction.id,
+    );
+    const transactionNumber = Math.max(transactionIndex + 1, 1);
+    const stableIdentifier = `${order.orderNo}-TRX-${transactionNumber}`
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, '');
+
+    return `TRX-${categoryCode}-${dateCode}-${stableIdentifier}`;
+}
+
+function paymentTransactionRecorder(transaction: CarwashTransaction): string {
+    return transaction.time >= '15.00' ? 'Rina Marlina' : 'Yuni Astuti';
+}
+
 function paymentHistoryTypeLabel(transaction: CarwashTransaction): string {
     return transaction.type === 'Pembayaran Sebagian'
         ? 'Pembayaran Sebagian/Booking'
@@ -1016,7 +1088,7 @@ function applyDate(date: string): void {
         <!-- Summary -->
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatCard
-                label="Pembayaran Lunas/Sisa"
+                label="Pembayaran Sisa/Lunas (Order Selesai)"
                 :value="formatCurrency(outstandingTotal)"
                 caption="sisa tagihan seluruh order"
                 :icon="Clock"
@@ -1151,7 +1223,9 @@ function applyDate(date: string): void {
                                 selectPaymentRecap('all', 'Semua pembayaran')
                             "
                         >
-                            <p class="text-xs text-slate-500">
+                            <p
+                                class="text-xs leading-snug whitespace-normal text-slate-500"
+                            >
                                 Jumlah transaksi
                             </p>
                             <p
@@ -1184,7 +1258,9 @@ function applyDate(date: string): void {
                                 )
                             "
                         >
-                            <p class="text-xs text-slate-500">
+                            <p
+                                class="text-xs leading-snug whitespace-normal text-slate-500"
+                            >
                                 {{ finalPaymentRecapLabel }}
                             </p>
                             <p
@@ -1230,8 +1306,10 @@ function applyDate(date: string): void {
                                         selectPaymentRecap('type', row.label)
                                     "
                                 >
-                                    <div>
-                                        <p class="text-sm text-slate-700">
+                                    <div class="min-w-0">
+                                        <p
+                                            class="text-sm leading-snug whitespace-normal text-slate-700"
+                                        >
                                             {{ row.label }}
                                         </p>
                                         <p class="text-[11px] text-slate-400">
@@ -1314,6 +1392,7 @@ function applyDate(date: string): void {
 
                     <section
                         v-if="selectedPaymentRecap"
+                        ref="paymentRecapDetailsElement"
                         class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
                     >
                         <div
@@ -1358,65 +1437,354 @@ function applyDate(date: string): void {
                             <article
                                 v-for="detail in paymentRecapDetails"
                                 :key="`${selectedPaymentRecap.category}-${selectedPaymentRecap.label}-${detail.transaction.id}`"
-                                class="grid gap-4 px-4 py-4 md:grid-cols-[1fr_1.2fr_auto] md:items-center"
+                                class="px-4 py-4"
                             >
-                                <div>
-                                    <p
-                                        class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
-                                    >
-                                        Transaksi
-                                    </p>
-                                    <p
-                                        class="mt-1 text-sm font-medium text-slate-900"
-                                    >
-                                        {{
-                                            paymentTransactionLabel(
-                                                detail.transaction,
-                                            )
-                                        }}
-                                    </p>
-                                    <p class="mt-0.5 text-xs text-slate-500">
-                                        {{
-                                            formatDate(detail.transaction.date)
-                                        }}
-                                        ·
-                                        {{ detail.transaction.time }}
-                                    </p>
-                                    <p class="mt-0.5 text-xs text-slate-500">
-                                        {{
-                                            transactionChannelsLabel(
-                                                detail.transaction,
-                                            )
-                                        }}
-                                    </p>
-                                </div>
-
-                                <div>
-                                    <p
-                                        class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
-                                    >
-                                        Order
-                                    </p>
-                                    <p
-                                        class="mt-1 text-sm font-medium text-slate-900"
-                                    >
-                                        {{ detail.order.orderNo }} ·
-                                        {{ detail.order.customer }}
-                                    </p>
-                                    <p class="mt-0.5 text-xs text-slate-500">
-                                        {{ detail.order.vehicle }} ·
-                                        {{ detail.order.plate }}
-                                    </p>
-                                    <p class="mt-0.5 text-xs text-slate-500">
-                                        {{ detail.order.items }}
-                                    </p>
-                                </div>
-
-                                <p
-                                    class="text-base font-semibold text-emerald-700 tabular-nums md:text-right"
+                                <div
+                                    class="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_8rem] md:items-start"
                                 >
-                                    {{ formatCurrency(detail.amount) }}
-                                </p>
+                                    <div class="min-w-0">
+                                        <p
+                                            class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
+                                        >
+                                            Transaksi
+                                        </p>
+                                        <button
+                                            type="button"
+                                            class="mt-1 text-left text-xs font-semibold wrap-anywhere text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                            :aria-label="`Lihat transaksi ${paymentTransactionReference(detail.transaction, detail.order)} pada order ${detail.order.orderNo}`"
+                                            @click="
+                                                showPaymentRecapTransaction(
+                                                    detail,
+                                                )
+                                            "
+                                        >
+                                            {{
+                                                paymentTransactionReference(
+                                                    detail.transaction,
+                                                    detail.order,
+                                                )
+                                            }}
+                                        </button>
+                                        <p
+                                            class="mt-1 text-sm font-medium text-slate-900"
+                                        >
+                                            {{
+                                                paymentTransactionLabel(
+                                                    detail.transaction,
+                                                )
+                                            }}
+                                        </p>
+                                        <p
+                                            class="mt-0.5 text-xs text-slate-500"
+                                        >
+                                            {{
+                                                formatDate(
+                                                    detail.transaction.date,
+                                                )
+                                            }}
+                                            ·
+                                            {{ detail.transaction.time }}
+                                        </p>
+                                        <p
+                                            class="mt-0.5 text-xs text-slate-500"
+                                        >
+                                            {{
+                                                transactionChannelsLabel(
+                                                    detail.transaction,
+                                                )
+                                            }}
+                                        </p>
+                                    </div>
+
+                                    <div class="min-w-0">
+                                        <p
+                                            class="text-[11px] font-medium tracking-wide text-slate-400 uppercase"
+                                        >
+                                            Order
+                                        </p>
+                                        <p
+                                            class="mt-1 text-sm font-medium text-slate-900"
+                                        >
+                                            <button
+                                                type="button"
+                                                class="font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                                :aria-label="`Lihat detail order ${detail.order.orderNo} dan transaksinya`"
+                                                @click="
+                                                    showPaymentRecapOrder(
+                                                        detail,
+                                                    )
+                                                "
+                                            >
+                                                {{ detail.order.orderNo }}
+                                            </button>
+                                            · {{ detail.order.customer }}
+                                        </p>
+                                        <p
+                                            class="mt-0.5 text-xs text-slate-500"
+                                        >
+                                            {{ detail.order.vehicle }} ·
+                                            {{ detail.order.plate }}
+                                        </p>
+                                        <p
+                                            class="mt-0.5 text-xs text-slate-500"
+                                        >
+                                            {{ detail.order.items }}
+                                        </p>
+                                    </div>
+
+                                    <p
+                                        class="text-base font-semibold text-emerald-700 tabular-nums md:text-right"
+                                    >
+                                        {{ formatCurrency(detail.amount) }}
+                                    </p>
+                                </div>
+
+                                <ModalDialog
+                                    :open="
+                                        selectedPaymentRecapOrder?.order.id ===
+                                            detail.order.id &&
+                                        selectedPaymentRecapOrder.sourceTransactionId ===
+                                            detail.transaction.id
+                                    "
+                                    title="Detail Order"
+                                    :caption="`${detail.order.orderNo} · ${detail.order.customer}`"
+                                    size="lg"
+                                    :layer="
+                                        selectedPaymentRecapTransaction
+                                            ? 'top'
+                                            : 'nested'
+                                    "
+                                    @close="selectedPaymentRecapOrder = null"
+                                >
+                                    <div
+                                        class="rounded-2xl border border-cyan-200 bg-cyan-50/50 p-4"
+                                    >
+                                        <div>
+                                            <p
+                                                class="text-[11px] font-semibold tracking-wide text-cyan-700 uppercase"
+                                            >
+                                                Detail order
+                                            </p>
+                                            <h4
+                                                class="mt-1 text-base font-semibold text-slate-950"
+                                            >
+                                                {{ detail.order.orderNo }} ·
+                                                {{ detail.order.customer }}
+                                            </h4>
+                                            <p
+                                                class="mt-1 text-xs text-slate-600"
+                                            >
+                                                {{ detail.order.vehicle }} ·
+                                                {{ detail.order.plate }} ·
+                                                {{
+                                                    orderTypeLabel(detail.order)
+                                                }}
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    <dl
+                                        class="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-white p-4 ring-1 ring-slate-200"
+                                        :class="
+                                            detail.order.source === 'booking'
+                                                ? 'sm:grid-cols-5'
+                                                : 'sm:grid-cols-4'
+                                        "
+                                    >
+                                        <div
+                                            v-if="
+                                                detail.order.source ===
+                                                    'booking' &&
+                                                detail.order.bookingDate
+                                            "
+                                        >
+                                            <dt
+                                                class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                                            >
+                                                Tanggal booking
+                                            </dt>
+                                            <dd
+                                                class="mt-1 text-xs font-medium text-slate-700"
+                                            >
+                                                {{
+                                                    formatDate(
+                                                        detail.order
+                                                            .bookingDate,
+                                                    )
+                                                }}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt
+                                                class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                                            >
+                                                Tanggal order
+                                            </dt>
+                                            <dd
+                                                class="mt-1 text-xs font-medium text-slate-700"
+                                            >
+                                                {{
+                                                    formatDate(
+                                                        detail.order.date,
+                                                    )
+                                                }}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt
+                                                class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                                            >
+                                                Layanan
+                                            </dt>
+                                            <dd
+                                                class="mt-1 text-xs font-medium text-slate-700"
+                                            >
+                                                {{ detail.order.items }}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt
+                                                class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                                            >
+                                                Total order
+                                            </dt>
+                                            <dd
+                                                class="mt-1 text-xs font-semibold text-slate-900 tabular-nums"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        detail.order.total,
+                                                    )
+                                                }}
+                                            </dd>
+                                        </div>
+                                        <div>
+                                            <dt
+                                                class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                                            >
+                                                Sisa tagihan
+                                            </dt>
+                                            <dd
+                                                class="mt-1 text-xs font-semibold text-amber-800 tabular-nums"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        Math.max(
+                                                            detail.order.total -
+                                                                detail.order
+                                                                    .paidAmount,
+                                                            0,
+                                                        ),
+                                                    )
+                                                }}
+                                            </dd>
+                                        </div>
+                                    </dl>
+
+                                    <div class="mt-4">
+                                        <div
+                                            class="flex items-center justify-between gap-3"
+                                        >
+                                            <h5
+                                                class="text-sm font-semibold text-slate-900"
+                                            >
+                                                Riwayat transaksi
+                                            </h5>
+                                            <span
+                                                class="text-xs text-slate-500"
+                                            >
+                                                {{
+                                                    formatNumber(
+                                                        detail.order
+                                                            .transactions
+                                                            .length,
+                                                    )
+                                                }}
+                                                transaksi
+                                            </span>
+                                        </div>
+
+                                        <ul class="mt-2 space-y-2">
+                                            <li
+                                                v-for="transaction in detail
+                                                    .order.transactions"
+                                                :key="transaction.id"
+                                                class="flex flex-col gap-2 rounded-xl border px-3 py-3 transition sm:flex-row sm:items-center sm:justify-between"
+                                                :class="
+                                                    transaction.id ===
+                                                    selectedPaymentRecapOrder?.highlightedTransactionId
+                                                        ? 'border-cyan-300 bg-cyan-100 ring-2 ring-cyan-400/30'
+                                                        : 'border-slate-200 bg-white'
+                                                "
+                                            >
+                                                <div>
+                                                    <div
+                                                        class="flex flex-wrap items-center gap-2"
+                                                    >
+                                                        <p
+                                                            class="text-xs font-semibold text-slate-900"
+                                                        >
+                                                            {{
+                                                                paymentTransactionLabel(
+                                                                    transaction,
+                                                                )
+                                                            }}
+                                                        </p>
+                                                        <span
+                                                            v-if="
+                                                                transaction.id ===
+                                                                selectedPaymentRecapOrder?.highlightedTransactionId
+                                                            "
+                                                            class="rounded-full bg-cyan-600 px-2 py-0.5 text-[10px] font-semibold text-white"
+                                                        >
+                                                            Transaksi dipilih
+                                                        </span>
+                                                    </div>
+                                                    <p
+                                                        class="mt-0.5 text-[11px] text-slate-500"
+                                                    >
+                                                        {{
+                                                            formatDate(
+                                                                transaction.date,
+                                                            )
+                                                        }}
+                                                        · {{ transaction.time }}
+                                                        ·
+                                                        {{
+                                                            transactionChannelsLabel(
+                                                                transaction,
+                                                            )
+                                                        }}
+                                                    </p>
+                                                </div>
+                                                <p
+                                                    class="shrink-0 text-sm font-semibold text-emerald-700 tabular-nums"
+                                                >
+                                                    {{
+                                                        formatCurrency(
+                                                            transaction.amount,
+                                                        )
+                                                    }}
+                                                </p>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                    <template #footer>
+                                        <button
+                                            type="button"
+                                            class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                                            @click="
+                                                selectedPaymentRecapOrder = null
+                                            "
+                                        >
+                                            {{
+                                                selectedPaymentRecapTransaction
+                                                    ? 'Kembali ke transaksi'
+                                                    : 'Kembali ke rekap'
+                                            }}
+                                        </button>
+                                    </template>
+                                </ModalDialog>
                             </article>
                         </div>
                     </section>
@@ -1447,6 +1815,180 @@ function applyDate(date: string): void {
             </template>
         </ModalDialog>
 
+        <ModalDialog
+            :open="selectedPaymentRecapTransaction !== null"
+            title="Rekap Transaksi"
+            :caption="
+                selectedPaymentRecapTransaction
+                    ? paymentTransactionReference(
+                          selectedPaymentRecapTransaction.transaction,
+                          selectedPaymentRecapTransaction.order,
+                      )
+                    : undefined
+            "
+            size="lg"
+            layer="nested"
+            @close="selectedPaymentRecapTransaction = null"
+        >
+            <template v-if="selectedPaymentRecapTransaction">
+                <div
+                    class="rounded-2xl border border-emerald-200 bg-emerald-50 p-5"
+                >
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p
+                                class="text-[11px] font-semibold tracking-wide text-emerald-700 uppercase"
+                            >
+                                {{
+                                    paymentTransactionLabel(
+                                        selectedPaymentRecapTransaction.transaction,
+                                    )
+                                }}
+                            </p>
+                            <p
+                                class="mt-2 text-2xl font-bold text-emerald-950 tabular-nums"
+                            >
+                                {{
+                                    formatCurrency(
+                                        selectedPaymentRecapTransaction
+                                            .transaction.amount,
+                                    )
+                                }}
+                            </p>
+                            <p class="mt-1 text-xs text-emerald-800/75">
+                                {{
+                                    formatDate(
+                                        selectedPaymentRecapTransaction
+                                            .transaction.date,
+                                    )
+                                }}
+                                ·
+                                {{
+                                    selectedPaymentRecapTransaction.transaction
+                                        .time
+                                }}
+                            </p>
+                        </div>
+                        <span
+                            class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-500 text-white shadow-sm shadow-emerald-500/30"
+                        >
+                            <Banknote class="h-5 w-5" />
+                        </span>
+                    </div>
+                </div>
+
+                <dl
+                    class="mt-4 grid grid-cols-1 gap-x-4 gap-y-3 rounded-2xl bg-slate-50 p-4 sm:grid-cols-2"
+                >
+                    <div>
+                        <dt
+                            class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                        >
+                            Nomor transaksi
+                        </dt>
+                        <dd
+                            class="mt-1 text-xs font-semibold wrap-anywhere text-slate-900"
+                        >
+                            {{
+                                paymentTransactionReference(
+                                    selectedPaymentRecapTransaction.transaction,
+                                    selectedPaymentRecapTransaction.order,
+                                )
+                            }}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt
+                            class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                        >
+                            Dicatat oleh
+                        </dt>
+                        <dd class="mt-1 text-xs font-medium text-slate-700">
+                            {{
+                                paymentTransactionRecorder(
+                                    selectedPaymentRecapTransaction.transaction,
+                                )
+                            }}
+                        </dd>
+                    </div>
+                    <div class="sm:col-span-2">
+                        <dt
+                            class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                        >
+                            Deskripsi
+                        </dt>
+                        <dd class="mt-1 text-xs font-medium text-slate-700">
+                            {{ selectedPaymentRecapTransaction.order.items }}
+                        </dd>
+                    </div>
+                </dl>
+
+                <section
+                    class="mt-4 overflow-hidden rounded-2xl border border-slate-200"
+                >
+                    <div
+                        class="border-b border-slate-100 bg-slate-50/70 px-4 py-3"
+                    >
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Kanal pembayaran
+                        </h3>
+                    </div>
+                    <ul class="divide-y divide-slate-100 px-4">
+                        <li
+                            v-for="channel in selectedPaymentRecapTransaction
+                                .transaction.channelBreakdown"
+                            :key="channel.label"
+                            class="flex items-center justify-between gap-4 py-3 text-xs"
+                        >
+                            <span class="font-medium text-slate-600">
+                                {{ channel.label }}
+                            </span>
+                            <span
+                                class="font-semibold text-slate-900 tabular-nums"
+                            >
+                                {{ formatCurrency(channel.amount) }}
+                            </span>
+                        </li>
+                    </ul>
+                </section>
+
+                <button
+                    type="button"
+                    class="mt-4 flex w-full items-center justify-between gap-4 rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-100/70 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:outline-none"
+                    @click="showSelectedPaymentRecapTransactionOrder"
+                >
+                    <span class="min-w-0">
+                        <span
+                            class="block text-[10px] font-semibold tracking-wide text-cyan-700 uppercase"
+                        >
+                            Order terkait · lihat rekap lengkap
+                        </span>
+                        <span class="mt-1 block font-semibold text-slate-950">
+                            {{ selectedPaymentRecapTransaction.order.orderNo }}
+                            ·
+                            {{ selectedPaymentRecapTransaction.order.customer }}
+                        </span>
+                        <span class="mt-0.5 block text-xs text-slate-600">
+                            {{ selectedPaymentRecapTransaction.order.vehicle }}
+                            ·
+                            {{ selectedPaymentRecapTransaction.order.plate }}
+                        </span>
+                    </span>
+                    <span class="shrink-0 text-lg text-cyan-700">→</span>
+                </button>
+            </template>
+
+            <template #footer>
+                <button
+                    type="button"
+                    class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    @click="selectedPaymentRecapTransaction = null"
+                >
+                    Tutup
+                </button>
+            </template>
+        </ModalDialog>
+
         <div class="space-y-4">
             <!-- Order picker -->
             <section
@@ -1461,7 +2003,7 @@ function applyDate(date: string): void {
                         </span>
                         <div>
                             <h3 class="text-sm font-semibold text-violet-950">
-                                Pembayaran Lunas/Sisa
+                                Pelunasan
                             </h3>
                             <p class="mt-0.5 text-xs text-violet-700/70">
                                 {{ visibleOrders.length }} order ditampilkan —
@@ -1508,7 +2050,10 @@ function applyDate(date: string): void {
                                     </p>
                                 </div>
                                 <div class="flex shrink-0 gap-1.5">
-                                    <StatusPill :status="order.status" />
+                                    <StatusPill
+                                        :status="order.status"
+                                        label="Pelunasan"
+                                    />
                                 </div>
                             </div>
 
@@ -1552,7 +2097,7 @@ function applyDate(date: string): void {
                                     v-if="order.paymentStatus === 'lunas'"
                                     class="text-sm font-semibold text-emerald-600"
                                 >
-                                    Pembayaran Lunas/Sisa
+                                    Pembayaran Sisa/Lunas (Order Selesai)
                                 </span>
                                 <span v-else class="text-right">
                                     <span
@@ -1578,8 +2123,8 @@ function applyDate(date: string): void {
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    title="Tidak ada order untuk pembayaran lunas/sisa"
-                    caption="Belum ada order berstatus Pembayaran Lunas/Sisa atau pencarian tidak cocok."
+                    title="Tidak ada order untuk pembayaran sisa/lunas"
+                    caption="Belum ada order berstatus Pembayaran Sisa/Lunas (Order Selesai) atau pencarian tidak cocok."
                 />
             </section>
 

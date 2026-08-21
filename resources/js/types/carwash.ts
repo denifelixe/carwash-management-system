@@ -177,6 +177,8 @@ export interface CarwashOrder {
     /** ISO day the order belongs to. */
     date: string;
     time: string;
+    /** ISO day the booking was first recorded; null for walk-in orders. */
+    bookingDate: string | null;
     customerId: number | null;
     customer: string;
     phone: string;
@@ -225,6 +227,8 @@ export interface CarwashBooking {
     serviceIds: number[];
     /** ISO date the customer is expected. */
     date: string;
+    /** ISO date the booking was first recorded. */
+    bookingDate: string;
     /** Where the job stands, read back from the order module. */
     orderStatus: string;
     estimate: number;
@@ -268,6 +272,7 @@ export interface CarwashCashSummary {
     openingBalance: number;
     todayIn: number;
     todayOut: number;
+    remainingBalance: number;
     closingBalance: number;
     pendingPayments: number;
 }
@@ -321,9 +326,10 @@ export interface CarwashRole {
 }
 
 export interface CarwashPersona {
+    id: number;
     name: string;
-    title: string;
     initials: string;
+    shift: string;
 }
 
 export interface CarwashStaff {
@@ -332,6 +338,7 @@ export interface CarwashStaff {
     email: string;
     phone: string;
     role: string;
+    shift: string;
     status: string;
     lastActive: string;
     initials: string;
@@ -343,8 +350,8 @@ export interface CarwashStat {
     label: string;
     value: string;
     caption: string;
-    delta: number;
-    trend: string;
+    delta: number | null;
+    trend: 'up' | 'down' | 'flat';
     icon: string;
 }
 

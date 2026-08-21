@@ -29,6 +29,7 @@ class FinanceController extends AdminController
             'cashSummary' => Finance::summary($date),
             'paymentMethods' => Operations::paymentMethods(),
             'shifts' => Brand::shifts(),
+            'orders' => Operations::orders(),
         ]);
     }
 }

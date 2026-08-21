@@ -48,7 +48,119 @@ test('the boards replace the booking history table', function () {
         ->not->toContain('DataToolbar')
         // Creating a booking survives the table it used to sit on.
         ->toContain('Buat Booking')
-        ->toContain('@click="isCreateOpen = true"');
+        ->toContain('@click="openCreateBooking"');
+});
+
+test('booking board rows omit prices like the order list', function () {
+    expect(file_get_contents(resource_path('js/pages/carwash/admin/Bookings.vue')))
+        ->not->toContain('formatCurrency(booking.estimate)')
+        ->toContain('<StatusPill :status="bookingPill(booking)" />');
+});
+
+test('booking rows and details follow the order information hierarchy', function () {
+    $bookingsPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Bookings.vue'),
+    );
+
+    $bookingRow = mb_substr(
+        $bookingsPage,
+        mb_strpos($bookingsPage, 'v-for="booking in board.bookings"'),
+        mb_strpos($bookingsPage, '<StatusPill :status="bookingPill(booking)"')
+            - mb_strpos($bookingsPage, 'v-for="booking in board.bookings"'),
+    );
+    $bookingDetail = mb_substr(
+        $bookingsPage,
+        mb_strpos($bookingsPage, '<div v-if="detailBooking" class="space-y-5">'),
+        mb_strpos($bookingsPage, '<template #footer>')
+            - mb_strpos($bookingsPage, '<div v-if="detailBooking" class="space-y-5">'),
+    );
+
+    foreach ([
+        '{{ booking.plate }}',
+        '{{ booking.vehicle }}',
+        '{{ booking.customer }}',
+        '{{ bookingCustomerType(booking) }}',
+        '{{ booking.phone }}',
+        '{{ booking.service }}',
+    ] as $index => $field) {
+        if ($index === 0) {
+            continue;
+        }
+
+        expect(mb_strpos($bookingRow, $field))->toBeGreaterThan(
+            mb_strpos($bookingRow, [
+                '{{ booking.plate }}',
+                '{{ booking.vehicle }}',
+                '{{ booking.customer }}',
+                '{{ bookingCustomerType(booking) }}',
+                '{{ booking.phone }}',
+                '{{ booking.service }}',
+            ][$index - 1]),
+        );
+    }
+
+    expect($bookingDetail)
+        ->toContain('{{ detailBooking.plate }}')
+        ->toContain('{{ detailBooking.vehicle }}')
+        ->toContain('{{ detailBooking.customer }}')
+        ->toContain('{{ bookingCustomerType(detailBooking) }}')
+        ->toContain('{{ detailBooking.phone }}')
+        ->toContain('{{ detailBooking.service }}');
+
+    expect(mb_strpos($bookingDetail, '{{ detailBooking.plate }}'))
+        ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.vehicle }}'));
+    expect(mb_strpos($bookingDetail, '{{ detailBooking.vehicle }}'))
+        ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.customer }}'));
+    expect(mb_strpos($bookingDetail, '{{ detailBooking.customer }}'))
+        ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.phone }}'));
+    expect(mb_strpos($bookingDetail, '{{ detailBooking.phone }}'))
+        ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.service }}'));
+
+    expect($bookingsPage)
+        ->toContain("return booking.customerId === null ? 'Non-Member' : 'Member';");
+});
+
+test('booking details separate the booking date from execution without showing a price', function () {
+    $bookingsPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Bookings.vue'),
+    );
+
+    expect($bookingsPage)
+        ->toContain('Tanggal Booking')
+        ->toContain('{{ formatDate(detailBooking.bookingDate) }}')
+        ->toContain('Tanggal Order')
+        ->toContain('{{ formatDate(detailBooking.date) }}')
+        ->not->toContain('Catatan')
+        ->not->toContain('{{ detailBooking.notes }}')
+        ->not->toContain('Estimasi biaya')
+        ->not->toContain('formatCurrency(detailBooking.estimate)');
+
+    foreach (Operations::bookings() as $booking) {
+        expect($booking)->toHaveKeys(['bookingDate', 'date']);
+    }
+
+    expect(Operations::bookings()[0]['bookingDate'])
+        ->not->toBe(Operations::bookings()[0]['date']);
+});
+
+test('only bookings that have not entered order processing can be edited', function () {
+    $bookingsPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Bookings.vue'),
+    );
+
+    expect($bookingsPage)
+        ->toContain("detailBooking.value?.orderStatus === 'booking'")
+        ->toContain('v-if="canEditDetailBooking"')
+        ->toContain('@click="startEditingBooking"')
+        ->toContain('Edit Booking')
+        ->toContain("booking.orderStatus !== 'booking'")
+        ->toContain("? 'Simpan booking'")
+        ->toContain(": 'Simpan perubahan'");
+});
+
+test('the slide-over footer lays out its actions at full width', function () {
+    expect(file_get_contents(resource_path('js/components/carwash/SlideOver.vue')))
+        ->toContain('sticky bottom-0 flex gap-2');
 });
 
 test('the booking module never sets a status of its own', function () {
@@ -68,11 +180,22 @@ test('the booking module never sets a status of its own', function () {
     }
 });
 
-test('today and mendatang only mark the day, while a passed booking reads the order', function () {
+test('today and passed bookings show their order status while upcoming bookings show their schedule', function () {
     expect(file_get_contents(resource_path('js/pages/carwash/admin/Bookings.vue')))
+        ->toContain('if (daysAhead <= 0) {')
         ->toContain('return booking.orderStatus;')
-        ->toContain("return daysAhead === 0 ? 'hari ini' : 'mendatang';")
+        ->toContain("return 'mendatang';")
         ->toContain(':status="bookingPill(booking)"');
+
+    $today = Reports::todayDate();
+    $todayBookings = array_values(array_filter(
+        Operations::scheduledBookings(),
+        fn (array $booking): bool => $booking['date'] === $today,
+    ));
+
+    expect(array_column($todayBookings, 'orderStatus'))
+        ->toContain('booking')
+        ->toContain('pelunasan');
 
     // A booking whose day has passed can only have ended one of two ways.
     foreach (Operations::scheduledBookings() as $booking) {
@@ -163,5 +286,6 @@ test('the booking form starts at the actual current date', function () {
 test('a new booking is saved on the date that was picked', function () {
     expect(file_get_contents(resource_path('js/pages/carwash/admin/Bookings.vue')))
         ->toContain('date: draft.value.date,')
+        ->toContain('bookingDate: props.today,')
         ->toContain("orderStatus: 'booking',");
 });

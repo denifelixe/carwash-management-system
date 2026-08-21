@@ -49,7 +49,7 @@ const emit = defineEmits<{
 
             <div
                 v-if="$slots.footer"
-                class="sticky bottom-0 border-t border-slate-100 bg-white p-4"
+                class="sticky bottom-0 flex gap-2 border-t border-slate-100 bg-white p-4"
             >
                 <slot name="footer" />
             </div>

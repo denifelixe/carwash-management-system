@@ -49,7 +49,7 @@ test('POS income records every received payment on its transaction date', functi
                 'time' => $transaction['time'],
                 'category' => $transaction['type'] === 'Pembayaran Sebagian'
                     ? 'Pembayaran Sebagian/Booking Order'
-                    : 'Pembayaran Lunas/Sisa Order',
+                    : 'Pembayaran Sisa/Lunas (Order Selesai)',
                 'amount' => $transaction['amount'],
                 'method' => $transaction['channels'],
                 'orderId' => $order['id'],
@@ -64,7 +64,7 @@ test('POS income records every received payment on its transaction date', functi
         ->each->not->toContain('Setoran POS');
 
     expect(Finance::incomeCategories())
-        ->toContain('Pembayaran Sebagian/Booking Order', 'Pembayaran Lunas/Sisa Order')
+        ->toContain('Pembayaran Sebagian/Booking Order', 'Pembayaran Sisa/Lunas (Order Selesai)')
         ->not->toContain(
             'Pembayaran Sebagian Order',
             'Pembayaran Lunas Order',
@@ -72,6 +72,22 @@ test('POS income records every received payment on its transaction date', functi
             'Pelunasan Order',
             'Penjualan Layanan',
         );
+});
+
+test('finance and POS agree on todays partial payment transaction count', function () {
+    $today = Reports::todayDate();
+    $posPartialPayments = collect(Operations::orders())
+        ->flatMap(fn (array $order): array => $order['transactions'])
+        ->where('date', $today)
+        ->where('type', 'Pembayaran Sebagian')
+        ->values();
+    $financePartialPayments = collect(Finance::moneyIn())
+        ->where('date', $today)
+        ->where('category', 'Pembayaran Sebagian/Booking Order')
+        ->values();
+
+    expect($posPartialPayments)->toHaveCount(4)
+        ->and($financePartialPayments)->toHaveCount($posPartialPayments->count());
 });
 
 test('finance references use one category date and identifier format', function () {
@@ -87,7 +103,7 @@ test('finance references use one category date and identifier format', function 
     $partialPayment = collect(Finance::moneyIn())
         ->firstWhere('category', 'Pembayaran Sebagian/Booking Order');
     $finalPayment = collect(Finance::moneyIn())
-        ->firstWhere('category', 'Pembayaran Lunas/Sisa Order');
+        ->firstWhere('category', 'Pembayaran Sisa/Lunas (Order Selesai)');
     $productSale = collect(Finance::moneyIn())
         ->firstWhere('category', 'Penjualan Produk');
     $materialPurchase = collect(Finance::moneyOut())
@@ -120,7 +136,13 @@ test('finance references use one category date and identifier format', function 
     expect($financePage)
         ->toContain('function transactionReference(')
         ->toContain('`TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`')
-        ->toContain('ref: transactionReference(');
+        ->toContain('ref: transactionReference(')
+        ->toContain('max-w-48')
+        ->toContain('whitespace-normal')
+        ->toContain('Pembayaran Sisa/Lunas')
+        ->toContain('(Order Selesai)')
+        ->and(substr_count($financePage, 'class="block whitespace-nowrap"'))
+        ->toBe(2);
 });
 
 test('cash summary is calculated from individual ledger transactions', function () {
@@ -138,7 +160,21 @@ test('cash summary is calculated from individual ledger transactions', function 
         ->toMatchArray([
             'todayIn' => $todayIn,
             'todayOut' => $todayOut,
+            'remainingBalance' => $todayIn - $todayOut,
             'closingBalance' => 12400000 + $todayIn - $todayOut,
+        ]);
+});
+
+test('dashboard revenue matches finance money in for the selected day', function () {
+    $today = Reports::todayDate();
+    $income = DateFilter::apply(Finance::moneyIn(), $today);
+    $revenue = array_sum(array_column($income, 'amount'));
+    $stats = Reports::dashboardStats($today);
+
+    expect($stats[0])
+        ->toMatchArray([
+            'value' => 'Rp '.number_format($revenue, 0, ',', '.'),
+            'caption' => 'dari '.count($income).' transaksi keuangan',
         ]);
 });
 
@@ -190,6 +226,7 @@ test('finance page exposes and displays related order details', function () {
             fn (AssertableInertia $page) => $page
                 ->component('carwash/admin/Finance')
                 ->has('moneyIn', count($todayEntries))
+                ->has('orders', count(Operations::orders()))
                 ->where('moneyIn.0.ref', $todayEntries[0]['ref'])
                 ->where(
                     'moneyIn.'.array_search($posEntry, $todayEntries, true).'.orderNo',
@@ -206,6 +243,14 @@ test('finance page exposes and displays related order details', function () {
         ->toContain('v-if="entry.orderNo"')
         ->toContain('{{ entry.orderNo }}')
         ->toContain('{{ entry.customer }}')
+        ->toContain('@click="openTransactionRecap(entry)"')
+        ->toContain('@click="openOrderRecap(entry)"')
+        ->toContain('title="Rekap Transaksi"')
+        ->toContain('title="Rekap Order"')
+        ->toContain('Riwayat transaksi')
+        ->toContain('highlightedTransactionId')
+        ->toContain('before:inset-y-2 before:left-0 before:w-1')
+        ->not->toContain('bg-cyan-50 ring-2 ring-cyan-300 ring-inset')
         ->toContain('{{ entry.vehicle }} · {{ entry.plate }}')
         ->toContain('Tidak terkait order')
         ->toContain('entry.orderNo?.toLowerCase().includes(query)')

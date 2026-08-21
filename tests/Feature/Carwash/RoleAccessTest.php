@@ -70,6 +70,38 @@ test('the owner is the only role that can manage users', function () {
     expect($ownersOfUserModule)->toBe(['owner']);
 });
 
+test('every staff member has an editable shift and the active persona identifies the same staff member', function () {
+    expect(RoleAccess::shifts())->toBe(['Shift Pagi', 'Shift Sore']);
+
+    foreach (RoleAccess::staff() as $staff) {
+        expect($staff['shift'])->toBeIn(RoleAccess::shifts());
+    }
+
+    $owner = RoleAccess::staff()[0];
+    $ownerPersona = RoleAccess::personaFor()['owner'];
+
+    expect($ownerPersona['id'])->toBe($owner['id'])
+        ->and($ownerPersona['name'])->toBe($owner['name'])
+        ->and($ownerPersona['shift'])->toBe($owner['shift']);
+});
+
+test('the role page edits shifts and the sidebar identifies the active staff shift', function () {
+    $usersPage = file_get_contents(
+        resource_path('js/pages/carwash/admin/Users.vue'),
+    );
+    $adminLayout = file_get_contents(
+        resource_path('js/layouts/carwash/AdminLayout.vue'),
+    );
+
+    expect($usersPage)
+        ->toContain('<th class="px-5 py-3">Shift</th>')
+        ->toContain('v-model="draft.shift"')
+        ->toContain('page.props.persona.id === existing.id')
+        ->and($adminLayout)
+        ->toContain('{{ role.name }} - {{ persona.shift }}')
+        ->not->toContain('{{ modules.length }} modul');
+});
+
 test('every module in the matrix maps to a real registered route', function () {
     foreach (RoleAccess::modules() as $module) {
         expect(fn () => route($module['route']))->not->toThrow(Exception::class);

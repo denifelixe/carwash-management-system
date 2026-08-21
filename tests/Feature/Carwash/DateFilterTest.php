@@ -88,12 +88,32 @@ test('an empty date brings every row back', function () {
 test('the dashboard figures follow the picked day', function () {
     $today = Reports::dashboardStats(Reports::todayDate());
     $other = Reports::dashboardStats('2026-07-29');
+    $todayIncome = DateFilter::apply(Finance::moneyIn(), Reports::todayDate());
+    $yesterday = Reports::today()->subDay()->toDateString();
+    $yesterdayIncome = DateFilter::apply(Finance::moneyIn(), $yesterday);
+    $expectedRevenueDelta = round((
+        array_sum(array_column($todayIncome, 'amount'))
+        - array_sum(array_column($yesterdayIncome, 'amount'))
+    ) / array_sum(array_column($yesterdayIncome, 'amount')) * 100, 1);
 
     expect($today[0]['label'])->toBe('Pendapatan Hari Ini')
-        ->and($today[0]['value'])->toBe('Rp 2.125.000')
-        ->and($today[0]['caption'])->toBe('dari 10 transaksi POS')
+        ->and($today[0]['value'])->toBe('Rp '.number_format(array_sum(array_column($todayIncome, 'amount')), 0, ',', '.'))
+        ->and($today[0]['caption'])->toBe('dari '.count($todayIncome).' transaksi keuangan')
+        ->and($today[0]['delta'])->toBe($expectedRevenueDelta)
+        ->and($today[0]['trend'])->toBe('up')
         ->and($today[1]['value'])->toBe('8')
         ->and($today[1]['caption'])->toBe('dari 11 order kendaraan')
+        ->and($today[1]['delta'])->toBe(700.0)
+        ->and($today[1]['trend'])->toBe('up')
+        ->and($today[2]['label'])->toBe('Member Aktif')
+        ->and($today[2]['value'])->toBe('10')
+        ->and($today[2]['caption'])->toBe('dari 12 member terdaftar')
+        ->and($today[2]['delta'])->toBe(0.0)
+        ->and($today[2]['trend'])->toBe('flat')
+        ->and($today[3]['value'])->toBe('9')
+        ->and($today[3]['caption'])->toBe('2 reward diklaim')
+        ->and($today[3]['delta'])->toBe(0.0)
+        ->and($today[3]['trend'])->toBe('flat')
         // A different day reports that day's figures, not today's.
         ->and($other[0]['label'])->toBe('Pendapatan')
         ->and($other[0]['value'])->toBe('Rp 0')

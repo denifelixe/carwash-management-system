@@ -71,14 +71,14 @@ test('the POS recap uses received payments from the selected transaction date', 
         ->assertOk();
 
     expect($response->inertiaProps('dailyOrders'))->toBe($dailyOrders)
-        ->and($receivedTransactions)->toHaveCount(10)
-        ->and($partialPaymentTransactions)->toHaveCount(7)
+        ->and($receivedTransactions)->toHaveCount(7)
+        ->and($partialPaymentTransactions)->toHaveCount(4)
         ->and($finalPaymentTransactions)->toHaveCount(3)
-        ->and($receivedPaymentTotal)->toBe(2125000)
+        ->and($receivedPaymentTotal)->toBe(1860000)
         ->and($channelRecap['Transfer'])->toBe(['count' => 1, 'amount' => 1500000])
-        ->and($channelRecap['QRIS'])->toBe(['count' => 4, 'amount' => 305000])
+        ->and($channelRecap['QRIS'])->toBe(['count' => 2, 'amount' => 60000])
         ->and($channelRecap['Debit'])->toBe(['count' => 1, 'amount' => 150000])
-        ->and($channelRecap['Tunai'])->toBe(['count' => 5, 'amount' => 170000])
+        ->and($channelRecap['Tunai'])->toBe(['count' => 4, 'amount' => 150000])
         ->and(array_sum(array_column($channelRecap, 'amount')))
         ->toBe($receivedPaymentTotal);
 
@@ -223,7 +223,7 @@ test('the cashier summary only shows settlement balance and received payments', 
 
     expect($posPage)
         ->toContain('<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">')
-        ->toContain('label="Pembayaran Lunas/Sisa"')
+        ->toContain('label="Pembayaran Sisa/Lunas (Order Selesai)"')
         ->toContain('label="Pembayaran diterima"')
         ->not->toContain('label="Order menggantung"')
         ->not->toContain('depositCount')
@@ -249,10 +249,11 @@ test('the received payment card opens a payment recap', function () {
         ->toContain('sm:grid-cols-2')
         ->toContain('Jumlah transaksi')
         ->toContain('Pembayaran Sebagian/Booking')
-        ->toContain('Pembayaran Lunas/Sisa')
+        ->toContain('Pembayaran Sisa/Lunas (Order Selesai)')
         ->toContain('Jenis transaksi')
         ->toContain("const partialPaymentRecapLabel = 'Pembayaran Sebagian/Booking'")
-        ->toContain("const finalPaymentRecapLabel = 'Pembayaran Lunas/Sisa'")
+        ->toContain("const finalPaymentRecapLabel = 'Pembayaran Sisa/Lunas (Order Selesai)'")
+        ->toContain('text-xs leading-snug whitespace-normal text-slate-500')
         ->toContain('label: partialPaymentRecapLabel')
         ->toContain('label: finalPaymentRecapLabel')
         ->toContain('Kanal pembayaran')
@@ -265,6 +266,12 @@ test('the received payment card opens a payment recap', function () {
         ->toContain(':aria-selected="activePaymentRecapShift === tab.key"')
         ->toContain('selectPaymentRecapShift(tab.key)')
         ->toContain('movePaymentRecapShift(-1)')
+        ->toContain('const paymentRecapDetailsElement = ref<HTMLElement | null>(null)')
+        ->toContain('await nextTick()')
+        ->toContain('paymentRecapDetailsElement.value?.scrollIntoView({')
+        ->toContain("behavior: 'smooth'")
+        ->toContain("block: 'start'")
+        ->toContain('ref="paymentRecapDetailsElement"')
         ->toContain('movePaymentRecapShift(1)')
         ->toContain('transactionMinutes < 15 * 60')
         ->toContain('activePaymentRecapTransactions')
@@ -279,6 +286,20 @@ test('payment recap rows reveal their transaction and order details', function (
         resource_path('js/pages/carwash/admin/Pos.vue'),
     );
 
+    preg_match(
+        '/Tanggal order(?<orderDateField>.*?)<\/dd>/s',
+        $posPage,
+        $orderDateMatch,
+    );
+
+    expect($orderDateMatch['orderDateField'] ?? '')
+        ->toContain('formatDate(')
+        ->toContain('detail.order.date')
+        ->not->toContain('detail.order.time');
+
+    expect(strpos($posPage, 'Tanggal booking'))
+        ->toBeLessThan(strpos($posPage, 'Tanggal order'));
+
     expect($posPage)
         ->toContain("selectPaymentRecap('all', 'Semua pembayaran')")
         ->toContain("selectPaymentRecap('type', row.label)")
@@ -291,11 +312,63 @@ test('payment recap rows reveal their transaction and order details', function (
         ->toContain('Detail transaksi &amp; order')
         ->toContain('{{ detail.order.orderNo }}')
         ->toContain('{{ detail.order.customer }}')
+        ->toContain('showPaymentRecapOrder(')
+        ->toContain('showPaymentRecapTransaction(')
+        ->toContain('showSelectedPaymentRecapTransactionOrder(')
+        ->toContain('selectedPaymentRecapTransaction')
+        ->toContain('paymentTransactionReference(')
+        ->toContain('`TRX-${categoryCode}-${dateCode}-${stableIdentifier}`')
+        ->toContain('paymentTransactionReference(detail.transaction, detail.order)')
+        ->not->toContain('{{ detail.transaction.id }}')
+        ->toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_8rem]')
+        ->toContain('md:items-start')
+        ->toContain('class="min-w-0"')
+        ->toContain('Lihat detail order ${detail.order.orderNo} dan transaksinya')
+        ->toContain('selectedPaymentRecapOrder')
+        ->toContain('sourceTransactionId: detail.transaction.id')
+        ->toContain('highlightedTransactionId: null')
+        ->toContain('highlightedTransactionId: detail.transaction.id')
+        ->toContain('selectedPaymentRecapOrder?.highlightedTransactionId')
+        ->toContain('title="Rekap Transaksi"')
+        ->toContain('Nomor transaksi')
+        ->toContain('Dicatat oleh')
+        ->toContain('paymentTransactionRecorder(')
+        ->toContain('Order terkait')
+        ->toContain("? 'top'")
+        ->toContain(": 'nested'")
+        ->toContain('title="Detail Order"')
+        ->toContain('layer="nested"')
+        ->toContain('Detail order')
+        ->toContain('Tanggal booking')
+        ->toContain('detail.order.bookingDate')
+        ->toContain("? 'sm:grid-cols-5'")
+        ->toContain('Riwayat transaksi')
+        ->toContain('v-for="transaction in detail')
+        ->toContain('.order.transactions"')
+        ->toContain('Transaksi dipilih')
+        ->toContain('Kembali ke rekap')
+        ->toContain("'border-cyan-300 bg-cyan-100 ring-2 ring-cyan-400/30'")
         ->toContain('paymentTransactionLabel(')
         ->toContain('transactionChannelsLabel(')
         ->toContain('{{ formatCurrency(detail.amount) }}')
         ->toContain(':aria-pressed=')
         ->toContain('Pilih jenis transaksi atau kanal pembayaran');
+
+    expect(substr_count(
+        $posPage,
+        'highlightedTransactionId: detail.transaction.id',
+    ))->toBe(1);
+
+    $modalDialog = file_get_contents(
+        resource_path('js/components/carwash/ModalDialog.vue'),
+    );
+
+    expect($modalDialog)
+        ->toContain("layer?: 'default' | 'nested' | 'top';")
+        ->toContain("top: 'z-[70]'")
+        ->toContain("layers[layer ?? 'default']")
+        ->toContain('let openModalCount = 0;')
+        ->toContain('watch(() => props.open, syncPageScrollLock, { immediate: true })');
 });
 
 test('search fields remain visible against tinted section backgrounds', function () {
@@ -324,15 +397,26 @@ test('the POS shows one lifecycle chip and describes an existing partial payment
         resource_path('js/pages/carwash/admin/Pos.vue'),
     );
 
+    expect(preg_match(
+        '/<h3 class="text-sm font-semibold text-violet-950">\s+Pelunasan\s+<\/h3>/',
+        $posPage,
+    ))->toBe(1);
+
     expect($posPage)
-        ->toContain('<StatusPill :status="order.status" />')
+        ->toContain(':status="order.status"')
+        ->toContain('label="Pelunasan"')
         ->not->toContain('<StatusPill :status="order.paymentStatus" />')
-        ->toContain('Pembayaran Lunas/Sisa')
+        ->toContain('Pembayaran Sisa/Lunas (Order Selesai)')
         ->not->toContain('Order untuk dibayar')
         ->toContain('partialPaymentTransactions(order)')
         ->toContain('Pembayaran Sebagian/Booking sebesar')
         ->toContain('formatCurrency(transaction.amount)')
         ->toContain("order.status = 'selesai'");
+
+    expect(file_get_contents(resource_path('js/components/carwash/StatusPill.vue')))
+        ->toContain('label?: string;')
+        ->toContain('props.label ?? statusLabels[props.status] ?? props.status')
+        ->toContain("pelunasan: 'Pelunasan'");
 });
 
 test('each transaction belongs to its order', function () {
@@ -383,6 +467,7 @@ test('partial payments keep their dates and one order may have multiple installm
     expect($demoOrder)
         ->toMatchArray([
             'source' => 'booking',
+            'bookingDate' => Reports::today()->subDay()->toDateString(),
             'status' => 'pelunasan',
             'paidAmount' => 55000,
             'paymentStatus' => 'sebagian',
@@ -450,19 +535,23 @@ test('payments only use partial and fully paid transaction types', function () {
         ->not->toContain("'DP'");
 });
 
-test('full payment before the settlement stage remains a partial payment transaction', function () {
-    $fullyPaidBeforeSettlement = array_filter(
+test('waiting and in-progress orders remain unpaid without transactions', function () {
+    $activeOrders = array_filter(
         Operations::orders(),
-        fn (array $order): bool => $order['paidAmount'] >= $order['total']
-            && ! in_array($order['status'], ['pelunasan', 'selesai'], true),
+        fn (array $order): bool => in_array($order['status'], ['menunggu', 'proses'], true),
     );
 
-    expect($fullyPaidBeforeSettlement)->not->toBeEmpty();
+    expect($activeOrders)->not->toBeEmpty();
 
-    foreach ($fullyPaidBeforeSettlement as $order) {
-        expect(array_column($order['transactions'], 'type'))
-            ->toContain('Pembayaran Sebagian')
-            ->not->toContain('Pembayaran Lunas');
+    foreach ($activeOrders as $order) {
+        expect($order)
+            ->toMatchArray([
+                'invoice' => '—',
+                'paidAmount' => 0,
+                'payment' => '—',
+                'paymentStatus' => 'belum bayar',
+                'transactions' => [],
+            ]);
     }
 
     $posPage = file_get_contents(

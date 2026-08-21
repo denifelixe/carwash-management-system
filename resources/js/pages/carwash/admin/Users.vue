@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import { Check, Pencil, Plus, ShieldCheck, Users, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import DataToolbar from '@/components/carwash/DataToolbar.vue';
@@ -8,6 +8,7 @@ import ModalDialog from '@/components/carwash/ModalDialog.vue';
 import StatCard from '@/components/carwash/StatCard.vue';
 import StatusPill from '@/components/carwash/StatusPill.vue';
 import type {
+    CarwashAdminShellProps,
     CarwashBrand,
     CarwashModule,
     CarwashRole,
@@ -19,9 +20,12 @@ const props = defineProps<{
     brand: CarwashBrand;
     staff: CarwashStaff[];
     roles: CarwashRole[];
+    shifts: string[];
     matrix: CarwashRoleMatrix;
     allModules: CarwashModule[];
 }>();
+
+const page = usePage<CarwashAdminShellProps>();
 
 const staffList = ref<CarwashStaff[]>(
     props.staff.map((person) => ({ ...person })),
@@ -37,6 +41,7 @@ const draft = ref({
     email: '',
     phone: '',
     role: 'cashier',
+    shift: 'Shift Pagi',
     status: 'aktif',
 });
 
@@ -97,6 +102,7 @@ function openCreate(): void {
         email: '',
         phone: '',
         role: 'cashier',
+        shift: 'Shift Pagi',
         status: 'aktif',
     };
     isFormOpen.value = true;
@@ -109,6 +115,7 @@ function openEdit(person: CarwashStaff): void {
         email: person.email,
         phone: person.phone,
         role: person.role,
+        shift: person.shift,
         status: person.status,
     };
     isFormOpen.value = true;
@@ -128,6 +135,14 @@ function saveStaff(): void {
             Object.assign(existing, draft.value, {
                 initials: initialsOf(draft.value.name),
             });
+
+            if (page.props.persona.id === existing.id) {
+                Object.assign(page.props.persona, {
+                    name: existing.name,
+                    initials: existing.initials,
+                    shift: existing.shift,
+                });
+            }
         }
     } else {
         staffList.value = [
@@ -266,6 +281,7 @@ function toggleStatus(person: CarwashStaff): void {
                         >
                             <th class="px-5 py-3">Pegawai</th>
                             <th class="px-5 py-3">Role</th>
+                            <th class="px-5 py-3">Shift</th>
                             <th class="px-5 py-3">Status</th>
                             <th class="px-5 py-3">Terakhir aktif</th>
                             <th class="px-5 py-3"></th>
@@ -307,6 +323,11 @@ function toggleStatus(person: CarwashStaff): void {
                                 <p class="mt-1 text-[11px] text-slate-400">
                                     {{ moduleCountOf(person.role) }} modul
                                 </p>
+                            </td>
+                            <td
+                                class="px-5 py-3.5 text-xs font-medium text-slate-600"
+                            >
+                                {{ person.shift }}
                             </td>
                             <td class="px-5 py-3.5">
                                 <StatusPill :status="person.status" />
@@ -428,7 +449,7 @@ function toggleStatus(person: CarwashStaff): void {
     <ModalDialog
         :open="isFormOpen"
         :title="editingId !== null ? 'Edit pegawai' : 'Tambah pegawai'"
-        caption="Role menentukan modul yang bisa diakses"
+        caption="Atur role, shift, dan status pegawai"
         @close="isFormOpen = false"
     >
         <div class="space-y-4">
@@ -479,6 +500,24 @@ function toggleStatus(person: CarwashStaff): void {
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
                     />
                 </div>
+            </div>
+
+            <div>
+                <label
+                    class="text-xs font-medium text-slate-600"
+                    for="user-shift"
+                >
+                    Shift
+                </label>
+                <select
+                    id="user-shift"
+                    v-model="draft.shift"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                >
+                    <option v-for="shift in shifts" :key="shift" :value="shift">
+                        {{ shift }}
+                    </option>
+                </select>
             </div>
 
             <div>
