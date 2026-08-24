@@ -3,7 +3,7 @@ import {
     formatDate,
     formatNumber,
 } from '@/composables/useCarwashFormat';
-import type { CarwashBrand } from '@/types/carwash';
+import type { CarwashBrand } from '@/types/demo';
 
 /**
  * Thermal receipt rendered outside the SPA.

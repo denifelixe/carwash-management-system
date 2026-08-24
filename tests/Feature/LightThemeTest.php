@@ -3,7 +3,7 @@
 use App\Models\User;
 
 test('the application always declares a light color scheme', function () {
-    $response = $this->get(route('home'));
+    $response = $this->get(route('demo.home'));
 
     $response
         ->assertOk()

@@ -3,7 +3,7 @@ import type {
     CarwashCustomer,
     CarwashMoneyEntry,
     CarwashOrder,
-} from '@/types/carwash';
+} from '@/types/demo';
 
 /**
  * Demo-only workflow state. Module state survives Inertia page swaps, while a

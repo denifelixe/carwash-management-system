@@ -1,12 +1,12 @@
 <?php
 
-use App\Support\Carwash\Operations;
-use App\Support\Carwash\Reports;
-use App\Support\Carwash\RoleAccess;
+use App\Support\Demo\Operations;
+use App\Support\Demo\Reports;
+use App\Support\Demo\RoleAccess;
 
 test('new orders defer crew assignment and payment to their dedicated workflows', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -19,7 +19,7 @@ test('new orders defer crew assignment and payment to their dedicated workflows'
 
 test('the order form summary lists services without cashier totals', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -35,7 +35,7 @@ test('the order form summary lists services without cashier totals', function ()
 
 test('the order list omits totals while detail only references service prices', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -57,7 +57,7 @@ test('the order list omits totals while detail only references service prices', 
 
 test('the order detail leads with its date and highlighted vehicle information', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -74,7 +74,7 @@ test('the order detail leads with its date and highlighted vehicle information',
 
 test('the order detail shows transaction history and a full width close button', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -107,7 +107,7 @@ test('the floor can set the stages up to pelunasan or cancel the order', functio
 
 test('a booking scheduled today is marked as not arrived wherever it is shown', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -115,7 +115,7 @@ test('a booking scheduled today is marked as not arrived wherever it is shown', 
         ->toContain('label: bookingStatusLabel,')
         ->toContain('<StatusPill :status="displayedStatus(order)" />');
 
-    expect(file_get_contents(resource_path('js/components/carwash/StatusPill.vue')))
+    expect(file_get_contents(resource_path('js/components/demo/StatusPill.vue')))
         ->toContain("booking: 'Booking - Belum Datang',");
 });
 
@@ -129,7 +129,7 @@ test('every order sits on one of the lifecycle stages', function () {
 
 test('the order list tracks a single status and leaves money to the cashier', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -158,7 +158,7 @@ test('the order list tracks a single status and leaves money to the cashier', fu
 
 test('the summary shows a card per lifecycle stage on top of the total', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -177,7 +177,7 @@ test('the summary shows a card per lifecycle stage on top of the total', functio
 
 test('the booking filter only includes vehicles that have not arrived', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -212,10 +212,10 @@ test('today booking count excludes bookings that have already arrived', function
 
 test('summary cards filter the order list and expose their active state', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
     $statCard = file_get_contents(
-        resource_path('js/components/carwash/StatCard.vue'),
+        resource_path('js/components/demo/StatCard.vue'),
     );
 
     expect($ordersPage)
@@ -233,7 +233,7 @@ test('summary cards filter the order list and expose their active state', functi
 
 test('the order detail edits and cancels through the status dropdown', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -251,7 +251,7 @@ test('the order detail edits and cancels through the status dropdown', function 
 
 test('cancelled orders remain editable while completed orders are locked', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -263,7 +263,7 @@ test('cancelled orders remain editable while completed orders are locked', funct
 
 test('the whole order row opens the detail, not just the Detail button', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -273,7 +273,7 @@ test('the whole order row opens the detail, not just the Detail button', functio
 
 test('the order list distinguishes customer and non customer walk-ins', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
     $walkInOrders = array_filter(
         Operations::orders(),
@@ -300,7 +300,7 @@ test('the order list distinguishes customer and non customer walk-ins', function
 
 test('the order list leads with vehicle arrival information', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     $vehicleColumn = strpos($ordersPage, '<th class="px-5 py-3">Kendaraan</th>');
@@ -322,7 +322,7 @@ test('the order list leads with vehicle arrival information', function () {
 
 test('non member walk-ins keep their name and phone number', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
     $nonMemberOrders = array_filter(
         Operations::orders(),
@@ -347,7 +347,7 @@ test('non member walk-ins keep their name and phone number', function () {
 
 test('new orders separate members and non-members without registering members', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/carwash/admin/Orders.vue'),
+        resource_path('js/pages/demo/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -376,7 +376,7 @@ test('the sidebar calls the module Order, not Order / Transaksi', function () {
 
 test('the card in force wears its own colour, not just an outline', function () {
     $statCard = file_get_contents(
-        resource_path('js/components/carwash/StatCard.vue'),
+        resource_path('js/components/demo/StatCard.vue'),
     );
 
     expect($statCard)

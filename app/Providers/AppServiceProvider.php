@@ -2,7 +2,7 @@
 
 namespace App\Providers;
 
-use App\Support\Carwash\Brand;
+use App\Support\Demo\Brand;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;

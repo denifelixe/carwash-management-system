@@ -1,8 +1,8 @@
 import { createInertiaApp } from '@inertiajs/vue3';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
-import CarwashAdminLayout from '@/layouts/carwash/AdminLayout.vue';
-import CarwashMemberLayout from '@/layouts/carwash/MemberLayout.vue';
+import DemoAdminLayout from '@/layouts/demo/AdminLayout.vue';
+import DemoMemberLayout from '@/layouts/demo/MemberLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
@@ -12,13 +12,13 @@ createInertiaApp({
     title: (title) => title || appName,
     layout: (name) => {
         switch (true) {
-            // The carwash prototype ships its own shells; auth screens are bare.
-            case name.startsWith('carwash/auth/'):
+            // The demo ships its own shells; auth screens are bare.
+            case name.startsWith('demo/auth/'):
                 return null;
-            case name.startsWith('carwash/admin/'):
-                return CarwashAdminLayout;
-            case name.startsWith('carwash/member/'):
-                return CarwashMemberLayout;
+            case name.startsWith('demo/admin/'):
+                return DemoAdminLayout;
+            case name.startsWith('demo/member/'):
+                return DemoMemberLayout;
             case name.startsWith('auth/'):
                 return AuthLayout;
             case name.startsWith('settings/'):

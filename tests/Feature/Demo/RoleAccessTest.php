@@ -1,0 +1,109 @@
+<?php
+
+use App\Support\Demo\RoleAccess;
+
+/**
+ * Walks every role × module pair so the matrix and the middleware can never
+ * drift apart unnoticed (BR-11).
+ */
+dataset('role module pairs', function () {
+    foreach (array_keys(RoleAccess::matrix()) as $role) {
+        foreach (RoleAccess::modules() as $module) {
+            yield "{$role} → {$module['key']}" => [
+                $role,
+                $module['route'],
+                RoleAccess::allows($role, $module['key']),
+            ];
+        }
+    }
+});
+
+test('each role reaches exactly the modules its matrix allows', function (string $role, string $routeName, bool $allowed) {
+    $this->withSession([RoleAccess::SESSION_KEY => $role]);
+
+    $response = $this->get(route($routeName));
+
+    $allowed
+        ? $response->assertOk()
+        : $response->assertForbidden();
+})->with('role module pairs');
+
+test('visitors without a demo role are sent to the entry screen', function () {
+    $this->get(route('demo.admin.dashboard'))
+        ->assertRedirect(route('demo.home'));
+});
+
+test('an unknown session role is treated as no role at all', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'janitor'])
+        ->get(route('demo.admin.dashboard'))
+        ->assertRedirect(route('demo.home'));
+});
+
+test('choosing a role stores it and lands on that role first module', function () {
+    $this->post(route('demo.session.role'), ['role' => 'cashier'])
+        ->assertRedirect(route('demo.admin.pos'));
+
+    expect(session(RoleAccess::SESSION_KEY))->toBe('cashier');
+});
+
+test('an invalid role cannot be selected', function () {
+    $this->post(route('demo.session.role'), ['role' => 'janitor'])
+        ->assertSessionHasErrors('role');
+
+    expect(session(RoleAccess::SESSION_KEY))->toBeNull();
+});
+
+test('leaving the console clears the active role', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->post(route('demo.session.exit'))
+        ->assertRedirect(route('demo.home'));
+
+    expect(session(RoleAccess::SESSION_KEY))->toBeNull();
+});
+
+test('the owner is the only role that can manage users', function () {
+    $ownersOfUserModule = array_keys(array_filter(
+        RoleAccess::matrix(),
+        fn (array $modules): bool => in_array('users', $modules, true),
+    ));
+
+    expect($ownersOfUserModule)->toBe(['owner']);
+});
+
+test('every staff member has an editable shift and the active persona identifies the same staff member', function () {
+    expect(RoleAccess::shifts())->toBe(['Shift Pagi', 'Shift Sore']);
+
+    foreach (RoleAccess::staff() as $staff) {
+        expect($staff['shift'])->toBeIn(RoleAccess::shifts());
+    }
+
+    $owner = RoleAccess::staff()[0];
+    $ownerPersona = RoleAccess::personaFor()['owner'];
+
+    expect($ownerPersona['id'])->toBe($owner['id'])
+        ->and($ownerPersona['name'])->toBe($owner['name'])
+        ->and($ownerPersona['shift'])->toBe($owner['shift']);
+});
+
+test('the role page edits shifts and the sidebar identifies the active staff shift', function () {
+    $usersPage = file_get_contents(
+        resource_path('js/pages/demo/admin/Users.vue'),
+    );
+    $adminLayout = file_get_contents(
+        resource_path('js/layouts/demo/AdminLayout.vue'),
+    );
+
+    expect($usersPage)
+        ->toContain('<th class="px-5 py-3">Shift</th>')
+        ->toContain('v-model="draft.shift"')
+        ->toContain('page.props.persona.id === existing.id')
+        ->and($adminLayout)
+        ->toContain('{{ role.name }} - {{ persona.shift }}')
+        ->not->toContain('{{ modules.length }} modul');
+});
+
+test('every module in the matrix maps to a real registered route', function () {
+    foreach (RoleAccess::modules() as $module) {
+        expect(fn () => route($module['route']))->not->toThrow(Exception::class);
+    }
+});
