@@ -90,7 +90,7 @@ test('the role page edits shifts and the sidebar identifies the active staff shi
         resource_path('js/pages/demo/admin/Users.vue'),
     );
     $adminLayout = file_get_contents(
-        resource_path('js/layouts/demo/AdminLayout.vue'),
+        resource_path('js/layouts/admin/AdminLayout.vue'),
     );
 
     expect($usersPage)
@@ -98,7 +98,8 @@ test('the role page edits shifts and the sidebar identifies the active staff shi
         ->toContain('v-model="draft.shift"')
         ->toContain('page.props.persona.id === existing.id')
         ->and($adminLayout)
-        ->toContain('{{ role.name }} - {{ persona.shift }}')
+        ->toContain('{{ role.name }}')
+        ->not->toContain('{{ role.name }} - {{ persona.shift }}')
         ->not->toContain('{{ modules.length }} modul');
 });
 

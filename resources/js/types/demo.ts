@@ -319,7 +319,19 @@ export interface CarwashModule {
     label: string;
     caption: string;
     icon: string;
-    route: string;
+    route?: string;
+}
+
+export interface CarwashAdminModule extends CarwashModule {
+    href: string | null;
+    enabled: boolean;
+    active: boolean;
+}
+
+export interface CarwashAdminAction {
+    label: string;
+    href: string;
+    method: 'get' | 'post';
 }
 
 export interface CarwashRole {
@@ -437,12 +449,26 @@ export interface CarwashInventorySummary {
  * can read these through `usePage()`.
  */
 export interface CarwashAdminShellProps {
+    mode: 'demo' | 'live';
+    pageTitle?: string;
     brand: CarwashBrand;
     notifications: CarwashNotification[];
     role: CarwashRole;
-    modules: CarwashModule[];
+    modules: CarwashAdminModule[];
     persona: CarwashPersona;
+    profileHref: string | null;
+    headerAction: CarwashAdminAction | null;
+    exitAction: CarwashAdminAction;
     [key: string]: unknown;
+}
+
+export interface CarwashAdminDashboardProps extends CarwashAdminShellProps {
+    filterUrl: string;
+    stats: CarwashStat[];
+    filters: CarwashDateFilter;
+    shifts: CarwashShift[];
+    orderSummary: CarwashOrderSummary;
+    cashSummary: CarwashCashSummary;
 }
 
 /** Props shared by every customer portal page via `MemberController::page()`. */

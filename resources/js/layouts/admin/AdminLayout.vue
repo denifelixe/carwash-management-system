@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link, router, usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import {
     Bell,
     Boxes,
@@ -19,11 +19,9 @@ import {
     X,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, onMounted, ref } from 'vue';
-import { home } from '@/routes/demo';
-import admin from '@/routes/demo/admin';
-import session from '@/routes/demo/session';
+import { computed, onMounted, ref, watch } from 'vue';
 import type {
+    CarwashAdminModule,
     CarwashAdminShellProps,
     CarwashNotification,
 } from '@/types/demo';
@@ -34,8 +32,10 @@ const brand = computed(() => page.props.brand);
 const role = computed(() => page.props.role);
 const modules = computed(() => page.props.modules);
 const persona = computed(() => page.props.persona);
+const profileHref = computed(() => page.props.profileHref);
+const headerAction = computed(() => page.props.headerAction);
+const exitAction = computed(() => page.props.exitAction);
 
-/** Icon key on each module record → the actual Lucide component. */
 const moduleIcons: Record<string, LucideIcon> = {
     dashboard: LayoutDashboard,
     orders: ClipboardList,
@@ -49,35 +49,38 @@ const moduleIcons: Record<string, LucideIcon> = {
     reports: ChartColumn,
 };
 
-/** Route name on each module record → the Wayfinder helper for its URL. */
-const moduleUrls: Record<string, () => string> = {
-    'demo.admin.dashboard': () => admin.dashboard.url(),
-    'demo.admin.orders': () => admin.orders.url(),
-    'demo.admin.pos': () => admin.pos.url(),
-    'demo.admin.customers': () => admin.customers.url(),
-    'demo.admin.finance': () => admin.finance.url(),
-    'demo.admin.bookings': () => admin.bookings.url(),
-    'demo.admin.inventory': () => admin.inventory.url(),
-    'demo.admin.rewards': () => admin.rewards.url(),
-    'demo.admin.users': () => admin.users.url(),
-    'demo.admin.reports': () => admin.reports.url(),
+const fallbackModule: CarwashAdminModule = {
+    key: 'dashboard',
+    label: 'Dashboard',
+    caption: 'Ringkasan operasional',
+    icon: 'dashboard',
+    route: '',
+    href: null,
+    enabled: false,
+    active: true,
 };
 
-const sidebarStorageKey = 'demo.admin.sidebar';
-
-/** Off-canvas drawer state, only meaningful below `lg`. */
+const sidebarStorageKey = computed(
+    () => `carwash.${page.props.mode}.admin.sidebar`,
+);
 const isSidebarOpen = ref<boolean>(false);
-/** Icon-rail state, only meaningful from `lg` up. Read after mount so SSR stays stable. */
 const isSidebarCollapsed = ref<boolean>(false);
 const isNotificationsOpen = ref<boolean>(false);
+const notifications = ref<CarwashNotification[]>([]);
 
 onMounted(() => {
     isSidebarCollapsed.value =
-        localStorage.getItem(sidebarStorageKey) === 'collapsed';
+        localStorage.getItem(sidebarStorageKey.value) === 'collapsed';
 });
 
-const notifications = ref<CarwashNotification[]>(
-    page.props.notifications.map((notification) => ({ ...notification })),
+watch(
+    () => page.props.notifications,
+    (newNotifications) => {
+        notifications.value = newNotifications.map((notification) => ({
+            ...notification,
+        }));
+    },
+    { immediate: true },
 );
 
 const unreadNotifications = computed<number>(
@@ -86,11 +89,11 @@ const unreadNotifications = computed<number>(
             .length,
 );
 
-const activeModule = computed(
-    () =>
-        modules.value.find(
-            (module) => moduleUrls[module.route]?.() === page.url.split('?')[0],
-        ) ?? modules.value[0],
+const activeModule = computed<CarwashAdminModule>(
+    () => modules.value.find((module) => module.active) ?? fallbackModule,
+);
+const pageTitle = computed(
+    () => page.props.pageTitle ?? activeModule.value.label,
 );
 
 function readNotification(notification: CarwashNotification): void {
@@ -106,19 +109,20 @@ function readAllNotifications(): void {
 function toggleSidebarCollapse(): void {
     isSidebarCollapsed.value = !isSidebarCollapsed.value;
     localStorage.setItem(
-        sidebarStorageKey,
+        sidebarStorageKey.value,
         isSidebarCollapsed.value ? 'collapsed' : 'expanded',
     );
 }
 
-function leaveConsole(): void {
-    router.post(session.exit.url());
+function closeSidebar(module: CarwashAdminModule): void {
+    if (module.enabled) {
+        isSidebarOpen.value = false;
+    }
 }
 </script>
 
 <template>
     <div class="min-h-screen bg-slate-100 font-sans text-slate-900">
-        <!-- Sidebar -->
         <aside
             class="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 transition-[transform,width] duration-300 lg:translate-x-0"
             :class="[
@@ -156,7 +160,6 @@ function leaveConsole(): void {
                 </button>
             </div>
 
-            <!-- Role badge: makes the active access level obvious (BR-11) -->
             <div class="px-3 pt-4">
                 <div
                     class="flex items-center gap-2 rounded-xl px-3 py-2 ring-1"
@@ -187,35 +190,51 @@ function leaveConsole(): void {
             </div>
 
             <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-                <Link
+                <component
+                    :is="module.enabled && module.href ? Link : 'div'"
                     v-for="module in modules"
                     :key="module.key"
-                    :href="moduleUrls[module.route]()"
+                    :href="module.href ?? undefined"
                     class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
                     :class="[
-                        activeModule.key === module.key
+                        module.active
                             ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-lg shadow-cyan-500/25'
-                            : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                            : module.enabled
+                              ? 'text-slate-400 hover:bg-white/5 hover:text-white'
+                              : 'cursor-not-allowed text-slate-600',
                         isSidebarCollapsed ? 'lg:justify-center lg:px-0' : '',
                     ]"
-                    :title="isSidebarCollapsed ? module.label : undefined"
-                    @click="isSidebarOpen = false"
+                    :title="
+                        isSidebarCollapsed
+                            ? `${module.label}${module.enabled ? '' : ' — Segera hadir'}`
+                            : undefined
+                    "
+                    :aria-disabled="!module.enabled"
+                    @click="closeSidebar(module)"
                 >
                     <component
-                        :is="moduleIcons[module.icon]"
+                        :is="moduleIcons[module.icon] ?? LayoutDashboard"
                         class="h-[18px] w-[18px] shrink-0"
                     />
                     <span
-                        class="flex-1 leading-tight"
+                        class="min-w-0 flex-1 leading-tight"
                         :class="isSidebarCollapsed ? 'lg:hidden' : ''"
                     >
-                        <span class="block text-sm font-medium">
-                            {{ module.label }}
+                        <span class="flex items-center gap-2">
+                            <span class="truncate text-sm font-medium">
+                                {{ module.label }}
+                            </span>
+                            <span
+                                v-if="!module.enabled"
+                                class="shrink-0 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-medium text-slate-500"
+                            >
+                                Segera hadir
+                            </span>
                         </span>
                         <span
-                            class="block text-[11px]"
+                            class="block truncate text-[11px]"
                             :class="
-                                activeModule.key === module.key
+                                module.active
                                     ? 'text-cyan-50/80'
                                     : 'text-slate-500'
                             "
@@ -223,7 +242,7 @@ function leaveConsole(): void {
                             {{ module.caption }}
                         </span>
                     </span>
-                </Link>
+                </component>
             </nav>
 
             <div class="space-y-3 border-t border-white/5 p-4">
@@ -242,22 +261,34 @@ function leaveConsole(): void {
                         class="min-w-0 flex-1 leading-tight"
                         :class="isSidebarCollapsed ? 'lg:hidden' : ''"
                     >
-                        <p class="truncate text-sm font-medium text-white">
+                        <Link
+                            v-if="profileHref"
+                            :href="profileHref"
+                            class="block truncate text-sm font-medium text-white transition hover:text-cyan-300 focus-visible:ring-2 focus-visible:ring-cyan-400/70 focus-visible:outline-none"
+                        >
+                            {{ persona.name }}
+                        </Link>
+                        <p
+                            v-else
+                            class="truncate text-sm font-medium text-white"
+                        >
                             {{ persona.name }}
                         </p>
                         <p class="truncate text-[11px] text-slate-500">
-                            {{ role.name }} - {{ persona.shift }}
+                            {{ role.name }}
                         </p>
                     </div>
-                    <button
+                    <Link
+                        :href="exitAction.href"
+                        :method="exitAction.method"
+                        as="button"
                         type="button"
                         class="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-white"
-                        aria-label="Keluar"
-                        title="Ganti role / keluar"
-                        @click="leaveConsole"
+                        :aria-label="exitAction.label"
+                        :title="exitAction.label"
                     >
                         <LogOut class="h-4 w-4" />
-                    </button>
+                    </Link>
                 </div>
             </div>
         </aside>
@@ -268,7 +299,6 @@ function leaveConsole(): void {
             @click="isSidebarOpen = false"
         ></div>
 
-        <!-- Main -->
         <div
             class="transition-[padding] duration-300"
             :class="isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'"
@@ -318,7 +348,7 @@ function leaveConsole(): void {
                         <h1
                             class="truncate text-base font-semibold text-slate-900 sm:text-lg"
                         >
-                            {{ activeModule.label }}
+                            {{ pageTitle }}
                         </h1>
                     </div>
 
@@ -347,7 +377,7 @@ function leaveConsole(): void {
 
                         <div
                             v-if="isNotificationsOpen"
-                            class="absolute top-full right-0 z-40 mt-2 w-[21rem] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-400/20"
+                            class="absolute top-full right-0 z-40 mt-2 w-[min(21rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-400/20"
                         >
                             <div
                                 class="flex items-center justify-between border-b border-slate-100 px-4 py-3"
@@ -373,6 +403,7 @@ function leaveConsole(): void {
                             </div>
 
                             <ul
+                                v-if="notifications.length > 0"
                                 class="max-h-96 divide-y divide-slate-50 overflow-y-auto"
                             >
                                 <li
@@ -422,14 +453,22 @@ function leaveConsole(): void {
                                     </button>
                                 </li>
                             </ul>
+                            <div
+                                v-else
+                                class="px-6 py-8 text-center text-sm text-slate-500"
+                            >
+                                Belum ada notifikasi.
+                            </div>
                         </div>
                     </div>
 
                     <Link
-                        :href="home.url()"
+                        v-if="headerAction"
+                        :href="headerAction.href"
+                        :method="headerAction.method"
                         class="hidden rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50 sm:block"
                     >
-                        Ganti role
+                        {{ headerAction.label }}
                     </Link>
                 </div>
             </header>

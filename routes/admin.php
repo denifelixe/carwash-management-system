@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -43,7 +44,7 @@ Route::domain((string) config('domains.admin'))
 
         Route::middleware('auth:admin')->group(function (): void {
             Route::post('logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');
-            Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+            Route::get('dashboard', DashboardController::class)->name('dashboard');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');

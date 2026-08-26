@@ -6,11 +6,12 @@ use Inertia\Testing\AssertableInertia;
 
 test('the page heading names the module without dating it', function () {
     $layout = file_get_contents(
-        resource_path('js/layouts/demo/AdminLayout.vue'),
+        resource_path('js/layouts/admin/AdminLayout.vue'),
     );
 
     expect($layout)
-        ->toContain('{{ activeModule.label }}')
+        ->toContain('{{ pageTitle }}')
+        ->toContain('page.props.pageTitle ?? activeModule.value.label')
         ->not->toContain('{{ brand.today }}');
 });
 
@@ -60,7 +61,7 @@ test('the sidebar modules follow the operational menu order', function () {
 
 test('the dashboard only presents daily operational summaries', function () {
     $dashboard = file_get_contents(
-        resource_path('js/pages/demo/admin/Dashboard.vue'),
+        resource_path('js/pages/admin/Dashboard.vue'),
     );
 
     expect($dashboard)
@@ -88,7 +89,7 @@ test('the dashboard is no longer handed the crew list', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Dashboard')
+                ->component('admin/Dashboard')
                 ->has('orderSummary')
                 ->missing('queue')
                 ->missing('crew')
@@ -100,7 +101,7 @@ test('the dashboard is no longer handed the crew list', function () {
 
 test('the shift summary shows served vehicles instead of payment transactions', function () {
     $dashboard = file_get_contents(
-        resource_path('js/pages/demo/admin/Dashboard.vue'),
+        resource_path('js/pages/admin/Dashboard.vue'),
     );
 
     expect($dashboard)
@@ -113,7 +114,7 @@ test('the shift summary shows served vehicles instead of payment transactions', 
 
 test('the dashboard uses finance and member metrics with the daily remaining balance', function () {
     $dashboard = file_get_contents(
-        resource_path('js/pages/demo/admin/Dashboard.vue'),
+        resource_path('js/pages/admin/Dashboard.vue'),
     );
     $stats = Reports::dashboardStats(Reports::todayDate());
 

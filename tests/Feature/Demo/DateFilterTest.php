@@ -139,7 +139,7 @@ test('the dashboard order caption separates served vehicles from bookings that h
 
 test('the dashboard date filter is shown above the hero with a clear return action', function () {
     $dashboardPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Dashboard.vue'),
+        resource_path('js/pages/admin/Dashboard.vue'),
     );
     $dateFilter = file_get_contents(
         resource_path('js/components/demo/DateFilterBar.vue'),

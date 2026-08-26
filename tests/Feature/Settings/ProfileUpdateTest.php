@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use Inertia\Testing\AssertableInertia;
 
 test('profile page is displayed', function () {
     $admin = Admin::factory()->create();
@@ -9,7 +10,31 @@ test('profile page is displayed', function () {
         ->actingAs($admin, 'admin')
         ->get(route('admin.profile.edit'));
 
-    $response->assertOk();
+    $response->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('settings/Profile')
+                ->where('mode', 'live')
+                ->where('pageTitle', 'Pengaturan profil')
+                ->where('profileHref', route('admin.profile.edit', absolute: false))
+                ->where('headerAction', null)
+                ->has('modules')
+        );
+});
+
+test('settings pages use the shared admin layout instead of the starter layout', function () {
+    $app = file_get_contents(resource_path('js/app.ts'));
+    $profile = file_get_contents(resource_path('js/pages/settings/Profile.vue'));
+
+    expect($app)
+        ->toContain("case name.startsWith('settings/'):")
+        ->toContain('return AdminLayout;')
+        ->not->toContain('SettingsLayout')
+        ->and(resource_path('js/layouts/settings/Layout.vue'))->not->toBeFile()
+        ->and($profile)
+        ->toContain('<SettingsNav />')
+        ->toContain('Profil admin')
+        ->toContain('Simpan perubahan');
 });
 
 test('profile information can be updated', function () {

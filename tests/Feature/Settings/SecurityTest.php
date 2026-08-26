@@ -12,7 +12,11 @@ test('security page is displayed', function () {
         ->get(route('admin.security.edit'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Security')
-            ->has('passwordRules'),
+            ->has('passwordRules')
+            ->where('mode', 'live')
+            ->where('pageTitle', 'Keamanan akun')
+            ->where('profileHref', route('admin.profile.edit', absolute: false))
+            ->where('headerAction', null),
         );
 });
 

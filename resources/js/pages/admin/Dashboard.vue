@@ -13,19 +13,20 @@ import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
-import admin from '@/routes/demo/admin';
 import type {
     CarwashBrand,
-    CarwashDateFilter,
     CarwashCashSummary,
+    CarwashDateFilter,
     CarwashOrderSummary,
+    CarwashPersona,
     CarwashShift,
     CarwashStat,
 } from '@/types/demo';
 
-defineProps<{
+const props = defineProps<{
     brand: CarwashBrand;
-    persona: { name: string; title: string; initials: string };
+    persona: CarwashPersona;
+    filterUrl: string;
     stats: CarwashStat[];
     filters: CarwashDateFilter;
     shifts: CarwashShift[];
@@ -40,10 +41,9 @@ const statIcons: Record<string, LucideIcon> = {
     gift: Gift,
 };
 
-/** Filtering is a fresh visit, so the numbers rebuild for the picked day. */
 function applyDate(date: string): void {
     router.get(
-        admin.dashboard.url(),
+        props.filterUrl,
         { date },
         {
             preserveScroll: true,
@@ -87,7 +87,6 @@ function applyDate(date: string): void {
             </div>
         </section>
 
-        <!-- Figures for the picked day -->
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
                 v-for="stat in stats"
@@ -102,7 +101,6 @@ function applyDate(date: string): void {
             />
         </section>
 
-        <!-- Cash + shifts -->
         <section class="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <article
                 class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
@@ -164,7 +162,6 @@ function applyDate(date: string): void {
                 </p>
             </article>
 
-            <!-- Shift overview -->
             <article
                 class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm xl:col-span-2"
             >
@@ -175,7 +172,10 @@ function applyDate(date: string): void {
                     Performa kasir per shift hari ini
                 </p>
 
-                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div
+                    v-if="shifts.length > 0"
+                    class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
+                >
                     <div
                         v-for="shift in shifts"
                         :key="shift.id"
@@ -229,6 +229,15 @@ function applyDate(date: string): void {
                             </div>
                         </div>
                     </div>
+                </div>
+
+                <div
+                    v-else
+                    class="mt-4 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center"
+                >
+                    <p class="text-sm text-slate-500">
+                        Belum ada data performa shift untuk tanggal ini.
+                    </p>
                 </div>
             </article>
         </section>

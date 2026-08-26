@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { Form } from '@inertiajs/vue3';
+import { TriangleAlert } from '@lucide/vue';
 import { useTemplateRef } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
-import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
@@ -22,27 +22,32 @@ const passwordInput = useTemplateRef('passwordInput');
 </script>
 
 <template>
-    <div class="space-y-6">
-        <Heading
-            variant="small"
-            title="Delete account"
-            description="Delete your account and all of its resources"
-        />
-        <div
-            class="space-y-4 rounded-lg border border-red-100 bg-red-50 p-4 dark:border-red-200/10 dark:bg-red-700/10"
-        >
-            <div class="relative space-y-0.5 text-red-600 dark:text-red-100">
-                <p class="font-medium">Warning</p>
-                <p class="text-sm">
-                    Please proceed with caution, this cannot be undone.
+    <div class="rounded-2xl border border-rose-200/80 bg-white p-5 shadow-sm">
+        <div class="flex items-start gap-3">
+            <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600"
+            >
+                <TriangleAlert class="h-5 w-5" />
+            </span>
+            <div>
+                <h3 class="font-semibold text-slate-900">Hapus akun</h3>
+                <p class="mt-1 text-sm text-slate-500">
+                    Tindakan ini tidak dapat dibatalkan.
                 </p>
+            </div>
+        </div>
+        <div
+            class="mt-4 space-y-4 rounded-xl border border-rose-100 bg-rose-50 p-4"
+        >
+            <div class="text-sm text-rose-700">
+                Akun dan seluruh sesi login admin ini akan dihapus permanen.
             </div>
             <Dialog>
                 <DialogTrigger as-child>
                     <Button
                         variant="destructive"
                         data-test="delete-admin-button"
-                        >Delete account</Button
+                        >Hapus akun</Button
                     >
                 </DialogTrigger>
                 <DialogContent>
@@ -58,27 +63,23 @@ const passwordInput = useTemplateRef('passwordInput');
                     >
                         <DialogHeader class="space-y-3">
                             <DialogTitle
-                                >Are you sure you want to delete your
-                                account?</DialogTitle
+                                >Yakin ingin menghapus akun?</DialogTitle
                             >
                             <DialogDescription>
-                                Once your account is deleted, all of its
-                                resources and data will also be permanently
-                                deleted. Please enter your password to confirm
-                                you would like to permanently delete your
-                                account.
+                                Masukkan kata sandi untuk mengonfirmasi
+                                penghapusan akun secara permanen.
                             </DialogDescription>
                         </DialogHeader>
 
                         <div class="grid gap-2">
                             <Label for="password" class="sr-only"
-                                >Password</Label
+                                >Kata sandi</Label
                             >
                             <PasswordInput
                                 id="password"
                                 name="password"
                                 ref="passwordInput"
-                                placeholder="Password"
+                                placeholder="Kata sandi"
                             />
                             <InputError :message="errors.password" />
                         </div>
@@ -94,7 +95,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                         }
                                     "
                                 >
-                                    Cancel
+                                    Batal
                                 </Button>
                             </DialogClose>
 
@@ -104,7 +105,7 @@ const passwordInput = useTemplateRef('passwordInput');
                                 :disabled="processing"
                                 data-test="confirm-delete-admin-button"
                             >
-                                Delete account
+                                Hapus akun
                             </Button>
                         </DialogFooter>
                     </Form>

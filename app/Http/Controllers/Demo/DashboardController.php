@@ -19,7 +19,8 @@ class DashboardController extends AdminController
         // No date in the URL means the day the module is being used on.
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
-        return $this->page($request, 'demo/admin/Dashboard', [
+        return $this->page($request, 'admin/Dashboard', [
+            'filterUrl' => route('demo.admin.dashboard', absolute: false),
             'stats' => Reports::dashboardStats($date),
             'filters' => DateFilter::meta($date),
             'shifts' => Finance::shiftSummary($date),
