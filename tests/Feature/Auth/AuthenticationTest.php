@@ -1,11 +1,16 @@
 <?php
 
 use App\Models\Admin;
+use Inertia\Testing\AssertableInertia as Assert;
 
 test('login screen can be rendered', function () {
     $response = $this->get(route('admin.login'));
 
-    $response->assertOk();
+    $response
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('auth/AdminLogin'),
+        );
 });
 
 test('admins can authenticate using the admin login screen', function () {
@@ -26,6 +31,8 @@ test('admins can not authenticate with invalid password', function () {
     $this->post(route('admin.login.store'), [
         'email' => $admin->email,
         'password' => 'wrong-password',
+    ])->assertSessionHasErrors([
+        'email' => 'Email atau kata sandi tidak sesuai.',
     ]);
 
     $this->assertGuest('admin');

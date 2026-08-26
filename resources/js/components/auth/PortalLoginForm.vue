@@ -2,18 +2,15 @@
 import { Form } from '@inertiajs/vue3';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
-import TextLink from '@/components/TextLink.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import type { RouteDefinition, RouteFormDefinition } from '@/wayfinder';
+import type { RouteFormDefinition } from '@/wayfinder';
 
 defineProps<{
     form: RouteFormDefinition<'post'>;
-    passwordRequest?: RouteDefinition<'get'>;
-    registration?: RouteDefinition<'get'>;
 }>();
 </script>
 
@@ -26,7 +23,7 @@ defineProps<{
     >
         <div class="grid gap-6">
             <div class="grid gap-2">
-                <Label for="email">Email address</Label>
+                <Label for="email">Alamat email</Label>
                 <Input
                     id="email"
                     type="email"
@@ -41,24 +38,14 @@ defineProps<{
             </div>
 
             <div class="grid gap-2">
-                <div class="flex items-center justify-between gap-4">
-                    <Label for="password">Password</Label>
-                    <TextLink
-                        v-if="passwordRequest"
-                        :href="passwordRequest"
-                        class="text-sm"
-                        :tabindex="5"
-                    >
-                        Forgot your password?
-                    </TextLink>
-                </div>
+                <Label for="password">Kata sandi</Label>
                 <PasswordInput
                     id="password"
                     name="password"
                     required
                     :tabindex="2"
                     autocomplete="current-password"
-                    placeholder="Password"
+                    placeholder="Kata sandi"
                 />
                 <InputError :message="errors.password" />
             </div>
@@ -66,7 +53,7 @@ defineProps<{
             <div class="flex items-center justify-between">
                 <Label for="remember" class="flex items-center gap-3">
                     <Checkbox id="remember" name="remember" :tabindex="3" />
-                    <span>Remember me</span>
+                    <span>Ingat saya</span>
                 </Label>
             </div>
 
@@ -78,16 +65,8 @@ defineProps<{
                 data-test="login-button"
             >
                 <Spinner v-if="processing" />
-                Log in
+                Masuk
             </Button>
-        </div>
-
-        <div
-            v-if="registration"
-            class="text-center text-sm text-muted-foreground"
-        >
-            Don't have an account?
-            <TextLink :href="registration" :tabindex="5">Sign up</TextLink>
         </div>
     </Form>
 </template>

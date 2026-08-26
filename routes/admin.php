@@ -3,7 +3,6 @@
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
-use Illuminate\Auth\Middleware\EnsureEmailIsVerified;
 use Illuminate\Auth\Middleware\RequirePassword;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -11,12 +10,9 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Http\Controllers\ConfirmablePasswordController;
 use Laravel\Fortify\Http\Controllers\ConfirmedPasswordStatusController;
-use Laravel\Fortify\Http\Controllers\EmailVerificationNotificationController;
-use Laravel\Fortify\Http\Controllers\EmailVerificationPromptController;
 use Laravel\Fortify\Http\Controllers\NewPasswordController;
 use Laravel\Fortify\Http\Controllers\PasswordResetLinkController;
 use Laravel\Fortify\Http\Controllers\RegisteredUserController;
-use Laravel\Fortify\Http\Controllers\VerifyEmailController;
 
 Route::domain((string) config('domains.admin'))
     ->name('admin.')
@@ -47,24 +43,13 @@ Route::domain((string) config('domains.admin'))
 
         Route::middleware('auth:admin')->group(function (): void {
             Route::post('logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');
-            Route::inertia('dashboard', 'Dashboard')
-                ->middleware(EnsureEmailIsVerified::redirectTo('admin.verification.notice'))
-                ->name('dashboard');
+            Route::inertia('dashboard', 'Dashboard')->name('dashboard');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');
             Route::get('user/confirmed-password-status', [ConfirmedPasswordStatusController::class, 'show'])
                 ->name('password.confirmation');
 
-            if (Features::enabled(Features::emailVerification())) {
-                Route::get('email/verify', EmailVerificationPromptController::class)->name('verification.notice');
-                Route::get('email/verify/{id}/{hash}', VerifyEmailController::class)
-                    ->middleware(['signed', 'throttle:6,1'])
-                    ->name('verification.verify');
-                Route::post('email/verification-notification', [EmailVerificationNotificationController::class, 'store'])
-                    ->middleware('throttle:6,1')
-                    ->name('verification.send');
-            }
         });
 
         Route::middleware('auth:admin')->group(function (): void {
@@ -74,10 +59,7 @@ Route::domain((string) config('domains.admin'))
             Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
         });
 
-        Route::middleware([
-            'auth:admin',
-            EnsureEmailIsVerified::redirectTo('admin.verification.notice'),
-        ])->group(function (): void {
+        Route::middleware('auth:admin')->group(function (): void {
             Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
             Route::get('settings/security', [SecurityController::class, 'edit'])

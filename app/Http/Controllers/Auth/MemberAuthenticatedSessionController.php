@@ -31,7 +31,7 @@ class MemberAuthenticatedSessionController extends Controller
     {
         if (! Auth::guard('member')->attempt($request->credentials(), $request->boolean('remember'))) {
             throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
+                'email' => 'Email atau kata sandi tidak sesuai.',
             ]);
         }
 

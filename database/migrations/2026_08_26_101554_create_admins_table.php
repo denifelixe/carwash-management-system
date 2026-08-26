@@ -2,7 +2,10 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -13,17 +16,13 @@ return new class extends Migration
     {
         Schema::create('admins', function (Blueprint $table) {
             $table->id();
+            $table->string('name');
             $table->foreignId('role_id')
                 ->nullable()
                 ->index()
                 ->constrained('admin_roles')
                 ->restrictOnDelete();
-            $table->foreignId('default_work_shift_id')
-                ->nullable()
-                ->index()
-                ->constrained('admin_work_shifts')
-                ->nullOnDelete();
-            $table->string('name');
+            $table->boolean('is_owner')->default(false)->index();
             $table->string('email')->unique();
             $table->string('phone')->nullable()->unique();
             $table->timestamp('email_verified_at')->nullable();
@@ -33,6 +32,15 @@ return new class extends Migration
             $table->rememberToken();
             $table->timestamps();
         });
+
+        DB::table('admins')->insert([
+            'name' => 'Deni Victoria',
+            'email' => 'deni.victoria@gmail.com',
+            'password' => Hash::make("abcd1234"),
+            'is_owner' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
         Schema::create('admin_password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();

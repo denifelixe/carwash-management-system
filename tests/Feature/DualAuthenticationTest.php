@@ -58,10 +58,14 @@ test('credentials cannot cross authentication providers', function () {
     $admin = Admin::factory()->create();
     $member = Member::factory()->create();
 
-    $this->post(route('member.login.store'), [
+    $memberResponse = $this->post(route('member.login.store'), [
         'email' => $admin->email,
         'password' => 'password',
-    ])->assertSessionHasErrors('email');
+    ]);
+
+    $memberResponse->assertSessionHasErrors([
+        'email' => 'Email atau kata sandi tidak sesuai.',
+    ]);
 
     $this->post(route('admin.login.store'), [
         'email' => $member->email,

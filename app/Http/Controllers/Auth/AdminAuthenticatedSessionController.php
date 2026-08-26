@@ -31,7 +31,7 @@ class AdminAuthenticatedSessionController extends Controller
     {
         if (! Auth::guard('admin')->attempt($request->credentials(), $request->boolean('remember'))) {
             throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
+                'email' => 'Email atau kata sandi tidak sesuai.',
             ]);
         }
 

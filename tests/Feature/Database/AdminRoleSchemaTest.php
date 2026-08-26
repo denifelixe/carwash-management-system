@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\Admin;
+use App\Support\Demo\RoleAccess;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Schema;
 
 test('admin and role schema contains the required tables columns and indexes', function () {
@@ -56,12 +59,12 @@ test('admin and role schema contains the required tables columns and indexes', f
         ->and(Schema::hasColumns('admins', [
             'id',
             'role_id',
-            'default_work_shift_id',
             'name',
             'email',
             'phone',
             'email_verified_at',
             'password',
+            'is_owner',
             'is_active',
             'last_login_at',
             'remember_token',
@@ -94,6 +97,49 @@ test('admin and role schema contains the required tables columns and indexes', f
         ->and($hasUniqueIndex('members', ['phone']))->toBeTrue();
 });
 
+test('admin modules are prefilled from the demo navigation', function () {
+    $modules = DB::table('admin_modules')
+        ->orderBy('sort_order')
+        ->get(['key', 'name', 'description', 'sort_order']);
+
+    expect($modules)->toHaveCount(10);
+
+    foreach (RoleAccess::modules() as $index => $demoModule) {
+        $expectedKey = $demoModule['key'] === 'users'
+            ? 'users_and_roles'
+            : $demoModule['key'];
+
+        expect($modules[$index]->key)->toBe($expectedKey)
+            ->and($modules[$index]->name)->toBe($demoModule['label'])
+            ->and($modules[$index]->description)->toBe($demoModule['caption'])
+            ->and($modules[$index]->sort_order)->toBe($index + 1);
+    }
+});
+
+test('owners receive full gate access while staff follow normal authorization', function () {
+    Gate::define('restricted-admin-action', fn (Admin $admin): bool => false);
+
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $staff = Admin::factory()->create(['is_owner' => false]);
+
+    expect(Gate::forUser($owner)->allows('restricted-admin-action'))->toBeTrue()
+        ->and(Gate::forUser($staff)->allows('restricted-admin-action'))->toBeFalse();
+});
+
+test('the initial owner admin is created without a known password', function () {
+    $owner = Admin::query()
+        ->where('email', 'deni.victoria@gmail.com')
+        ->first();
+
+    expect($owner)
+        ->not->toBeNull()
+        ->name->toBe('Deni Victoria')
+        ->is_owner->toBeTrue()
+        ->is_active->toBeTrue()
+        ->role_id->toBeNull()
+        ->and($owner->password)->not->toBeEmpty();
+});
+
 test('staff roles shifts modules and access assignments can be persisted', function () {
     $now = now();
     $roleId = DB::table('admin_roles')->insertGetId([
@@ -119,11 +165,11 @@ test('staff roles shifts modules and access assignments can be persisted', funct
     ]);
     $adminId = DB::table('admins')->insertGetId([
         'role_id' => $roleId,
-        'default_work_shift_id' => $shiftId,
         'name' => 'Admin Staff',
         'email' => 'admin@example.com',
         'phone' => '081234567890',
         'password' => 'hashed-password',
+        'is_owner' => true,
         'created_at' => $now,
         'updated_at' => $now,
     ]);
@@ -144,9 +190,10 @@ test('staff roles shifts modules and access assignments can be persisted', funct
 
     expect(DB::table('admins')->find($adminId))
         ->role_id->toBe($roleId)
-        ->default_work_shift_id->toBe($shiftId)
         ->phone->toBe('081234567890')
+        ->is_owner->toBe(1)
         ->is_active->toBe(1)
+        ->and(DB::table('admin_work_shifts')->find($shiftId))->not->toBeNull()
         ->and($access)->not->toBeNull()
         ->and($access->can_create)->toBe(1)
         ->and($access->can_read)->toBe(1)
@@ -163,7 +210,7 @@ test('a module can only be assigned to a role once', function () {
         'updated_at' => $now,
     ]);
     $moduleId = DB::table('admin_modules')->insertGetId([
-        'key' => 'pos',
+        'key' => 'test-pos',
         'name' => 'Kasir POS',
         'created_at' => $now,
         'updated_at' => $now,
@@ -196,23 +243,14 @@ test('foreign key deletion rules preserve staff integrity', function () {
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-    $shiftId = DB::table('admin_work_shifts')->insertGetId([
-        'key' => 'afternoon',
-        'name' => 'Shift Sore',
-        'starts_at' => '16:00:00',
-        'ends_at' => '23:00:00',
-        'created_at' => $now,
-        'updated_at' => $now,
-    ]);
     $moduleId = DB::table('admin_modules')->insertGetId([
-        'key' => 'reports',
+        'key' => 'test-reports',
         'name' => 'Laporan',
         'created_at' => $now,
         'updated_at' => $now,
     ]);
     $adminId = DB::table('admins')->insertGetId([
         'role_id' => $roleId,
-        'default_work_shift_id' => $shiftId,
         'name' => 'Manager Staff',
         'email' => 'manager@example.com',
         'password' => 'hashed-password',
@@ -228,9 +266,8 @@ test('foreign key deletion rules preserve staff integrity', function () {
     expect(fn () => DB::table('admin_roles')->where('id', $roleId)->delete())
         ->toThrow(QueryException::class);
 
-    DB::table('admin_work_shifts')->where('id', $shiftId)->delete();
     DB::table('admin_modules')->where('id', $moduleId)->delete();
 
-    expect(DB::table('admins')->find($adminId)->default_work_shift_id)->toBeNull()
+    expect(DB::table('admins')->find($adminId))->not->toBeNull()
         ->and(DB::table('admin_role_module')->where('admin_role_id', $roleId)->exists())->toBeFalse();
 });

@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import PortalLoginForm from '@/components/auth/PortalLoginForm.vue';
-import { register } from '@/routes/admin';
 import { store } from '@/routes/admin/login';
-import { request } from '@/routes/admin/password';
 
 defineOptions({
     layout: {
-        title: 'Admin login',
-        description: 'Sign in with your staff account',
+        title: 'Login Admin',
+        description: 'Masuk menggunakan akun staf Anda',
     },
 });
 
@@ -18,7 +16,7 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Admin login" />
+    <Head title="Login Admin" />
 
     <div
         v-if="status"
@@ -27,9 +25,5 @@ defineProps<{
         {{ status }}
     </div>
 
-    <PortalLoginForm
-        :form="store.form()"
-        :password-request="request()"
-        :registration="register()"
-    />
+    <PortalLoginForm :form="store.form()" />
 </template>

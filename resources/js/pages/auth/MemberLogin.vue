@@ -5,8 +5,8 @@ import { store } from '@/routes/member/login';
 
 defineOptions({
     layout: {
-        title: 'Member login',
-        description: 'Sign in with your member account',
+        title: 'Login Member',
+        description: 'Masuk menggunakan akun member Anda',
     },
 });
 
@@ -16,7 +16,7 @@ defineProps<{
 </script>
 
 <template>
-    <Head title="Member login" />
+    <Head title="Login Member" />
 
     <div
         v-if="status"

@@ -14,6 +14,7 @@ test('profile page is displayed', function () {
 
 test('profile information can be updated', function () {
     $admin = Admin::factory()->create();
+    $emailVerifiedAt = $admin->email_verified_at;
 
     $response = $this
         ->actingAs($admin, 'admin')
@@ -30,10 +31,10 @@ test('profile information can be updated', function () {
 
     expect($admin->name)->toBe('Test Admin');
     expect($admin->email)->toBe('test@example.com');
-    expect($admin->email_verified_at)->toBeNull();
+    expect($admin->email_verified_at)->toEqual($emailVerifiedAt);
 });
 
-test('email verification status is unchanged when the email address is unchanged', function () {
+test('legacy email verification timestamp is unchanged when the email address is unchanged', function () {
     $admin = Admin::factory()->create();
 
     $response = $this

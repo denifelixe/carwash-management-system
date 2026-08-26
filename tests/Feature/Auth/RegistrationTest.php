@@ -1,25 +1,18 @@
 <?php
 
-use Laravel\Fortify\Features;
+use Illuminate\Support\Facades\Route;
 
-beforeEach(function () {
-    $this->skipUnlessFortifyHas(Features::registration());
-});
+test('public admin registration is disabled', function () {
+    expect(Route::has('admin.register'))->toBeFalse()
+        ->and(Route::has('admin.register.store'))->toBeFalse();
 
-test('registration screen can be rendered', function () {
-    $response = $this->get(route('admin.register'));
+    $this->get('https://'.config('domains.admin').'/register')
+        ->assertNotFound();
 
-    $response->assertOk();
-});
-
-test('new admins can register', function () {
-    $response = $this->post(route('admin.register.store'), [
+    $this->post('https://'.config('domains.admin').'/register', [
         'name' => 'Test Admin',
         'email' => 'test@example.com',
         'password' => 'password',
         'password_confirmation' => 'password',
-    ]);
-
-    $this->assertAuthenticated('admin');
-    $response->assertRedirect(route('admin.dashboard', absolute: false));
+    ])->assertNotFound();
 });

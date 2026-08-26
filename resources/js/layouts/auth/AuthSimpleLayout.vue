@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import { home } from '@/routes';
 
 defineProps<{
@@ -21,11 +20,10 @@ defineProps<{
                         class="flex flex-col items-center gap-2 font-medium"
                     >
                         <div
-                            class="mb-1 flex h-9 w-9 items-center justify-center rounded-md"
+                            class="mb-1 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-2xl shadow-lg shadow-cyan-500/30"
+                            aria-hidden="true"
                         >
-                            <AppLogoIcon
-                                class="size-9 fill-current text-[var(--foreground)] dark:text-white"
-                            />
+                            🚗
                         </div>
                         <span class="sr-only">{{ title }}</span>
                     </Link>

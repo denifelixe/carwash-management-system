@@ -3,8 +3,6 @@
 namespace App\Models;
 
 use Database\Factories\AdminFactory;
-use Illuminate\Auth\MustVerifyEmail;
-use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -21,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $phone
  * @property Carbon|null $email_verified_at
  * @property string $password
+ * @property bool $is_owner
  * @property bool $is_active
  * @property Carbon|null $last_login_at
  * @property string|null $remember_token
@@ -29,10 +28,10 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable(['name', 'email', 'password'])]
 #[Hidden(['password', 'remember_token'])]
-class Admin extends Authenticatable implements MustVerifyEmailContract
+class Admin extends Authenticatable
 {
     /** @use HasFactory<AdminFactory> */
-    use HasFactory, MustVerifyEmail, Notifiable;
+    use HasFactory, Notifiable;
 
     /**
      * Get the attributes that should be cast.
@@ -44,6 +43,7 @@ class Admin extends Authenticatable implements MustVerifyEmailContract
         return [
             'email_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'is_owner' => 'boolean',
             'last_login_at' => 'datetime',
             'password' => 'hashed',
         ];
