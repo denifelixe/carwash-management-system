@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Models\Admin;
 
 test('the application always declares a light color scheme', function () {
     $response = $this->get(route('demo.home'));
@@ -16,7 +16,7 @@ test('the application always declares a light color scheme', function () {
 });
 
 test('appearance settings cannot be opened', function () {
-    $this->actingAs(User::factory()->create())
+    $this->actingAs(Admin::factory()->create(), 'admin')
         ->get('/settings/appearance')
         ->assertNotFound();
 });

@@ -1,6 +1,6 @@
 <?php
 
-use App\Models\User;
+use App\Models\Admin;
 use Illuminate\Auth\Notifications\VerifyEmail;
 use Illuminate\Support\Facades\Notification;
 use Laravel\Fortify\Features;
@@ -12,23 +12,23 @@ beforeEach(function () {
 test('sends verification notification', function () {
     Notification::fake();
 
-    $user = User::factory()->unverified()->create();
+    $admin = Admin::factory()->unverified()->create();
 
-    $this->actingAs($user)
-        ->post(route('verification.send'))
-        ->assertRedirect(route('home'));
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.verification.send'))
+        ->assertRedirect(route('admin.home'));
 
-    Notification::assertSentTo($user, VerifyEmail::class);
+    Notification::assertSentTo($admin, VerifyEmail::class);
 });
 
 test('does not send verification notification if email is verified', function () {
     Notification::fake();
 
-    $user = User::factory()->create();
+    $admin = Admin::factory()->create();
 
-    $this->actingAs($user)
-        ->post(route('verification.send'))
-        ->assertRedirect(route('dashboard', absolute: false));
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.verification.send'))
+        ->assertRedirect(route('admin.dashboard', absolute: false));
 
     Notification::assertNothingSent();
 });

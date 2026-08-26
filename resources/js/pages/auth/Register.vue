@@ -7,8 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { login } from '@/routes';
-import { store } from '@/routes/register';
+import { login } from '@/routes/admin';
+import { store } from '@/routes/admin/register';
 
 defineProps<{
     passwordRules: string;
@@ -94,7 +94,7 @@ defineOptions({
                 class="mt-2 w-full"
                 tabindex="5"
                 :disabled="processing"
-                data-test="register-user-button"
+                data-test="register-admin-button"
             >
                 <Spinner v-if="processing" />
                 Create account

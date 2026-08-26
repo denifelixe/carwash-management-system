@@ -1,6 +1,7 @@
 <?php
 
-use App\Models\User;
+use App\Models\Admin;
+use App\Models\Member;
 
 return [
 
@@ -9,16 +10,12 @@ return [
     | Authentication Defaults
     |--------------------------------------------------------------------------
     |
-    | This option defines the default authentication "guard" and password
-    | reset "broker" for your application. You may change these values
-    | as required, but they're a perfect start for most applications.
+    | This application intentionally has no implicit guard or password broker.
+    | Every portal must select either the admin or member context explicitly.
     |
     */
 
-    'defaults' => [
-        'guard' => env('AUTH_GUARD', 'web'),
-        'passwords' => env('AUTH_PASSWORD_BROKER', 'users'),
-    ],
+    'defaults' => [],
 
     /*
     |--------------------------------------------------------------------------
@@ -38,9 +35,13 @@ return [
     */
 
     'guards' => [
-        'web' => [
+        'admin' => [
             'driver' => 'session',
-            'provider' => 'users',
+            'provider' => 'admins',
+        ],
+        'member' => [
+            'driver' => 'session',
+            'provider' => 'members',
         ],
     ],
 
@@ -62,15 +63,14 @@ return [
     */
 
     'providers' => [
-        'users' => [
+        'admins' => [
             'driver' => 'eloquent',
-            'model' => env('AUTH_MODEL', User::class),
+            'model' => Admin::class,
         ],
-
-        // 'users' => [
-        //     'driver' => 'database',
-        //     'table' => 'users',
-        // ],
+        'members' => [
+            'driver' => 'eloquent',
+            'model' => Member::class,
+        ],
     ],
 
     /*
@@ -93,9 +93,15 @@ return [
     */
 
     'passwords' => [
-        'users' => [
-            'provider' => 'users',
-            'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+        'admins' => [
+            'provider' => 'admins',
+            'table' => 'admin_password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+        'members' => [
+            'provider' => 'members',
+            'table' => 'member_password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],

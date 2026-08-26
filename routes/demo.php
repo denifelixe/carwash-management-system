@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Demo\AdminRoleController;
 use App\Http\Controllers\Demo\BookingController;
 use App\Http\Controllers\Demo\CustomerController;
 use App\Http\Controllers\Demo\DashboardController;
@@ -11,7 +12,6 @@ use App\Http\Controllers\Demo\OrderController;
 use App\Http\Controllers\Demo\PosController;
 use App\Http\Controllers\Demo\ReportController;
 use App\Http\Controllers\Demo\RewardController;
-use App\Http\Controllers\Demo\UserRoleController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -60,7 +60,7 @@ Route::name('demo.')->group(function () {
             ->middleware('demo.module:rewards')
             ->name('rewards');
 
-        Route::get('users', [UserRoleController::class, 'index'])
+        Route::get('users', [AdminRoleController::class, 'index'])
             ->middleware('demo.module:users')
             ->name('users');
 

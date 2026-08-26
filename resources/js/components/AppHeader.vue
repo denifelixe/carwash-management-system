@@ -2,6 +2,7 @@
 import { Link, usePage } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid, Menu, Search } from '@lucide/vue';
 import { computed } from 'vue';
+import AdminMenuContent from '@/components/AdminMenuContent.vue';
 import AppLogo from '@/components/AppLogo.vue';
 import AppLogoIcon from '@/components/AppLogoIcon.vue';
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
@@ -31,11 +32,10 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from '@/components/ui/tooltip';
-import UserMenuContent from '@/components/UserMenuContent.vue';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { getInitials } from '@/composables/useInitials';
 import { toUrl } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard } from '@/routes/admin';
 import type { BreadcrumbItem, NavItem } from '@/types';
 
 type Props = {
@@ -47,7 +47,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const page = usePage();
-const auth = computed(() => page.props.auth);
+const admin = computed(() => page.props.auth.admin);
 const { isCurrentUrl, whenCurrentUrl } = useCurrentUrl();
 
 const activeItemStyles =
@@ -238,7 +238,7 @@ const rightNavItems: NavItem[] = [
                         </div>
                     </div>
 
-                    <DropdownMenu>
+                    <DropdownMenu v-if="admin">
                         <DropdownMenuTrigger :as-child="true">
                             <Button
                                 variant="ghost"
@@ -249,20 +249,20 @@ const rightNavItems: NavItem[] = [
                                     class="size-8 overflow-hidden rounded-full"
                                 >
                                     <AvatarImage
-                                        v-if="auth.user.avatar"
-                                        :src="auth.user.avatar"
-                                        :alt="auth.user.name"
+                                        v-if="admin.avatar"
+                                        :src="admin.avatar"
+                                        :alt="admin.name"
                                     />
                                     <AvatarFallback
                                         class="rounded-lg bg-neutral-200 font-semibold text-black dark:bg-neutral-700 dark:text-white"
                                     >
-                                        {{ getInitials(auth.user?.name) }}
+                                        {{ getInitials(admin.name) }}
                                     </AvatarFallback>
                                 </Avatar>
                             </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" class="w-56">
-                            <UserMenuContent :user="auth.user" />
+                            <AdminMenuContent :admin="admin" />
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>

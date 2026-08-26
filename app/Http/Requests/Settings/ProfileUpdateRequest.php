@@ -2,13 +2,14 @@
 
 namespace App\Http\Requests\Settings;
 
-use App\Concerns\ProfileValidationRules;
+use App\Concerns\AdminProfileValidationRules;
+use App\Models\Admin;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class ProfileUpdateRequest extends FormRequest
 {
-    use ProfileValidationRules;
+    use AdminProfileValidationRules;
 
     /**
      * Get the validation rules that apply to the request.
@@ -17,6 +18,10 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
-        return $this->profileRules($this->user()->id);
+        $admin = $this->user('admin');
+
+        abort_unless($admin instanceof Admin, 403);
+
+        return $this->profileRules($admin->id);
     }
 }

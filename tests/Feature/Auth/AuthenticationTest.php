@@ -1,77 +1,55 @@
 <?php
 
-use App\Models\User;
-use Illuminate\Support\Facades\RateLimiter;
-use Laravel\Fortify\Features;
+use App\Models\Admin;
 
 test('login screen can be rendered', function () {
-    $response = $this->get(route('login'));
+    $response = $this->get(route('admin.login'));
 
     $response->assertOk();
 });
 
-test('users can authenticate using the login screen', function () {
-    $user = User::factory()->create();
+test('admins can authenticate using the admin login screen', function () {
+    $admin = Admin::factory()->create();
 
-    $response = $this->post(route('login.store'), [
-        'email' => $user->email,
+    $response = $this->post(route('admin.login.store'), [
+        'email' => $admin->email,
         'password' => 'password',
     ]);
 
-    $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $this->assertAuthenticated('admin');
+    $response->assertRedirect(route('admin.dashboard', absolute: false));
 });
 
-test('users with two factor enabled are redirected to two factor challenge', function () {
-    $this->skipUnlessFortifyHas(Features::twoFactorAuthentication());
+test('admins can not authenticate with invalid password', function () {
+    $admin = Admin::factory()->create();
 
-    Features::twoFactorAuthentication([
-        'confirm' => true,
-        'confirmPassword' => true,
-    ]);
-
-    $user = User::factory()->withTwoFactor()->create();
-
-    $response = $this->post(route('login'), [
-        'email' => $user->email,
-        'password' => 'password',
-    ]);
-
-    $response->assertRedirect(route('two-factor.login'));
-    $response->assertSessionHas('login.id', $user->id);
-    $this->assertGuest();
-});
-
-test('users can not authenticate with invalid password', function () {
-    $user = User::factory()->create();
-
-    $this->post(route('login.store'), [
-        'email' => $user->email,
+    $this->post(route('admin.login.store'), [
+        'email' => $admin->email,
         'password' => 'wrong-password',
     ]);
 
-    $this->assertGuest();
+    $this->assertGuest('admin');
 });
 
-test('users can logout', function () {
-    $user = User::factory()->create();
+test('admins can logout', function () {
+    $admin = Admin::factory()->create();
 
-    $response = $this->actingAs($user)->post(route('logout'));
+    $response = $this->actingAs($admin, 'admin')->post(route('admin.logout'));
 
-    $response->assertRedirect(route('home'));
+    $response->assertRedirect(route('admin.login'));
 
-    $this->assertGuest();
+    $this->assertGuest('admin');
 });
 
-test('users are rate limited', function () {
-    $user = User::factory()->create();
+test('admin login attempts are rate limited', function () {
+    $admin = Admin::factory()->create();
 
-    RateLimiter::increment(md5('login'.implode('|', [$user->email, '127.0.0.1'])), amount: 5);
-
-    $response = $this->post(route('login.store'), [
-        'email' => $user->email,
-        'password' => 'wrong-password',
-    ]);
+    foreach (range(1, 6) as $attempt) {
+        $response = $this->post(route('admin.login.store'), [
+            'email' => $admin->email,
+            'password' => 'wrong-password',
+        ]);
+    }
 
     $response->assertTooManyRequests();
 });

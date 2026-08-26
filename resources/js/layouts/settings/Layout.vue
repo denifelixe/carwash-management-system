@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { useCurrentUrl } from '@/composables/useCurrentUrl';
 import { toUrl } from '@/lib/utils';
-import { edit as editProfile } from '@/routes/profile';
-import { edit as editSecurity } from '@/routes/security';
+import { edit as editProfile } from '@/routes/admin/profile';
+import { edit as editSecurity } from '@/routes/admin/security';
 import type { NavItem } from '@/types';
 
 const sidebarNavItems: NavItem[] = [

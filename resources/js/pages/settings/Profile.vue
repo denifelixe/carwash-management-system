@@ -3,14 +3,14 @@ import { Form, Head, usePage } from '@inertiajs/vue3';
 import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
-import DeleteUser from '@/components/DeleteUser.vue';
+import DeleteAdmin from '@/components/DeleteAdmin.vue';
 import Heading from '@/components/Heading.vue';
 import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { edit } from '@/routes/profile';
-import { send } from '@/routes/verification';
+import { edit } from '@/routes/admin/profile';
+import { send } from '@/routes/admin/verification';
 
 defineOptions({
     layout: {
@@ -24,7 +24,7 @@ defineOptions({
 });
 
 const page = usePage();
-const user = computed(() => page.props.auth.user);
+const admin = computed(() => page.props.auth.admin);
 </script>
 
 <template>
@@ -32,7 +32,7 @@ const user = computed(() => page.props.auth.user);
 
     <h1 class="sr-only">Profile settings</h1>
 
-    <div class="flex flex-col space-y-6">
+    <div v-if="admin" class="flex flex-col space-y-6">
         <Heading
             variant="small"
             title="Profile"
@@ -50,7 +50,7 @@ const user = computed(() => page.props.auth.user);
                     id="name"
                     class="mt-1 block w-full"
                     name="name"
-                    :default-value="user.name"
+                    :default-value="admin.name"
                     required
                     autocomplete="name"
                     placeholder="Full name"
@@ -65,7 +65,7 @@ const user = computed(() => page.props.auth.user);
                     type="email"
                     class="mt-1 block w-full"
                     name="email"
-                    :default-value="user.email"
+                    :default-value="admin.email"
                     required
                     autocomplete="username"
                     placeholder="Email address"
@@ -73,7 +73,7 @@ const user = computed(() => page.props.auth.user);
                 <InputError class="mt-2" :message="errors.email" />
             </div>
 
-            <div v-if="page.props.mustVerifyEmail && !user.email_verified_at">
+            <div v-if="page.props.mustVerifyEmail && !admin.email_verified_at">
                 <p class="-mt-4 text-sm text-muted-foreground">
                     Your email address is unverified.
                     <Link
@@ -101,5 +101,5 @@ const user = computed(() => page.props.auth.user);
         </Form>
     </div>
 
-    <DeleteUser />
+    <DeleteAdmin />
 </template>

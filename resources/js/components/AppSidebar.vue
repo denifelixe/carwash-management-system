@@ -2,9 +2,9 @@
 import { Link } from '@inertiajs/vue3';
 import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
+import NavAdmin from '@/components/NavAdmin.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
-import NavUser from '@/components/NavUser.vue';
 import {
     Sidebar,
     SidebarContent,
@@ -14,7 +14,7 @@ import {
     SidebarMenuButton,
     SidebarMenuItem,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
+import { dashboard } from '@/routes/admin';
 import type { NavItem } from '@/types';
 
 const mainNavItems: NavItem[] = [
@@ -59,7 +59,7 @@ const footerNavItems: NavItem[] = [
 
         <SidebarFooter>
             <NavFooter :items="footerNavItems" />
-            <NavUser />
+            <NavAdmin />
         </SidebarFooter>
     </Sidebar>
     <slot />

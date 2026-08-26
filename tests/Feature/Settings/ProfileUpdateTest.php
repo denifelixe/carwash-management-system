@@ -1,85 +1,85 @@
 <?php
 
-use App\Models\User;
+use App\Models\Admin;
 
 test('profile page is displayed', function () {
-    $user = User::factory()->create();
+    $admin = Admin::factory()->create();
 
     $response = $this
-        ->actingAs($user)
-        ->get(route('profile.edit'));
+        ->actingAs($admin, 'admin')
+        ->get(route('admin.profile.edit'));
 
     $response->assertOk();
 });
 
 test('profile information can be updated', function () {
-    $user = User::factory()->create();
+    $admin = Admin::factory()->create();
 
     $response = $this
-        ->actingAs($user)
-        ->patch(route('profile.update'), [
-            'name' => 'Test User',
+        ->actingAs($admin, 'admin')
+        ->patch(route('admin.profile.update'), [
+            'name' => 'Test Admin',
             'email' => 'test@example.com',
         ]);
 
     $response
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('profile.edit'));
+        ->assertRedirect(route('admin.profile.edit'));
 
-    $user->refresh();
+    $admin->refresh();
 
-    expect($user->name)->toBe('Test User');
-    expect($user->email)->toBe('test@example.com');
-    expect($user->email_verified_at)->toBeNull();
+    expect($admin->name)->toBe('Test Admin');
+    expect($admin->email)->toBe('test@example.com');
+    expect($admin->email_verified_at)->toBeNull();
 });
 
 test('email verification status is unchanged when the email address is unchanged', function () {
-    $user = User::factory()->create();
+    $admin = Admin::factory()->create();
 
     $response = $this
-        ->actingAs($user)
-        ->patch(route('profile.update'), [
-            'name' => 'Test User',
-            'email' => $user->email,
+        ->actingAs($admin, 'admin')
+        ->patch(route('admin.profile.update'), [
+            'name' => 'Test Admin',
+            'email' => $admin->email,
         ]);
 
     $response
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('profile.edit'));
+        ->assertRedirect(route('admin.profile.edit'));
 
-    expect($user->refresh()->email_verified_at)->not->toBeNull();
+    expect($admin->refresh()->email_verified_at)->not->toBeNull();
 });
 
-test('user can delete their account', function () {
-    $user = User::factory()->create();
+test('admin can delete their account', function () {
+    $admin = Admin::factory()->create();
 
     $response = $this
-        ->actingAs($user)
-        ->delete(route('profile.destroy'), [
+        ->actingAs($admin, 'admin')
+        ->delete(route('admin.profile.destroy'), [
             'password' => 'password',
         ]);
 
     $response
         ->assertSessionHasNoErrors()
-        ->assertRedirect(route('home'));
+        ->assertRedirect(route('admin.login'));
 
-    $this->assertGuest();
-    expect($user->fresh())->toBeNull();
+    $this->assertGuest('admin');
+    expect($admin->fresh())->toBeNull();
 });
 
 test('correct password must be provided to delete account', function () {
-    $user = User::factory()->create();
+    $admin = Admin::factory()->create();
 
     $response = $this
-        ->actingAs($user)
-        ->from(route('profile.edit'))
-        ->delete(route('profile.destroy'), [
+        ->actingAs($admin, 'admin')
+        ->from(route('admin.profile.edit'))
+        ->delete(route('admin.profile.destroy'), [
             'password' => 'wrong-password',
         ]);
 
     $response
         ->assertSessionHasErrors('password')
-        ->assertRedirect(route('profile.edit'));
+        ->assertRedirect(route('admin.profile.edit'));
 
-    expect($user->fresh())->not->toBeNull();
+    expect($admin->fresh())->not->toBeNull();
 });

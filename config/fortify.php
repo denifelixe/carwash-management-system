@@ -6,29 +6,29 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Fortify Guard
+    | Authentication Portals
     |--------------------------------------------------------------------------
     |
-    | Here you may specify which authentication guard Fortify will use while
-    | authenticating users. This value should correspond with one of your
-    | guards that is already present in your "auth" configuration file.
+    | Fortify itself supports one active guard per request. The portal
+    | middleware selects one of these explicit contexts before a Fortify
+    | controller is invoked.
     |
     */
 
-    'guard' => 'web',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Fortify Password Broker
-    |--------------------------------------------------------------------------
-    |
-    | Here you may specify which password broker Fortify can use when a user
-    | is resetting their password. This configured value should match one
-    | of your password brokers setup in your "auth" configuration file.
-    |
-    */
-
-    'passwords' => 'users',
+    'portals' => [
+        'admin' => [
+            'guard' => 'admin',
+            'passwords' => 'admins',
+            'domain' => config('domains.admin'),
+            'home' => '/dashboard',
+        ],
+        'member' => [
+            'guard' => 'member',
+            'passwords' => 'members',
+            'domain' => config('domains.member'),
+            'home' => '/dashboard',
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------
@@ -64,34 +64,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Home Path
-    |--------------------------------------------------------------------------
-    |
-    | Here you may configure the path where users will get redirected during
-    | authentication or password reset when the operations are successful
-    | and the user is authenticated. You are free to change this value.
-    |
-    */
-
-    'home' => '/dashboard',
-
-    /*
-    |--------------------------------------------------------------------------
-    | Fortify Routes Prefix / Subdomain
-    |--------------------------------------------------------------------------
-    |
-    | Here you may specify which prefix Fortify will assign to all the routes
-    | that it registers with the application. If necessary, you may change
-    | subdomain under which all of the Fortify routes will be available.
-    |
-    */
-
-    'prefix' => '',
-
-    'domain' => null,
-
-    /*
-    |--------------------------------------------------------------------------
     | Fortify Routes Middleware
     |--------------------------------------------------------------------------
     |
@@ -115,9 +87,8 @@ return [
     */
 
     'limiters' => [
-        'login' => 'login',
-        'two-factor' => 'two-factor',
-        'passkeys' => 'passkeys',
+        'admin-login' => 'admin-login',
+        'member-login' => 'member-login',
     ],
 
     /*
@@ -135,22 +106,6 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Passkeys
-    |--------------------------------------------------------------------------
-    |
-    | These settings configure Fortify's passkey (WebAuthn) support.
-    |
-    */
-
-    'passkeys' => [
-        'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
-        'allowed_origins' => [config('app.url')],
-        'user_handle_secret' => env('PASSKEYS_USER_HANDLE_SECRET', config('app.key')),
-        'timeout' => 60000,
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
     | Features
     |--------------------------------------------------------------------------
     |
@@ -164,14 +119,6 @@ return [
         Features::registration(),
         Features::resetPasswords(),
         Features::emailVerification(),
-        Features::twoFactorAuthentication([
-            'confirm' => true,
-            'confirmPassword' => true,
-            // 'window' => 0
-        ]),
-        Features::passkeys([
-            'confirmPassword' => true,
-        ]),
     ],
 
 ];

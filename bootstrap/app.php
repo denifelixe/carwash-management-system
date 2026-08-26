@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\Demo\EnsureModule;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\UsePortalAuthentication;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -19,7 +20,18 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'demo.module' => EnsureModule::class,
+            'portal.auth' => UsePortalAuthentication::class,
         ]);
+
+        $middleware->redirectGuestsTo(fn (Request $request): string => match ($request->getHost()) {
+            config('domains.member') => route('member.login'),
+            default => route('admin.login'),
+        });
+
+        $middleware->redirectUsersTo(fn (Request $request): string => match ($request->getHost()) {
+            config('domains.member') => route('member.dashboard'),
+            default => route('admin.dashboard'),
+        });
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

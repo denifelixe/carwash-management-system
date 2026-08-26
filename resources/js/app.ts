@@ -3,6 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import DemoAdminLayout from '@/layouts/demo/AdminLayout.vue';
 import DemoMemberLayout from '@/layouts/demo/MemberLayout.vue';
+import MemberLayout from '@/layouts/member/MemberLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
@@ -19,6 +20,8 @@ createInertiaApp({
                 return DemoAdminLayout;
             case name.startsWith('demo/member/'):
                 return DemoMemberLayout;
+            case name.startsWith('member/'):
+                return MemberLayout;
             case name.startsWith('auth/'):
                 return AuthLayout;
             case name.startsWith('settings/'):

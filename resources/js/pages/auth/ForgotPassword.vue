@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { login } from '@/routes';
-import { email } from '@/routes/password';
+import { login } from '@/routes/admin';
+import { email } from '@/routes/admin/password';
 
 defineOptions({
     layout: {
