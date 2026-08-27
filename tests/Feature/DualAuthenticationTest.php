@@ -3,7 +3,14 @@
 use App\Models\Admin;
 use App\Models\Member;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
+
+beforeEach(function () {
+    config(['session.driver' => 'database']);
+
+    app('session')->forgetDrivers();
+});
 
 test('authentication has no implicit default guard or password broker', function () {
     expect(config('auth.defaults.guard'))->toBeNull()
@@ -39,6 +46,13 @@ test('admin can authenticate only with the admin guard', function () {
     $this->assertAuthenticatedAs($admin, 'admin');
     $this->assertGuest('member');
     expect($admin->refresh()->last_login_at)->not->toBeNull();
+
+    $this->get(route('admin.dashboard'))->assertOk();
+
+    expect(DB::table('sessions')
+        ->where('admin_id', $admin->id)
+        ->whereNull('member_id')
+        ->exists())->toBeTrue();
 });
 
 test('member can authenticate only with the member guard', function () {
@@ -52,6 +66,13 @@ test('member can authenticate only with the member guard', function () {
     $this->assertAuthenticatedAs($member, 'member');
     $this->assertGuest('admin');
     expect($member->refresh()->last_login_at)->not->toBeNull();
+
+    $this->get(route('member.dashboard'))->assertOk();
+
+    expect(DB::table('sessions')
+        ->whereNull('admin_id')
+        ->where('member_id', $member->id)
+        ->exists())->toBeTrue();
 });
 
 test('credentials cannot cross authentication providers', function () {

@@ -4,10 +4,14 @@ namespace App\Providers;
 
 use App\Models\Admin;
 use App\Support\Demo\Brand;
+use App\Support\Session\DatabaseSessionHandler;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Database\DatabaseManager;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
@@ -27,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureDatabaseSessions();
         $this->configureDefaults();
 
         Gate::before(fn (mixed $user): ?bool => $user instanceof Admin && $user->is_owner
@@ -34,6 +39,25 @@ class AppServiceProvider extends ServiceProvider
             : null);
 
         View::share('meta', Brand::meta());
+    }
+
+    /**
+     * Store sessions without coupling them to an implicit authentication guard.
+     */
+    protected function configureDatabaseSessions(): void
+    {
+        Session::extend('database', function (Application $app): DatabaseSessionHandler {
+            $connectionName = config('session.connection');
+
+            return new DatabaseSessionHandler(
+                $app->make(DatabaseManager::class)->connection(
+                    is_string($connectionName) ? $connectionName : null,
+                ),
+                (string) config('session.table'),
+                (int) config('session.lifetime'),
+                $app,
+            );
+        });
     }
 
     /**
