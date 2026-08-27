@@ -2,7 +2,7 @@
 
 $domains = [
     'local' => 'demo.carwash-management-system.test',
-    'live' => 'carwash-demo.zenagital.id',
+    'live' => 'carwash-demo.zenadigital.id',
 ];
 
 $defaultMode = env('APP_ENV', 'production') === 'production' ? 'live' : 'local';
