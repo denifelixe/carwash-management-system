@@ -15,7 +15,9 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        $this->call(ServiceSeeder::class);
+        /* The service catalogue is imported from database/sql/, not seeded:
+         * see the header of services_speedtuner_cibinong.sql. ServiceSeeder
+         * stays available for sample data via db:seed --class=ServiceSeeder. */
 
         // Admin::factory(10)->create();
 

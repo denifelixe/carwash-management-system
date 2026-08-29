@@ -1,5 +1,9 @@
 <?php
 
+use App\Models\Admin;
+use App\Models\Order;
+use App\Models\OrderTransaction;
+use App\Models\Service;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +51,35 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+/** A settled order carrying one payment taken by the given cashier just now. */
+function paidOrder(Admin $cashier, int $amount = 150000): Order
+{
+    $service = Service::factory()->create(['name' => 'Cuci Mobil', 'price' => $amount]);
+    $order = Order::factory()->create([
+        'total' => $amount,
+        'paid_amount' => $amount,
+        'status' => 'selesai',
+        'service_date' => now()->toDateString(),
+    ]);
+
+    $order->services()->attach($service->id, [
+        'service_name' => $service->name,
+        'unit_price' => $service->price,
+        'stamps' => 1,
+    ]);
+
+    OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'recorded_by_admin_id' => $cashier->id,
+        'reference' => $order->number.'-TRX-1',
+        'type' => 'Pembayaran Lunas',
+        'shift_name' => 'Shift Pagi',
+        'amount' => $amount,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => $amount]],
+        'paid_at' => now(),
+    ]);
+
+    return $order;
 }

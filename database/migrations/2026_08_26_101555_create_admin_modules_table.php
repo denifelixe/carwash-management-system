@@ -19,7 +19,7 @@ return new class extends Migration
             $table->text('description')->nullable();
             $table->unsignedSmallInteger('sort_order')->default(0);
             $table->boolean('is_active')->default(true)->index();
-            $table->timestamps();
+            $table->datetimes();
         });
 
         $now = now();

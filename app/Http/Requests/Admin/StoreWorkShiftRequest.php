@@ -26,8 +26,8 @@ class StoreWorkShiftRequest extends FormRequest
         return [
             'key' => ['required', 'string', 'alpha_dash:ascii', 'max:50', Rule::unique('admin_work_shifts', 'key')],
             'name' => ['required', 'string', 'max:100', Rule::unique('admin_work_shifts', 'name')],
-            'starts_at' => ['required', 'date_format:H:i', 'different:ends_at'],
-            'ends_at' => ['required', 'date_format:H:i', 'different:starts_at'],
+            'starts_at' => ['nullable', 'required_with:ends_at', 'date_format:H:i', 'different:ends_at'],
+            'ends_at' => ['nullable', 'required_with:starts_at', 'date_format:H:i', 'different:starts_at'],
             'is_active' => ['required', 'boolean'],
         ];
     }

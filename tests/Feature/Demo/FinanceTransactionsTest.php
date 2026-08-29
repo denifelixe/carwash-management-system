@@ -130,7 +130,7 @@ test('finance references use one category date and identifier format', function 
     ]);
 
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
@@ -163,6 +163,16 @@ test('cash summary is calculated from individual ledger transactions', function 
             'remainingBalance' => $todayIn - $todayOut,
             'closingBalance' => 12400000 + $todayIn - $todayOut,
         ]);
+});
+
+test('closing a finance attachment keeps the current ledger position', function () {
+    $financePage = file_get_contents(
+        resource_path('js/pages/admin/Finance.vue'),
+    );
+
+    expect($financePage)
+        ->toContain('Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {')
+        ->toContain('Hash: false,');
 });
 
 test('dashboard revenue matches finance money in for the selected day', function () {
@@ -224,7 +234,7 @@ test('finance page exposes and displays related order details', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Finance')
+                ->component('admin/Finance')
                 ->has('moneyIn', count($todayEntries))
                 ->has('orders', count(Operations::orders()))
                 ->where('moneyIn.0.ref', $todayEntries[0]['ref'])
@@ -235,7 +245,7 @@ test('finance page exposes and displays related order details', function () {
         );
 
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
@@ -259,11 +269,12 @@ test('finance page exposes and displays related order details', function () {
 
 test('finance overview shows shift tabs stacked summaries and financial channels', function () {
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
         ->toContain("label: 'Seluruh Shift'")
+        ->toContain('v-if="shift.caption"')
         ->toContain('label="Uang masuk"')
         ->toContain('label="Uang keluar"')
         ->toContain('label="Sisa saldo"')
@@ -298,7 +309,7 @@ test('every finance entry exposes an exact channel breakdown', function () {
 
 test('finance transaction list shows amounts for split payment methods', function () {
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
@@ -311,7 +322,7 @@ test('finance transaction list shows amounts for split payment methods', functio
 
 test('finance transaction summary keeps the requested money labels', function () {
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
@@ -323,7 +334,7 @@ test('finance transaction summary keeps the requested money labels', function ()
 
 test('finance transaction toolbar shows a wide search and category chips', function () {
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)

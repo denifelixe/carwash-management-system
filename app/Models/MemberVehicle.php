@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\VehiclePlate;
 use Database\Factories\MemberVehicleFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -29,6 +31,17 @@ class MemberVehicle extends Model
     public function member(): BelongsTo
     {
         return $this->belongsTo(Member::class);
+    }
+
+    /**
+     * The plate is the car's identity, so it is stored canonically rather than
+     * as it was typed; the unique index then catches the same car twice.
+     *
+     * @return Attribute<never, string>
+     */
+    protected function plate(): Attribute
+    {
+        return Attribute::set(fn (?string $plate): string => VehiclePlate::normalize($plate));
     }
 
     /** @return array<string, string> */

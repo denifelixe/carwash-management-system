@@ -17,6 +17,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import {
     index as indexPos,
     store as storePosPayment,
+    storeMember as storePosMember,
 } from '@/actions/App/Http/Controllers/Admin/PosController';
 import AccordionSection from '@/components/demo/AccordionSection.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
@@ -38,6 +39,7 @@ import type {
     PosReceiptHistoryEntry,
     PosReceiptLine,
 } from '@/lib/posReceipt';
+import { normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -85,6 +87,14 @@ interface PaymentSnapshot {
     lines: PosReceiptLine[];
     history: PosReceiptHistoryEntry[];
     breakdown: PosPaymentBreakdown[];
+}
+
+/** What the cashier types into the "jadikan member" panel. */
+interface MemberDraft {
+    plate: string;
+    vehicle: string;
+    name: string;
+    phone: string;
 }
 
 interface PaymentChannelRow {
@@ -162,6 +172,13 @@ const paymentProviders = ref<Record<string, string>>(
 const paymentReferences = ref<Record<string, string>>(
     Object.fromEntries(props.paymentMethods.map((method) => [method, ''])),
 );
+const emptyMemberDraft: MemberDraft = {
+    plate: '',
+    vehicle: '',
+    name: '',
+    phone: '',
+};
+const memberDraft = ref<MemberDraft>({ ...emptyMemberDraft });
 const receipt = ref<PosReceipt | null>(null);
 /** Set when the browser refuses the slip window so the cashier can retry. */
 const isReceiptWindowBlocked = ref<boolean>(false);
@@ -941,6 +958,7 @@ function selectOrder(
     paymentIntent.value = intent;
     selectedOrderId.value = order.id;
     resetPaymentInputs();
+    fillMemberDraft(order);
     paymentTotalInput.value = intent === 'settlement' ? dueAmount.value : 0;
 }
 
@@ -948,6 +966,8 @@ function resetPanel(): void {
     selectedOrderId.value = null;
     paymentIntent.value = 'settlement';
     resetPaymentInputs();
+    memberDraft.value = { ...emptyMemberDraft };
+    memberForm.clearErrors();
 }
 
 function fillRemainingAmount(method: string): void {
@@ -1044,6 +1064,151 @@ function toggleReward(rewardId: number): void {
     selectedRewardId.value =
         selectedRewardId.value === rewardId ? null : rewardId;
     discountAmount.value = 0;
+}
+
+/**
+ * A walk-in order the cashier may still sign up. Once the order belongs to a
+ * member there is nothing left to register, so the panel takes itself away.
+ */
+const canRegisterMember = computed<boolean>(
+    () =>
+        props.capabilities.create &&
+        selectedOrder.value !== null &&
+        selectedOrder.value.customerId === null &&
+        selectedOrder.value.status !== 'batal',
+);
+
+/**
+ * The member, if any, already holding the plate being typed. The server rejects
+ * it either way; catching it here saves the cashier the round trip.
+ */
+const memberDraftPlateOwner = computed<CarwashCustomer | null>(() => {
+    const plate = normalizePlate(memberDraft.value.plate);
+
+    if (plate === '') {
+        return null;
+    }
+
+    return (
+        customerList.value.find((customer) =>
+            customer.vehicles.some(
+                (vehicle) => normalizePlate(vehicle.plate) === plate,
+            ),
+        ) ?? null
+    );
+});
+
+const canSubmitMember = computed<boolean>(
+    () =>
+        canRegisterMember.value &&
+        memberDraftPlateOwner.value === null &&
+        !memberForm.processing &&
+        memberDraft.value.plate.trim() !== '' &&
+        memberDraft.value.vehicle.trim() !== '' &&
+        memberDraft.value.name.trim() !== '' &&
+        memberDraft.value.phone.trim() !== '',
+);
+
+/**
+ * Seeds the panel with what the floor already captured, so the cashier corrects
+ * a plate rather than retyping the customer. The presenter marks a walk-in by
+ * appending "(non-member)" to their name, which is a label and not part of it.
+ */
+function fillMemberDraft(order: CarwashOrder): void {
+    memberDraft.value = {
+        plate: order.plate === '—' ? '' : order.plate,
+        vehicle: order.vehicle === '—' ? '' : order.vehicle,
+        name: order.customer.replace(' (non-member)', ''),
+        phone: order.phone,
+    };
+}
+
+/**
+ * Signs the walk-in up and moves the order onto them, without closing the
+ * payment the cashier is part-way through composing.
+ */
+function submitMember(): void {
+    const order = selectedOrder.value;
+
+    if (!order || !canSubmitMember.value) {
+        return;
+    }
+
+    if (props.mode === 'live') {
+        submitLiveMember(order);
+
+        return;
+    }
+
+    applyDemoMember(order);
+}
+
+/**
+ * The reload lands with the order already renamed and carrying its member, so
+ * the panel is not dismissed by hand — it stops applying and closes itself.
+ */
+function submitLiveMember(order: CarwashOrder): void {
+    memberForm.name = memberDraft.value.name.trim();
+    memberForm.phone = memberDraft.value.phone.trim();
+    memberForm.vehicle_name = memberDraft.value.vehicle.trim();
+    memberForm.vehicle_plate = memberDraft.value.plate.trim();
+
+    memberForm.submit(storePosMember(order.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            memberForm.reset();
+            memberDraft.value = { ...emptyMemberDraft };
+        },
+    });
+}
+
+/**
+ * Walks the demo copy through the same registration, so the console keeps
+ * behaving without a database behind it.
+ */
+function applyDemoMember(order: CarwashOrder): void {
+    const name = memberDraft.value.name.trim();
+    const plate = normalizePlate(memberDraft.value.plate);
+    const vehicle = memberDraft.value.vehicle.trim();
+    const phone = memberDraft.value.phone.trim();
+    const id =
+        customerList.value.reduce(
+            (highest, customer) => Math.max(highest, customer.id),
+            0,
+        ) + 1;
+
+    workflow.addCustomer({
+        id,
+        name,
+        memberId: `MEM-${String(id).padStart(6, '0')}`,
+        phone,
+        email: '',
+        vehicle,
+        plate,
+        vehicles: [{ name: vehicle, plate, type: 'Mobil', isPrimary: true }],
+        stamps: 0,
+        lifetimeStamps: 0,
+        visits: 1,
+        spend: order.total,
+        joinedAt: formatDate(props.filters.today),
+        lastVisit: '—',
+        initials: name
+            .split(' ')
+            .slice(0, 2)
+            .map((part) => part.charAt(0).toUpperCase())
+            .join(''),
+        status: 'aktif',
+        /* Registered at the counter, so there are no portal credentials yet. */
+        hasAccount: false,
+    });
+
+    order.customerId = id;
+    order.customer = name;
+    order.phone = phone;
+    order.vehicle = vehicle;
+    order.plate = plate;
+
+    memberDraft.value = { ...emptyMemberDraft };
 }
 
 /**
@@ -1195,6 +1360,7 @@ function settledReceipt(
         dueAfter: Math.max(order.total - order.paidAmount, 0),
         isSettled,
         isReprint: false,
+        timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         stampsEarned: isSettled ? order.stampsEarned : 0,
@@ -1249,6 +1415,7 @@ function applyDemoPayment(
         hour: '2-digit',
         minute: '2-digit',
         hour12: false,
+        timeZone: props.filters.timezone,
     })
         .format(new Date())
         .replace(':', '.');
@@ -1337,6 +1504,7 @@ function applyDemoPayment(
         dueAfter: Math.max(order.total - order.paidAmount, 0),
         isSettled: completesOrder,
         isReprint: false,
+        timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         stampsEarned: completesOrder ? order.stampsEarned : 0,
@@ -1439,6 +1607,7 @@ function transactionReceipt(
         /* Only the payment that closed the order prints as a settled slip. */
         isSettled: settlement?.type === 'Pembayaran Lunas',
         isReprint: true,
+        timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown:
             settlement?.channelBreakdown.map((channel) => ({
@@ -1488,6 +1657,12 @@ const paymentForm = useForm({
     discount: 0,
     amount: 0,
     channels: [] as PosPaymentBreakdown[],
+});
+const memberForm = useForm({
+    name: '',
+    phone: '',
+    vehicle_name: '',
+    vehicle_plate: '',
 });
 </script>
 
@@ -2875,6 +3050,133 @@ const paymentForm = useForm({
                                     </span>
                                 </li>
                             </ul>
+                        </details>
+
+                        <details v-if="canRegisterMember" class="group">
+                            <summary
+                                class="flex cursor-pointer list-none items-center justify-between gap-4 px-6 py-3.5 transition hover:bg-slate-100/80 [&::-webkit-details-marker]:hidden"
+                            >
+                                <span class="min-w-0">
+                                    <span
+                                        class="block text-sm font-semibold text-slate-900"
+                                    >
+                                        Jadikan member
+                                    </span>
+                                    <span
+                                        class="block truncate text-[11px] text-slate-500"
+                                    >
+                                        Opsional — daftarkan pelanggan ini,
+                                        order langsung masuk ke member.
+                                    </span>
+                                </span>
+                                <ChevronDown
+                                    class="h-4 w-4 shrink-0 text-slate-400 transition group-open:rotate-180"
+                                />
+                            </summary>
+
+                            <div class="space-y-3 px-6 pb-4">
+                                <div
+                                    v-if="memberForm.hasErrors"
+                                    class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
+                                >
+                                    <p
+                                        v-for="(
+                                            message, field
+                                        ) in memberForm.errors"
+                                        :key="field"
+                                    >
+                                        {{ message }}
+                                    </p>
+                                </div>
+
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="space-y-1.5">
+                                        <label
+                                            for="pos-member-plate"
+                                            class="block text-xs font-medium text-slate-600"
+                                        >
+                                            Plat Nomor
+                                        </label>
+                                        <input
+                                            id="pos-member-plate"
+                                            v-model="memberDraft.plate"
+                                            type="text"
+                                            placeholder="Plat nomor"
+                                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                                        />
+                                        <p
+                                            v-if="memberDraftPlateOwner"
+                                            class="text-[11px] font-medium text-rose-600"
+                                        >
+                                            Plat ini sudah terdaftar atas nama
+                                            {{ memberDraftPlateOwner.name }}.
+                                        </p>
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label
+                                            for="pos-member-vehicle"
+                                            class="block text-xs font-medium text-slate-600"
+                                        >
+                                            Tipe Mobil
+                                        </label>
+                                        <input
+                                            id="pos-member-vehicle"
+                                            v-model="memberDraft.vehicle"
+                                            type="text"
+                                            placeholder="Merk / tipe mobil"
+                                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label
+                                            for="pos-member-name"
+                                            class="block text-xs font-medium text-slate-600"
+                                        >
+                                            Nama
+                                        </label>
+                                        <input
+                                            id="pos-member-name"
+                                            v-model="memberDraft.name"
+                                            type="text"
+                                            placeholder="Nama pelanggan"
+                                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                        />
+                                    </div>
+                                    <div class="space-y-1.5">
+                                        <label
+                                            for="pos-member-phone"
+                                            class="block text-xs font-medium text-slate-600"
+                                        >
+                                            Nomor Telpon
+                                        </label>
+                                        <input
+                                            id="pos-member-phone"
+                                            v-model="memberDraft.phone"
+                                            type="tel"
+                                            inputmode="tel"
+                                            placeholder="Nomor telepon"
+                                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div
+                                    class="flex flex-wrap items-center justify-between gap-3"
+                                >
+                                    <p class="text-[11px] text-slate-400">
+                                        Member dibuat tanpa akun portal — email
+                                        dan kata sandi bisa diisi belakangan.
+                                    </p>
+                                    <button
+                                        type="button"
+                                        class="rounded-xl bg-cyan-600 px-4 py-2 text-xs font-semibold text-white shadow-sm shadow-cyan-600/30 transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+                                        :disabled="!canSubmitMember"
+                                        @click="submitMember"
+                                    >
+                                        Simpan member
+                                    </button>
+                                </div>
+                            </div>
                         </details>
 
                         <details

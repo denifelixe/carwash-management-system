@@ -193,7 +193,10 @@ function applyDate(date: string): void {
                                 >
                                     {{ shift.name }}
                                 </p>
-                                <p class="text-[11px] text-slate-500">
+                                <p
+                                    v-if="shift.time"
+                                    class="text-[11px] text-slate-500"
+                                >
                                     {{ shift.time }}
                                 </p>
                             </div>

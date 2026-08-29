@@ -35,6 +35,7 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -418,10 +419,32 @@ const hasCustomer = computed<boolean>(() => {
     );
 });
 
+/**
+ * The member, if any, who has already registered the plate being typed into the
+ * walk-in form. A car on a member's account has to be billed to that account,
+ * or the visit and its stamps leave no trace on it.
+ */
+const plateOwner = computed<CarwashCustomer | null>(() => {
+    const plate = normalizePlate(draft.value.plate);
+
+    if (customerMode.value !== 'walk-in' || plate === '') {
+        return null;
+    }
+
+    return (
+        customerList.value.find((customer) =>
+            customer.vehicles.some(
+                (vehicle) => normalizePlate(vehicle.plate) === plate,
+            ),
+        ) ?? null
+    );
+});
+
 const canCreate = computed<boolean>(
     () =>
         draftServices.value.length > 0 &&
         draft.value.plate.trim() !== '' &&
+        plateOwner.value === null &&
         hasCustomer.value,
 );
 
@@ -1236,6 +1259,14 @@ const statusForm = useForm({ status: '' });
                                 placeholder="Plat nomor"
                                 class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
                             />
+                            <p
+                                v-if="plateOwner"
+                                class="text-[11px] font-medium text-rose-600"
+                            >
+                                Plat ini kendaraan
+                                {{ plateOwner.name }}. Pilih tab Member untuk
+                                membuat ordernya.
+                            </p>
                         </div>
                         <div class="space-y-1.5">
                             <label

@@ -42,9 +42,9 @@ Route::name('demo.')->group(function () {
             ->middleware('demo.module:pos')
             ->name('pos');
 
-        Route::get('customers', [CustomerController::class, 'index'])
-            ->middleware('demo.module:customers')
-            ->name('customers');
+        Route::get('members', [CustomerController::class, 'index'])
+            ->middleware('demo.module:members')
+            ->name('members');
 
         Route::get('finance', [FinanceController::class, 'index'])
             ->middleware('demo.module:finance')

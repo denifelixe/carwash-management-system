@@ -107,6 +107,19 @@ test('demo and live user management share one interactive vue page', function ()
         ->not->toContain('{{ modules.length }} modul');
 });
 
+test('demo and live member management share one interactive vue page', function () {
+    $memberPage = file_get_contents(
+        resource_path('js/pages/admin/Customers.vue'),
+    );
+
+    expect($memberPage)
+        ->toContain("props.mode === 'demo'")
+        ->toContain('saveDemoMember()')
+        ->toContain('saveLiveMember()')
+        ->toContain('updateMemberStatus(customer.id)')
+        ->and(resource_path('js/pages/demo/admin/Customers.vue'))->not->toBeFile();
+});
+
 test('the demo user module supplies the live page contract from dummy data', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
         ->get(route('demo.admin.users'))

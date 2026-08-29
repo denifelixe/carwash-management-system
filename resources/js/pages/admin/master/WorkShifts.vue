@@ -19,8 +19,8 @@ type WorkShift = {
     id: number;
     key: string;
     name: string;
-    starts_at: string;
-    ends_at: string;
+    starts_at: string | null;
+    ends_at: string | null;
     is_active: boolean;
     admin_count: number;
 };
@@ -44,6 +44,7 @@ const statusFilter = ref('Semua');
 const editingWorkShiftId = ref<number | null>(null);
 const isWorkShiftFormOpen = ref(false);
 const deletingWorkShift = ref<WorkShift | null>(null);
+const hasWorkHours = ref(true);
 
 watch(
     () => props.workShifts,
@@ -59,8 +60,8 @@ watch(
 const workShiftForm = useForm({
     key: '',
     name: '',
-    starts_at: '08:00',
-    ends_at: '16:00',
+    starts_at: '08:00' as string | null,
+    ends_at: '16:00' as string | null,
     is_active: true,
 });
 const deleteForm = useForm({});
@@ -98,6 +99,7 @@ const assignedAdminCount = computed(() =>
 
 function openCreateWorkShift(): void {
     editingWorkShiftId.value = null;
+    hasWorkHours.value = true;
     workShiftForm.clearErrors();
     workShiftForm.defaults({
         key: '',
@@ -116,6 +118,8 @@ function openEditWorkShift(workShift: WorkShift): void {
     }
 
     editingWorkShiftId.value = workShift.id;
+    hasWorkHours.value =
+        workShift.starts_at !== null && workShift.ends_at !== null;
     workShiftForm.clearErrors();
     workShiftForm.defaults({
         key: workShift.key,
@@ -149,6 +153,20 @@ function submitWorkShift(): void {
     });
 }
 
+function toggleWorkHours(): void {
+    workShiftForm.clearErrors('starts_at', 'ends_at');
+
+    if (hasWorkHours.value) {
+        workShiftForm.starts_at ??= '08:00';
+        workShiftForm.ends_at ??= '16:00';
+
+        return;
+    }
+
+    workShiftForm.starts_at = null;
+    workShiftForm.ends_at = null;
+}
+
 function saveDemoWorkShift(): void {
     workShiftForm.clearErrors();
     const normalizedKey = workShiftForm.key.trim().toLowerCase();
@@ -167,7 +185,10 @@ function saveDemoWorkShift(): void {
         workShiftForm.setError('name', 'Nama shift wajib diisi.');
     }
 
-    if (workShiftForm.starts_at === workShiftForm.ends_at) {
+    if (
+        hasWorkHours.value &&
+        workShiftForm.starts_at === workShiftForm.ends_at
+    ) {
         workShiftForm.setError(
             'ends_at',
             'Jam selesai harus berbeda dari jam mulai.',
@@ -226,7 +247,7 @@ function saveDemoWorkShift(): void {
     }
 
     workShiftList.value.sort((first, second) =>
-        first.starts_at.localeCompare(second.starts_at),
+        (first.starts_at ?? '').localeCompare(second.starts_at ?? ''),
     );
     isWorkShiftFormOpen.value = false;
     workShiftForm.reset();
@@ -264,6 +285,10 @@ function confirmDeleteWorkShift(): void {
 }
 
 function durationLabel(workShift: WorkShift): string {
+    if (workShift.starts_at === null || workShift.ends_at === null) {
+        return 'Tanpa jadwal';
+    }
+
     const [startHour, startMinute] = workShift.starts_at.split(':').map(Number);
     const [endHour, endMinute] = workShift.ends_at.split(':').map(Number);
     const start = startHour * 60 + startMinute;
@@ -383,9 +408,19 @@ function durationLabel(workShift: WorkShift): string {
                             <td
                                 class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
                             >
-                                {{ workShift.starts_at }}–{{
-                                    workShift.ends_at
-                                }}
+                                <template
+                                    v-if="
+                                        workShift.starts_at !== null &&
+                                        workShift.ends_at !== null
+                                    "
+                                >
+                                    {{ workShift.starts_at }}–{{
+                                        workShift.ends_at
+                                    }}
+                                </template>
+                                <span v-else class="font-normal text-slate-400">
+                                    Tanpa jadwal
+                                </span>
                             </td>
                             <td class="px-5 py-3.5 text-xs text-slate-600">
                                 {{ durationLabel(workShift) }}
@@ -448,7 +483,7 @@ function durationLabel(workShift: WorkShift): string {
     <ModalDialog
         :open="isWorkShiftFormOpen"
         :title="editingWorkShiftId ? 'Edit shift' : 'Tambah shift'"
-        caption="Atur kode, nama, dan rentang jam kerja admin."
+        caption="Atur kode, nama, dan jam kerja admin bila diperlukan."
         size="lg"
         @close="isWorkShiftFormOpen = false"
     >
@@ -496,7 +531,27 @@ function durationLabel(workShift: WorkShift): string {
                 </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <label
+                class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700"
+            >
+                <input
+                    v-model="hasWorkHours"
+                    type="checkbox"
+                    class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                    @change="toggleWorkHours"
+                />
+                <span>
+                    <span class="block font-medium">Gunakan jam shift</span>
+                    <span class="block text-xs text-slate-500">
+                        Nonaktifkan bila shift hanya membutuhkan nama dan kode.
+                    </span>
+                </span>
+            </label>
+
+            <div
+                v-if="hasWorkHours"
+                class="grid grid-cols-1 gap-3 sm:grid-cols-2"
+            >
                 <div>
                     <label
                         for="work-shift-start"

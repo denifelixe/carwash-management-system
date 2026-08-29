@@ -38,7 +38,7 @@ class OrderController extends Controller
 
         /** @var Admin $admin */
         $admin = $request->user('admin');
-        $today = CarbonImmutable::now('Asia/Jakarta')->startOfDay();
+        $today = CarbonImmutable::now()->startOfDay();
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
         $orders = OrderQueries::forDate($selectedDate);
         $services = OrderQueries::servicesFor($orders);
@@ -97,16 +97,17 @@ class OrderController extends Controller
             $subtotal = (int) $services->sum('price');
 
             $order = Order::query()->create([
-                'number' => 'ORD-'.now('Asia/Jakarta')->format('Ymd').'-'.Str::upper(Str::random(6)),
+                'number' => 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
                 'member_id' => $member?->id,
                 'member_vehicle_id' => $vehicle?->id,
                 'created_by_admin_id' => $request->user('admin')?->getAuthIdentifier(),
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
                 'vehicle_name' => $vehicleName,
-                'vehicle_plate' => Str::upper(Str::squish($vehiclePlate)),
-                'service_date' => now('Asia/Jakarta')->toDateString(),
-                'arrived_at' => now('Asia/Jakarta'),
+                'vehicle_plate' => $vehiclePlate,
+                'service_date' => now()->toDateString(),
+                /* The outlet's own clock, which is what the column holds. */
+                'arrived_at' => now(),
                 'source' => 'walk-in',
                 'status' => 'menunggu',
                 'subtotal' => $subtotal,

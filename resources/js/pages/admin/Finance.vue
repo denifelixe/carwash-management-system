@@ -1,20 +1,32 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Fancybox } from '@fancyapps/ui';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Banknote,
+    Image as ImageIcon,
     Paperclip,
+    Pencil,
     Plus,
+    Trash2,
     TrendingDown,
     TrendingUp,
     TriangleAlert,
     Wallet,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import '@fancyapps/ui/dist/fancybox/fancybox.css';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+import {
+    destroy as destroyCashEntry,
+    index as indexFinance,
+    store as storeCashEntry,
+    update as updateCashEntry,
+} from '@/actions/App/Http/Controllers/Admin/FinanceController';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import StatCard from '@/components/demo/StatCard.vue';
+import InputError from '@/components/InputError.vue';
 import {
     formatCurrency,
     formatDate,
@@ -34,6 +46,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     moneyIn: CarwashMoneyEntry[];
     filters: CarwashDateFilter;
@@ -45,28 +58,47 @@ const props = defineProps<{
     shifts: CarwashShift[];
     orders: CarwashOrder[];
     persona: CarwashPersona;
+    capabilities: {
+        create: boolean;
+        update: boolean;
+        delete: boolean;
+    };
 }>();
 
 type Ledger = 'in' | 'out';
-type Shift = 'all' | 'pagi' | 'sore';
+/** 'all', or the id of one of the shifts this console was given. */
+type Shift = string;
 
 const activeLedger = ref<Ledger>('in');
 const activeShift = ref<Shift>('all');
 const search = ref<string>('');
 const categoryFilter = ref<string>('Semua');
 const isFormOpen = ref<boolean>(false);
+const editingEntry = ref<CarwashMoneyEntry | null>(null);
+const deletingEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedOrder = ref<CarwashOrder | null>(null);
 const highlightedTransactionId = ref<string | null>(null);
 
 const workflow = useCarwashWorkflow();
-workflow.hydrateOrders(props.orders);
-workflow.hydrateMoneyIn(props.moneyIn);
-workflow.hydrateMoneyOut(props.moneyOut);
 
-const incomeList = workflow.moneyIn;
-const expenseList = workflow.moneyOut;
-const orderList = workflow.orders;
+if (props.mode === 'demo') {
+    workflow.hydrateOrders(props.orders);
+    workflow.hydrateMoneyIn(props.moneyIn);
+    workflow.hydrateMoneyOut(props.moneyOut);
+}
+
+const incomeList = computed<CarwashMoneyEntry[]>(() =>
+    props.mode === 'demo' ? workflow.moneyIn.value : props.moneyIn,
+);
+
+const expenseList = computed<CarwashMoneyEntry[]>(() =>
+    props.mode === 'demo' ? workflow.moneyOut.value : props.moneyOut,
+);
+
+const orderList = computed<CarwashOrder[]>(() =>
+    props.mode === 'demo' ? workflow.orders.value : props.orders,
+);
 
 const draft = ref({
     category: props.incomeCategories[0],
@@ -76,6 +108,25 @@ const draft = ref({
     attachmentName: '',
 });
 
+/** The live ledger posts the entry, including a real supporting document. */
+const entryForm = useForm<{
+    direction: Ledger;
+    category: string;
+    description: string;
+    amount: number;
+    method: string;
+    attachment: File | null;
+}>({
+    direction: 'in',
+    category: props.incomeCategories[0],
+    description: '',
+    amount: 0,
+    method: 'Tunai',
+    attachment: null,
+});
+
+const deleteForm = useForm({});
+
 const activeCategories = computed<string[]>(() =>
     activeLedger.value === 'in'
         ? props.incomeCategories
@@ -83,11 +134,15 @@ const activeCategories = computed<string[]>(() =>
 );
 
 const shiftTabs = computed(() => [
-    { id: 'all' as const, label: 'Seluruh Shift', caption: 'Semua transaksi' },
+    { id: 'all', label: 'Seluruh Shift', caption: 'Semua transaksi' },
     ...props.shifts.map((shift) => ({
-        id: shift.id as Exclude<Shift, 'all'>,
+        id: shift.id,
         label: shift.name,
-        caption: `${shift.time} · ${shift.cashier}`,
+        caption: shift.time
+            ? shift.cashier
+                ? `${shift.time} · ${shift.cashier}`
+                : shift.time
+            : null,
     })),
 ]);
 
@@ -97,9 +152,16 @@ function isInActiveShift(entry: CarwashMoneyEntry): boolean {
     }
 
     if (entry.shift) {
-        return entry.shift
-            .toLocaleLowerCase('id-ID')
-            .includes(activeShift.value);
+        /* An entry records the shift by name; a tab is keyed by its id, which
+         * only spells out the name on the demo console. */
+        const shiftName = props.shifts
+            .find((shift) => shift.id === activeShift.value)
+            ?.name.toLocaleLowerCase('id-ID');
+        const entryShift = entry.shift.toLocaleLowerCase('id-ID');
+
+        return (
+            entryShift === shiftName || entryShift.includes(activeShift.value)
+        );
     }
 
     const inferredShift = entry.time < '15.00' ? 'pagi' : 'sore';
@@ -194,10 +256,11 @@ const channelRows = computed(() =>
 
 /**
  * Outgoing money must carry supporting documentation (BR-10), so the save
- * button stays disabled until an attachment is named.
+ * button stays disabled until an attachment is named. An entry being edited
+ * keeps the document already on file unless a new one is chosen.
  */
 const requiresAttachment = computed<boolean>(
-    () => activeLedger.value === 'out',
+    () => activeLedger.value === 'out' && !editingEntry.value?.attachment,
 );
 
 const canSave = computed<boolean>(() => {
@@ -207,6 +270,19 @@ const canSave = computed<boolean>(() => {
 
     return !requiresAttachment.value || draft.value.attachmentName !== '';
 });
+
+/** Payments booked by the cashier are read-only here: they belong to the till. */
+function isEditable(entry: CarwashMoneyEntry): boolean {
+    return props.mode === 'live' && cashEntryId(entry) !== null;
+}
+
+/**
+ * The row id of a hand-written entry. A payment read back from the till is
+ * keyed by its transaction reference instead, and has no ledger row to address.
+ */
+function cashEntryId(entry: CarwashMoneyEntry): number | null {
+    return typeof entry.id === 'number' ? entry.id : null;
+}
 
 function switchLedger(ledger: Ledger): void {
     activeLedger.value = ledger;
@@ -221,6 +297,7 @@ function switchShift(shift: Shift): void {
 }
 
 function openForm(): void {
+    editingEntry.value = null;
     draft.value = {
         category: activeCategories.value[0],
         description: '',
@@ -228,7 +305,52 @@ function openForm(): void {
         method: 'Tunai',
         attachmentName: '',
     };
+    entryForm.clearErrors();
+    entryForm.attachment = null;
     isFormOpen.value = true;
+}
+
+function openEditForm(entry: CarwashMoneyEntry): void {
+    if (!isEditable(entry) || !props.capabilities.update) {
+        return;
+    }
+
+    editingEntry.value = entry;
+    draft.value = {
+        category: entry.category,
+        description: entry.description,
+        amount: entry.amount,
+        method: entry.method,
+        attachmentName: '',
+    };
+    entryForm.clearErrors();
+    entryForm.attachment = null;
+    isFormOpen.value = true;
+}
+
+function openDeleteEntry(entry: CarwashMoneyEntry): void {
+    if (!isEditable(entry) || !props.capabilities.delete) {
+        return;
+    }
+
+    deleteForm.clearErrors();
+    deletingEntry.value = entry;
+}
+
+function confirmDeleteEntry(): void {
+    const entryId =
+        deletingEntry.value === null ? null : cashEntryId(deletingEntry.value);
+
+    if (entryId === null) {
+        return;
+    }
+
+    deleteForm.submit(destroyCashEntry(entryId), {
+        preserveScroll: true,
+        onSuccess: () => {
+            deletingEntry.value = null;
+        },
+    });
 }
 
 function findRelatedOrder(entry: CarwashMoneyEntry): CarwashOrder | null {
@@ -285,12 +407,13 @@ function transactionTypeLabel(entry: CarwashMoneyEntry): string {
     return entry.category;
 }
 
-/** Stands in for a real upload — records the chosen file's name and size. */
+/** The demo only records the chosen file's name; the live ledger uploads it. */
 function onFileSelected(event: Event): void {
     const file = (event.target as HTMLInputElement).files?.[0];
 
     if (file) {
         draft.value.attachmentName = file.name;
+        entryForm.attachment = file;
     }
 }
 
@@ -315,6 +438,40 @@ function saveEntry(): void {
         return;
     }
 
+    if (props.mode === 'live') {
+        saveLiveEntry();
+
+        return;
+    }
+
+    saveDemoEntry();
+}
+
+/** The live ledger writes to the database and re-reads the reloaded props. */
+function saveLiveEntry(): void {
+    entryForm.direction = activeLedger.value;
+    entryForm.category = draft.value.category;
+    entryForm.description = draft.value.description;
+    entryForm.amount = draft.value.amount;
+    entryForm.method = draft.value.method;
+
+    const editingId =
+        editingEntry.value === null ? null : cashEntryId(editingEntry.value);
+    const action =
+        editingId === null ? storeCashEntry() : updateCashEntry(editingId);
+
+    entryForm.submit(action, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isFormOpen.value = false;
+            editingEntry.value = null;
+            entryForm.reset();
+        },
+    });
+}
+
+/** The demo console keeps its entries in memory instead of hitting the database. */
+function saveDemoEntry(): void {
     const isIncome = activeLedger.value === 'in';
     const sequence =
         (isIncome ? incomeList.value.length : expenseList.value.length) + 32;
@@ -331,6 +488,7 @@ function saveEntry(): void {
             hour: '2-digit',
             minute: '2-digit',
             hour12: false,
+            timeZone: props.filters.timezone,
         })
             .format(new Date())
             .replace(':', '.'),
@@ -357,10 +515,28 @@ function saveEntry(): void {
     isFormOpen.value = false;
 }
 
+/*
+ * Image attachments open in place rather than downloading. Fancybox binds by
+ * delegation, so rows that appear later — a new filter, a fresh visit — are
+ * picked up without rebinding. Its hash integration stays disabled so closing
+ * an attachment cannot navigate Inertia's history or lose the ledger position.
+ */
+const LIGHTBOX_GROUP = 'lampiran-keuangan';
+
+onMounted(() => {
+    Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {
+        Hash: false,
+    });
+});
+
+onUnmounted(() => {
+    Fancybox.destroy();
+});
+
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
 function applyDate(date: string): void {
     router.get(
-        admin.finance.url(),
+        props.mode === 'demo' ? admin.finance.url() : indexFinance.url(),
         { date },
         { preserveScroll: true, replace: true },
     );
@@ -398,7 +574,10 @@ function applyDate(date: string): void {
                     <span class="block text-sm font-semibold">
                         {{ shift.label }}
                     </span>
-                    <span class="mt-0.5 block text-[11px] opacity-75">
+                    <span
+                        v-if="shift.caption"
+                        class="mt-0.5 block text-[11px] opacity-75"
+                    >
                         {{ shift.caption }}
                     </span>
                 </button>
@@ -529,6 +708,7 @@ function applyDate(date: string): void {
                     </div>
 
                     <button
+                        v-if="capabilities.create"
                         type="button"
                         class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
                         @click="openForm"
@@ -569,6 +749,12 @@ function applyDate(date: string): void {
                                 Lampiran
                             </th>
                             <th class="px-5 py-3 text-right">Nominal</th>
+                            <th
+                                v-if="mode === 'live'"
+                                class="px-5 py-3 text-right"
+                            >
+                                Aksi
+                            </th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
@@ -674,8 +860,37 @@ function applyDate(date: string): void {
                                 v-if="activeLedger === 'out'"
                                 class="px-5 py-3.5"
                             >
+                                <a
+                                    v-if="
+                                        entry.attachment && entry.attachmentUrl
+                                    "
+                                    :href="entry.attachmentUrl"
+                                    :data-fancybox="
+                                        entry.attachmentIsImage
+                                            ? LIGHTBOX_GROUP
+                                            : null
+                                    "
+                                    :data-caption="
+                                        entry.attachmentIsImage
+                                            ? `${entry.ref} — ${entry.description}`
+                                            : null
+                                    "
+                                    class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
+                                >
+                                    <component
+                                        :is="
+                                            entry.attachmentIsImage
+                                                ? ImageIcon
+                                                : Paperclip
+                                        "
+                                        class="h-3.5 w-3.5 shrink-0"
+                                    />
+                                    <span class="max-w-[10rem] truncate">
+                                        {{ entry.attachment.name }}
+                                    </span>
+                                </a>
                                 <span
-                                    v-if="entry.attachment"
+                                    v-else-if="entry.attachment"
                                     class="flex items-center gap-1.5 text-[11px] text-cyan-700"
                                 >
                                     <Paperclip class="h-3.5 w-3.5 shrink-0" />
@@ -701,6 +916,37 @@ function applyDate(date: string): void {
                             >
                                 {{ activeLedger === 'in' ? '+' : '−'
                                 }}{{ formatCurrency(entry.amount) }}
+                            </td>
+                            <td v-if="mode === 'live'" class="px-5 py-3.5">
+                                <div
+                                    v-if="isEditable(entry)"
+                                    class="flex items-center justify-end gap-1"
+                                >
+                                    <button
+                                        v-if="capabilities.update"
+                                        type="button"
+                                        class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-cyan-700"
+                                        :aria-label="`Ubah catatan ${entry.ref}`"
+                                        @click="openEditForm(entry)"
+                                    >
+                                        <Pencil class="h-4 w-4" />
+                                    </button>
+                                    <button
+                                        v-if="capabilities.delete"
+                                        type="button"
+                                        class="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                        :aria-label="`Hapus catatan ${entry.ref}`"
+                                        @click="openDeleteEntry(entry)"
+                                    >
+                                        <Trash2 class="h-4 w-4" />
+                                    </button>
+                                </div>
+                                <span
+                                    v-else
+                                    class="block text-right text-[11px] text-slate-400"
+                                >
+                                    Dari kasir
+                                </span>
                             </td>
                         </tr>
                     </tbody>
@@ -1041,7 +1287,11 @@ function applyDate(date: string): void {
     <ModalDialog
         :open="isFormOpen"
         :title="
-            activeLedger === 'in' ? 'Catat uang masuk' : 'Catat uang keluar'
+            editingEntry
+                ? 'Ubah catatan keuangan'
+                : activeLedger === 'in'
+                  ? 'Catat uang masuk'
+                  : 'Catat uang keluar'
         "
         :caption="
             activeLedger === 'in'
@@ -1068,6 +1318,10 @@ function applyDate(date: string): void {
                         {{ category }}
                     </option>
                 </select>
+                <InputError
+                    class="mt-1.5"
+                    :message="entryForm.errors.category"
+                />
             </div>
 
             <div>
@@ -1083,6 +1337,10 @@ function applyDate(date: string): void {
                     type="text"
                     placeholder="Keterangan transaksi"
                     class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                />
+                <InputError
+                    class="mt-1.5"
+                    :message="entryForm.errors.description"
                 />
             </div>
 
@@ -1101,6 +1359,10 @@ function applyDate(date: string): void {
                         min="0"
                         step="1000"
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="entryForm.errors.amount"
                     />
                 </div>
                 <div>
@@ -1127,10 +1389,12 @@ function applyDate(date: string): void {
             </div>
 
             <!-- Attachment, required for expenses -->
-            <div v-if="requiresAttachment">
+            <div v-if="activeLedger === 'out'">
                 <p class="text-xs font-medium text-slate-600">
                     Bukti pendukung
-                    <span class="text-rose-500">*</span>
+                    <span v-if="requiresAttachment" class="text-rose-500">
+                        *
+                    </span>
                 </p>
                 <label
                     class="mt-1.5 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed p-3 transition"
@@ -1151,6 +1415,7 @@ function applyDate(date: string): void {
                         >
                             {{
                                 draft.attachmentName ||
+                                editingEntry?.attachment?.name ||
                                 'Pilih nota / struk / invoice'
                             }}
                         </span>
@@ -1166,12 +1431,16 @@ function applyDate(date: string): void {
                     />
                 </label>
                 <p
-                    v-if="!draft.attachmentName"
+                    v-if="requiresAttachment && !draft.attachmentName"
                     class="mt-1.5 flex items-center gap-1 text-[11px] text-rose-600"
                 >
                     <TriangleAlert class="h-3.5 w-3.5" />
                     Pengeluaran wajib menyertakan bukti pendukung.
                 </p>
+                <InputError
+                    class="mt-1.5"
+                    :message="entryForm.errors.attachment"
+                />
             </div>
 
             <div class="rounded-2xl bg-slate-50 p-4">
@@ -1201,10 +1470,47 @@ function applyDate(date: string): void {
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canSave"
+                :disabled="!canSave || entryForm.processing"
                 @click="saveEntry"
             >
-                Simpan catatan
+                {{ entryForm.processing ? 'Menyimpan...' : 'Simpan catatan' }}
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="deletingEntry !== null"
+        title="Hapus catatan keuangan"
+        caption="Catatan yang dihapus tidak dapat dikembalikan."
+        size="sm"
+        @close="deletingEntry = null"
+    >
+        <p v-if="deletingEntry" class="text-sm text-slate-600">
+            Yakin ingin menghapus
+            <span class="font-semibold text-slate-900">
+                {{ deletingEntry.ref }}
+            </span>
+            sebesar
+            <span class="font-semibold text-slate-900">
+                {{ formatCurrency(deletingEntry.amount) }}
+            </span>
+            dari buku kas?
+        </p>
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="deletingEntry = null"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="deleteForm.processing"
+                @click="confirmDeleteEntry"
+            >
+                {{ deleteForm.processing ? 'Menghapus...' : 'Hapus catatan' }}
             </button>
         </template>
     </ModalDialog>

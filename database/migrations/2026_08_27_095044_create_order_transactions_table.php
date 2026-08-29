@@ -19,8 +19,8 @@ return new class extends Migration
             $table->string('type');
             $table->unsignedBigInteger('amount');
             $table->json('channel_breakdown');
-            $table->timestamp('paid_at');
-            $table->timestamps();
+            $table->dateTime('paid_at');
+            $table->datetimes();
 
             $table->index(['order_id', 'paid_at']);
         });

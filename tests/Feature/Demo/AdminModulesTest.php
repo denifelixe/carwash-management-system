@@ -11,8 +11,8 @@ dataset('admin modules', [
     'dashboard' => ['demo.admin.dashboard', 'admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'orderSummary']],
     'orders' => ['demo.admin.orders', 'admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
     'pos' => ['demo.admin.pos', 'admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
-    'customers' => ['demo.admin.customers', 'demo/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],
-    'finance' => ['demo.admin.finance', 'demo/admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'orders']],
+    'members' => ['demo.admin.members', 'admin/Customers', ['members', 'stats', 'filters', 'stampTarget', 'capabilities']],
+    'finance' => ['demo.admin.finance', 'admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'orders']],
     'bookings' => ['demo.admin.bookings', 'demo/admin/Bookings', ['bookings', 'today', 'services', 'customers']],
     'inventory' => ['demo.admin.inventory', 'demo/admin/Inventory', ['items', 'movements', 'categories', 'movementTypes']],
     'rewards' => ['demo.admin.rewards', 'demo/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
@@ -55,7 +55,7 @@ test('the master module is nested under an expandable sidebar group', function (
 
 test('the sidebar only offers modules the active role may reach', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'cs'])
-        ->get(route('demo.admin.customers'))
+        ->get(route('demo.admin.members'))
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
@@ -63,7 +63,7 @@ test('the sidebar only offers modules the active role may reach', function () {
                 ->has('modules', 2)
                 // Sidebar order is preserved from RoleAccess::modules().
                 ->where('modules.0.key', 'orders')
-                ->where('modules.1.key', 'customers')
+                ->where('modules.1.key', 'members')
         );
 });
 

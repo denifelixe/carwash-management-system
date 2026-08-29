@@ -5,7 +5,6 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 
 return new class extends Migration
 {
@@ -25,18 +24,18 @@ return new class extends Migration
             $table->boolean('is_owner')->default(false)->index();
             $table->string('email')->unique();
             $table->string('phone')->nullable()->unique();
-            $table->timestamp('email_verified_at')->nullable();
+            $table->dateTime('email_verified_at')->nullable();
             $table->string('password');
             $table->boolean('is_active')->default(true)->index();
-            $table->timestamp('last_login_at')->nullable()->index();
+            $table->dateTime('last_login_at')->nullable()->index();
             $table->rememberToken();
-            $table->timestamps();
+            $table->datetimes();
         });
 
         DB::table('admins')->insert([
             'name' => 'Deni Victoria',
             'email' => 'deni.victoria@gmail.com',
-            'password' => Hash::make("abcd1234"),
+            'password' => Hash::make('abcd1234'),
             'is_owner' => true,
             'created_at' => now(),
             'updated_at' => now(),
@@ -45,7 +44,7 @@ return new class extends Migration
         Schema::create('admin_password_reset_tokens', function (Blueprint $table) {
             $table->string('email')->primary();
             $table->string('token');
-            $table->timestamp('created_at')->nullable();
+            $table->dateTime('created_at')->nullable();
         });
 
         Schema::create('sessions', function (Blueprint $table) {

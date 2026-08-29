@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Admin;
+use App\Support\AppSettings;
 use App\Support\Demo\Brand;
 use App\Support\Session\DatabaseSessionHandler;
 use Carbon\CarbonImmutable;
@@ -31,6 +32,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        AppSettings::applyTimezone();
+
         $this->configureDatabaseSessions();
         $this->configureDefaults();
 
@@ -38,7 +41,7 @@ class AppServiceProvider extends ServiceProvider
             ? true
             : null);
 
-        foreach (['users_and_roles', 'orders', 'pos', 'master_services', 'master_work_shifts'] as $moduleKey) {
+        foreach (['users_and_roles', 'orders', 'pos', 'finance', 'members', 'master_services', 'master_work_shifts', 'master_timezone'] as $moduleKey) {
             foreach (['create', 'read', 'update', 'delete'] as $permission) {
                 Gate::define(
                     "admin.{$moduleKey}.{$permission}",

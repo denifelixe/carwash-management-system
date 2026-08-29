@@ -28,7 +28,7 @@ class RoleAccess
             ['key' => 'pos', 'label' => 'Kasir POS', 'caption' => 'Pembayaran order', 'icon' => 'pos', 'route' => 'demo.admin.pos'],
             ['key' => 'bookings', 'label' => 'Booking Order', 'caption' => 'Jadwal pelanggan', 'icon' => 'bookings', 'route' => 'demo.admin.bookings'],
             ['key' => 'finance', 'label' => 'Keuangan', 'caption' => 'Arus kas harian', 'icon' => 'finance', 'route' => 'demo.admin.finance'],
-            ['key' => 'customers', 'label' => 'Member', 'caption' => 'Database & stempel', 'icon' => 'customers', 'route' => 'demo.admin.customers'],
+            ['key' => 'members', 'label' => 'Member', 'caption' => 'Database & stempel', 'icon' => 'members', 'route' => 'demo.admin.members'],
             ['key' => 'inventory', 'label' => 'Stock Inventory', 'caption' => 'Stok operasional', 'icon' => 'inventory', 'route' => 'demo.admin.inventory'],
             ['key' => 'rewards', 'label' => 'Reward', 'caption' => 'Katalog & syarat stempel', 'icon' => 'rewards', 'route' => 'demo.admin.rewards'],
             ['key' => 'users', 'label' => 'User & Role', 'caption' => 'Hak akses pegawai', 'icon' => 'users', 'route' => 'demo.admin.users'],
@@ -60,10 +60,10 @@ class RoleAccess
     public static function matrix(): array
     {
         return [
-            'owner' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports', 'master_services', 'master_work_shifts'],
-            'manager' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'reports', 'master_services', 'master_work_shifts'],
-            'cashier' => ['pos', 'customers', 'finance', 'bookings', 'inventory'],
-            'cs' => ['customers', 'orders'],
+            'owner' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports', 'master_services', 'master_work_shifts'],
+            'manager' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'reports', 'master_services', 'master_work_shifts'],
+            'cashier' => ['pos', 'members', 'finance', 'bookings', 'inventory'],
+            'cs' => ['members', 'orders'],
             'finance' => ['finance', 'reports'],
         ];
     }

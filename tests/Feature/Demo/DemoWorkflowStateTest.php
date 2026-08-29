@@ -15,7 +15,7 @@ test('demo workflow shares in-memory state across admin modules', function () {
         resource_path('js/pages/admin/Pos.vue'),
     );
     $finance = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($store)
@@ -30,8 +30,9 @@ test('demo workflow shares in-memory state across admin modules', function () {
         ->toContain('workflow.orders.value')
         ->toContain('workflow.addMoneyIn({')
         ->and($finance)
-        ->toContain('const incomeList = workflow.moneyIn')
-        ->toContain('const orderList = workflow.orders');
+        ->toContain('workflow.moneyIn.value')
+        ->toContain('workflow.moneyOut.value')
+        ->toContain('workflow.orders.value');
 });
 
 test('payments are attributed to the active user and their configured shift', function () {
@@ -39,7 +40,7 @@ test('payments are attributed to the active user and their configured shift', fu
         resource_path('js/pages/admin/Pos.vue'),
     );
     $finance = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($pos)

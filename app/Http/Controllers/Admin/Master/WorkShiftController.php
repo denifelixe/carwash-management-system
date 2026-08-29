@@ -75,8 +75,8 @@ class WorkShiftController extends Controller
             'id' => $workShift->id,
             'key' => $workShift->key,
             'name' => $workShift->name,
-            'starts_at' => mb_substr($workShift->starts_at, 0, 5),
-            'ends_at' => mb_substr($workShift->ends_at, 0, 5),
+            'starts_at' => $workShift->starts_at !== null ? mb_substr($workShift->starts_at, 0, 5) : null,
+            'ends_at' => $workShift->ends_at !== null ? mb_substr($workShift->ends_at, 0, 5) : null,
             'is_active' => $workShift->is_active,
             'admin_count' => (int) ($workShift->admins_count ?? 0),
         ];

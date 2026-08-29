@@ -138,7 +138,7 @@ test('settled orders stay reachable so their slip can be reprinted', function ()
     expect(posReceiptModule())
         ->toContain('isReprint: boolean;')
         ->toContain('SALINAN / CETAK ULANG')
-        ->toContain('Dicetak ulang ${escapeHtml(reprintedAt())}')
+        ->toContain('Dicetak ulang ${escapeHtml(reprintedAt(receipt.timezone))}')
         // A copy cannot tell which payment took the discount.
         ->toContain("receipt.isReprint ? 'Diskon' : 'Diskon sebelumnya'")
         ->toContain("receipt.isReprint ? 'Pembayaran ini' : 'Pembayaran saat ini'");

@@ -11,8 +11,8 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $key
  * @property string $name
- * @property string $starts_at
- * @property string $ends_at
+ * @property string|null $starts_at
+ * @property string|null $ends_at
  * @property bool $is_active
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at

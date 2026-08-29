@@ -20,7 +20,7 @@ class FinanceController extends AdminController
         // No date in the URL means the day the module is being used on.
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
-        return $this->page($request, 'demo/admin/Finance', [
+        return $this->page($request, 'admin/Finance', [
             'moneyIn' => DateFilter::apply(Finance::moneyIn(), $date),
             'moneyOut' => DateFilter::apply(Finance::moneyOut(), $date),
             'filters' => DateFilter::meta($date),
@@ -30,6 +30,11 @@ class FinanceController extends AdminController
             'paymentMethods' => Operations::paymentMethods(),
             'shifts' => Brand::shifts(),
             'orders' => Operations::orders(),
+            'capabilities' => [
+                'create' => true,
+                'update' => true,
+                'delete' => true,
+            ],
         ]);
     }
 }

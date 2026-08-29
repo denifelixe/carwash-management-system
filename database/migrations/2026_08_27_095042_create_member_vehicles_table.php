@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('plate')->unique();
             $table->string('type');
             $table->boolean('is_primary')->default(false);
-            $table->timestamps();
+            $table->datetimes();
 
             $table->index(['member_id', 'is_primary']);
         });

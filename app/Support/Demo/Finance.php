@@ -2,7 +2,7 @@
 
 namespace App\Support\Demo;
 
-use Illuminate\Support\Str;
+use App\Support\Admin\FinanceReference;
 
 /**
  * Cash flow management (BR-10): money in, money out, and their categories.
@@ -118,21 +118,7 @@ class Finance
         string $date,
         string|int $identifier,
     ): string {
-        $categoryWords = preg_split(
-            '/[^A-Z0-9]+/',
-            Str::upper($category),
-            flags: PREG_SPLIT_NO_EMPTY,
-        );
-        $categoryCode = implode('', array_map(
-            fn (string $word): string => Str::substr($word, 0, 1),
-            $categoryWords ?: [],
-        ));
-        $dateCode = Str::of($date)->remove('-')->substr(2);
-        $stableIdentifier = is_int($identifier)
-            ? str_pad((string) $identifier, 4, '0', STR_PAD_LEFT)
-            : Str::of($identifier)->upper()->replaceMatches('/[^A-Z0-9]+/', '');
-
-        return "TRX-{$categoryCode}-{$dateCode}-{$stableIdentifier}";
+        return FinanceReference::make($category, $date, $identifier);
     }
 
     /**

@@ -18,7 +18,7 @@ test('the page heading names the module without dating it', function () {
 test('the finance module is named keuangan throughout the console', function () {
     $financeModule = collect(RoleAccess::modules())->firstWhere('key', 'finance');
     $financePage = file_get_contents(
-        resource_path('js/pages/demo/admin/Finance.vue'),
+        resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financeModule['label'])->toBe('Keuangan')
@@ -26,9 +26,9 @@ test('the finance module is named keuangan throughout the console', function () 
 });
 
 test('the customer module is named member throughout the console', function () {
-    $customerModule = collect(RoleAccess::modules())->firstWhere('key', 'customers');
+    $customerModule = collect(RoleAccess::modules())->firstWhere('key', 'members');
     $customerPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Customers.vue'),
+        resource_path('js/pages/admin/Customers.vue'),
     );
 
     expect($customerModule['label'])->toBe('Member')
@@ -40,6 +40,11 @@ test('the customer module is named member throughout the console', function () {
         ->toContain(':for="`member-vehicle-${index}-name`"')
         ->toContain(':for="`member-vehicle-${index}-type`"')
         ->toContain('text-sm text-slate-900 focus:border-cyan-400')
+        ->toContain('Tidak punya akun portal')
+        ->toContain('toggleStatusFilter')
+        ->toContain('toggleAccountFilter')
+        ->toContain('allFiltersSelected')
+        ->toContain("detailCustomer.email || 'Tidak ada email'")
         ->not->toContain('title="Daftarkan customer"')
         ->not->toContain('Simpan customer');
 });
@@ -51,7 +56,7 @@ test('the sidebar modules follow the operational menu order', function () {
         'pos',
         'bookings',
         'finance',
-        'customers',
+        'members',
         'inventory',
         'rewards',
         'users',

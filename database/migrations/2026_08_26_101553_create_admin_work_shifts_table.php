@@ -15,10 +15,10 @@ return new class extends Migration
             $table->id();
             $table->string('key')->unique();
             $table->string('name');
-            $table->time('starts_at');
-            $table->time('ends_at');
+            $table->time('starts_at')->nullable();
+            $table->time('ends_at')->nullable();
             $table->boolean('is_active')->default(true)->index();
-            $table->timestamps();
+            $table->datetimes();
         });
     }
 

@@ -16,7 +16,7 @@ export interface CarwashBrand {
 export interface CarwashShift {
     id: string;
     name: string;
-    time: string;
+    time: string | null;
     cashier: string;
     initials: string;
     revenue: number;
@@ -90,6 +90,40 @@ export interface CarwashCustomer {
     initials: string;
     status: string;
     hasAccount: boolean;
+}
+
+export interface CarwashPaginationMeta {
+    currentPage: number;
+    lastPage: number;
+    perPage: number;
+    total: number;
+    from: number | null;
+    to: number | null;
+}
+
+export interface CarwashPaginated<T> {
+    data: T[];
+    meta: CarwashPaginationMeta;
+}
+
+export interface CarwashMemberFilters {
+    q: string;
+    status: string;
+    account: string;
+    page: number;
+}
+
+export interface CarwashMemberStats {
+    total: number;
+    active: number;
+    withAccount: number;
+    circulatingStamps: number;
+}
+
+export interface CarwashMemberDetail {
+    customer: CarwashCustomer;
+    orders: CarwashOrder[];
+    stampHistory: CarwashStampEntry[];
 }
 
 export interface CarwashVehicle {
@@ -266,6 +300,10 @@ export interface CarwashMoneyEntry {
     vehicle?: string | null;
     plate?: string | null;
     attachment?: CarwashAttachment | null;
+    /** Only the live ledger stores the document, so only it can serve it back. */
+    attachmentUrl?: string | null;
+    /** An image is shown in the lightbox; anything else is downloaded. */
+    attachmentIsImage?: boolean;
 }
 
 export interface CarwashAttachment {
@@ -398,6 +436,8 @@ export interface CarwashDateFilter {
     earliest: string;
     latest: string;
     label: string;
+    /** The outlet's zone, so a browser elsewhere still prints its clock. */
+    timezone: string;
 }
 
 export interface CarwashReportFilters {

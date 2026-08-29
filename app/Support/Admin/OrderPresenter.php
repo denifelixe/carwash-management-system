@@ -8,6 +8,9 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Support\Demo\Brand;
+use App\Support\Demo\DateFilter;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 
 /**
@@ -30,7 +33,7 @@ class OrderPresenter
             'orderNo' => $order->number,
             'invoice' => $order->invoice_number ?? '—',
             'date' => $order->service_date->toDateString(),
-            'time' => $order->arrived_at?->timezone('Asia/Jakarta')->format('H.i') ?? '—',
+            'time' => $order->arrived_at?->format('H.i') ?? '—',
             'bookingDate' => $order->booking_date?->toDateString(),
             'customerId' => $order->member_id,
             'customer' => $order->customer_name.($order->member_id === null ? ' (non-member)' : ''),
@@ -66,8 +69,8 @@ class OrderPresenter
         return [
             'id' => $transaction->reference,
             'orderId' => $order->id,
-            'date' => $transaction->paid_at->timezone('Asia/Jakarta')->toDateString(),
-            'time' => $transaction->paid_at->timezone('Asia/Jakarta')->format('H.i'),
+            'date' => $transaction->paid_at->toDateString(),
+            'time' => $transaction->paid_at->format('H.i'),
             'type' => $transaction->type,
             'amount' => (int) $transaction->amount,
             'channels' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
@@ -108,25 +111,28 @@ class OrderPresenter
             'isPrimary' => $vehicle->is_primary,
         ]);
         $primaryVehicle = $vehicles->first();
+        $stampTarget = (int) Brand::identity()['stampTarget'];
+        $lifetimeStamps = (int) $member->getAttribute('stamps_earned_total');
+        $lastOrderDate = $member->getAttribute('last_order_date');
 
         return [
             'id' => $member->id,
             'name' => $member->name,
             'memberId' => 'MEM-'.str_pad((string) $member->id, 6, '0', STR_PAD_LEFT),
             'phone' => $member->phone ?? '',
-            'email' => $member->email,
+            'email' => $member->email ?? '',
             'vehicle' => $primaryVehicle['name'] ?? '—',
             'plate' => $primaryVehicle['plate'] ?? '—',
             'vehicles' => $vehicles->all(),
-            'stamps' => 0,
-            'lifetimeStamps' => 0,
+            'stamps' => $stampTarget > 0 ? $lifetimeStamps % $stampTarget : $lifetimeStamps,
+            'lifetimeStamps' => $lifetimeStamps,
             'visits' => (int) $member->orders_count,
             'spend' => (int) $member->getAttribute('orders_sum_total'),
             'joinedAt' => $member->created_at?->format('M Y') ?? '',
-            'lastVisit' => '—',
+            'lastVisit' => self::visitLabel($lastOrderDate),
             'initials' => self::initials($member->name),
             'status' => $member->is_active ? 'aktif' : 'tidak aktif',
-            'hasAccount' => true,
+            'hasAccount' => $member->password !== null,
         ];
     }
 
@@ -138,5 +144,14 @@ class OrderPresenter
             ->take(2)
             ->map(fn (string $part): string => Str::upper(Str::substr($part, 0, 1)))
             ->implode('');
+    }
+
+    private static function visitLabel(mixed $date): string
+    {
+        if (! is_string($date) || $date === '') {
+            return '—';
+        }
+
+        return DateFilter::format(CarbonImmutable::parse($date)->toDateString());
     }
 }

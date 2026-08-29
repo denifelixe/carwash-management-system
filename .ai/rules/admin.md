@@ -14,5 +14,4 @@ Live controllers get shell props from AdminShell::props($admin, $title, $moduleK
 
 Shared order/service/member payload shapes live in App\Support\Admin\OrderPresenter; shared reads in App\Support\Admin\OrderQueries. Do not re-hand-roll them per controller.
 
-Many demo tests assert exact source strings from these Vue files — after editing a page, run the whole suite, not just the module's test.</note>
-</invoke>
+Many demo tests assert exact source strings from these Vue files — after editing a page, run the whole suite, not just the module's test.

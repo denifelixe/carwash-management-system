@@ -16,9 +16,6 @@ use Carbon\Exceptions\InvalidFormatException;
  */
 class Reports
 {
-    /** The shop's timezone, which decides when a business day turns over. */
-    public const TIMEZONE = 'Asia/Jakarta';
-
     /** Days of history a report may reach back over. */
     private const HISTORY_DAYS = 730;
 
@@ -163,7 +160,7 @@ class Reports
     /** The date the whole prototype treats as today. */
     public static function today(): CarbonImmutable
     {
-        return CarbonImmutable::now(self::TIMEZONE)->startOfDay();
+        return CarbonImmutable::now()->startOfDay();
     }
 
     /** Today as an ISO date, the shape every module filters by. */

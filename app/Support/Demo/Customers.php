@@ -2,6 +2,8 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\Paginated;
+use App\Support\VehiclePlate;
 use Illuminate\Support\Str;
 
 /**
@@ -9,6 +11,114 @@ use Illuminate\Support\Str;
  */
 class Customers
 {
+    /**
+     * @return array{data: list<array<string, mixed>>, meta: array<string, int|null>}
+     */
+    public static function page(string $query, string $status, string $account, int $page, int $perPage, int $stampTarget): array
+    {
+        $needle = Str::lower(Str::squish($query));
+        $plateNeedle = VehiclePlate::normalize($query);
+        $rows = collect(self::all())
+            ->map(fn (array $member): array => [
+                ...$member,
+                'stamps' => $stampTarget > 0
+                    ? (int) $member['lifetimeStamps'] % $stampTarget
+                    : (int) $member['lifetimeStamps'],
+            ])
+            ->filter(function (array $member) use ($account, $needle, $plateNeedle, $status): bool {
+                if ($status !== 'Semua' && $member['status'] !== $status) {
+                    return false;
+                }
+
+                if ($account !== 'Semua' && $member['hasAccount'] !== ($account === 'Punya akun portal')) {
+                    return false;
+                }
+
+                if ($needle === '') {
+                    return true;
+                }
+
+                $matchesText = Str::contains(Str::lower(implode(' ', [
+                    $member['name'],
+                    $member['phone'],
+                    $member['email'],
+                    $member['memberId'],
+                ])), $needle);
+                $matchesVehicle = collect($member['vehicles'])->contains(
+                    fn (array $vehicle): bool => Str::contains(Str::lower($vehicle['name']), $needle)
+                        || Str::contains(VehiclePlate::normalize($vehicle['plate']), $plateNeedle),
+                );
+
+                return $matchesText || $matchesVehicle;
+            })
+            ->values()
+            ->all();
+
+        return Paginated::fromArray($rows, $page, $perPage);
+    }
+
+    /**
+     * @return array{total: int, active: int, withAccount: int, circulatingStamps: int}
+     */
+    public static function moduleStats(int $stampTarget): array
+    {
+        $members = self::all();
+
+        return [
+            'total' => count($members),
+            'active' => collect($members)->where('status', 'aktif')->count(),
+            'withAccount' => collect($members)->where('hasAccount', true)->count(),
+            'circulatingStamps' => collect($members)->sum(
+                fn (array $member): int => $stampTarget > 0
+                    ? (int) $member['lifetimeStamps'] % $stampTarget
+                    : (int) $member['lifetimeStamps'],
+            ),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $orders
+     * @return array{customer: array<string, mixed>, orders: list<array<string, mixed>>, stampHistory: list<array<string, mixed>>}|null
+     */
+    public static function detail(?int $memberId, array $orders, int $stampTarget): ?array
+    {
+        if ($memberId === null) {
+            return null;
+        }
+
+        $member = collect(self::all())->firstWhere('id', $memberId);
+
+        if (! is_array($member)) {
+            return null;
+        }
+
+        $member['stamps'] = $stampTarget > 0
+            ? (int) $member['lifetimeStamps'] % $stampTarget
+            : (int) $member['lifetimeStamps'];
+        $memberOrders = collect($orders)
+            ->where('customerId', $memberId)
+            ->values();
+
+        return [
+            'customer' => $member,
+            'orders' => $memberOrders->all(),
+            'stampHistory' => $memberOrders
+                ->where('status', '!=', 'batal')
+                ->where('stampsEarned', '>', 0)
+                ->map(fn (array $order): array => [
+                    'id' => $order['id'],
+                    'title' => $order['items'],
+                    'detail' => $order['plate'],
+                    'stamps' => (int) $order['stampsEarned'],
+                    'type' => 'earn',
+                    'date' => DateFilter::format($order['date']),
+                    'icon' => '✨',
+                ])
+                ->values()
+                ->all(),
+        ];
+    }
+
     /**
      * Member and loyalty totals shared with the member module and dashboard.
      *

@@ -85,6 +85,8 @@ export interface PosReceipt {
     isSettled: boolean;
     /** Marks the slip as a copy so it is not mistaken for the original. */
     isReprint: boolean;
+    /** The outlet's zone, so a reprint stamp reads the shop clock. */
+    timezone: string;
     payment: string;
     paymentBreakdown: PosPaymentBreakdown[];
     stampsEarned: number;
@@ -122,10 +124,11 @@ function formatWhatsapp(whatsapp: string): string {
 }
 
 /** Stamped on a copy so the desk can tell it from the original slip. */
-function reprintedAt(): string {
+function reprintedAt(timeZone: string): string {
     return new Intl.DateTimeFormat('id-ID', {
         dateStyle: 'medium',
         timeStyle: 'short',
+        timeZone,
     }).format(new Date());
 }
 
@@ -319,7 +322,7 @@ ${stampBlock(receipt)}
     <p>Terima kasih atas kunjungan Anda.</p>
     <p>Kumpulkan ${formatNumber(brand.stampTarget)} stempel untuk ${escapeHtml(brand.stampReward)}.</p>
     <p class="fineprint">Struk ini adalah bukti pembayaran yang sah.</p>
-    ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(reprintedAt())}.</p>` : ''}
+    ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(reprintedAt(receipt.timezone))}.</p>` : ''}
 </footer>`;
 }
 

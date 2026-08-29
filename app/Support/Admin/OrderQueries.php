@@ -5,6 +5,7 @@ namespace App\Support\Admin;
 use App\Models\Member;
 use App\Models\Order;
 use App\Models\Service;
+use App\Support\AppSettings;
 use App\Support\Demo\DateFilter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
@@ -70,21 +71,57 @@ class OrderQueries
     }
 
     /**
+     * Vehicle totals for a business day, counted off the same rows the order
+     * board shows. A cancelled order is neither served nor still scheduled, so
+     * it drops out of all three figures.
+     *
+     * @return array{total: int, served: int, awaitingBooking: int}
+     */
+    public static function summaryForDate(string $date): array
+    {
+        $statuses = Order::query()
+            ->whereDate('service_date', $date)
+            ->where('status', '!=', 'batal')
+            ->pluck('status');
+
+        return [
+            'total' => $statuses->count(),
+            'served' => $statuses->reject(fn (string $status): bool => $status === 'booking')->count(),
+            'awaitingBooking' => $statuses->filter(fn (string $status): bool => $status === 'booking')->count(),
+        ];
+    }
+
+    /**
      * @return Collection<int, Member>
      */
     public static function customers(): Collection
     {
-        return Member::query()
+        return self::withMemberAggregates(Member::query())
             ->where('is_active', true)
-            ->with(['vehicles' => fn ($query) => $query->orderByDesc('is_primary')->orderBy('id')])
-            ->withCount('orders')
-            ->withSum('orders', 'total')
             ->orderBy('name')
             ->get();
     }
 
     /**
-     * @return array{date: string, today: string, earliest: string, latest: string, label: string}
+     * @param  Builder<Member>  $query
+     * @return Builder<Member>
+     */
+    public static function withMemberAggregates(Builder $query): Builder
+    {
+        return $query
+            ->with(['vehicles' => fn ($vehicleQuery) => $vehicleQuery->orderByDesc('is_primary')->orderBy('id')])
+            ->withCount('orders')
+            ->withSum('orders', 'total')
+            ->withSum([
+                'orders as stamps_earned_total' => fn ($orderQuery) => $orderQuery->where('status', '!=', 'batal'),
+            ], 'stamps_earned')
+            ->withMax([
+                'orders as last_order_date' => fn ($orderQuery) => $orderQuery->where('status', '!=', 'batal'),
+            ], 'service_date');
+    }
+
+    /**
+     * @return array{date: string, today: string, earliest: string, latest: string, label: string, timezone: string}
      */
     public static function filters(string $selectedDate, CarbonImmutable $today): array
     {
@@ -96,6 +133,7 @@ class OrderQueries
             'earliest' => is_string($earliest) ? $earliest : $today->toDateString(),
             'latest' => $today->addYear()->toDateString(),
             'label' => $selectedDate === $today->toDateString() ? 'Hari ini' : DateFilter::format($selectedDate),
+            'timezone' => AppSettings::timezone(),
         ];
     }
 

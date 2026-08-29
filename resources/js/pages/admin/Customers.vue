@@ -1,17 +1,26 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Car,
     Gift,
     Mail,
     Phone,
+    Pencil,
     Plus,
+    Power,
     Sparkles,
     Trash2,
     UserPlus,
     Users,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
+import {
+    index as indexMembers,
+    store as storeMember,
+    update as updateMember,
+    updateStatus as updateMemberStatus,
+} from '@/actions/App/Http/Controllers/Admin/MemberController';
+import DataPagination from '@/components/demo/DataPagination.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
@@ -24,36 +33,62 @@ import {
     formatNumber,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
+import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import admin from '@/routes/demo/admin';
 import type {
     CarwashBrand,
     CarwashCustomer,
+    CarwashMemberDetail,
+    CarwashMemberFilters,
+    CarwashMemberStats,
     CarwashOrder,
+    CarwashPaginated,
     CarwashReward,
     CarwashStampEntry,
     CarwashVehicle,
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
-    customers: CarwashCustomer[];
-    orders: CarwashOrder[];
-    stampHistory: CarwashStampEntry[];
+    members: CarwashPaginated<CarwashCustomer>;
+    stats: CarwashMemberStats;
+    memberDetail: CarwashMemberDetail | null;
+    filters: CarwashMemberFilters;
+    statusFilters: string[];
+    accountFilters: string[];
+    vehicleTypes: string[];
     rewards: CarwashReward[];
     stampTarget: number;
+    capabilities: { create: boolean; update: boolean };
 }>();
 
-const customerList = ref<CarwashCustomer[]>(
-    props.customers.map((customer) => ({
-        ...customer,
-        vehicles: customer.vehicles.map((vehicle) => ({ ...vehicle })),
-    })),
+const workflow = useCarwashWorkflow();
+
+if (props.mode === 'demo') {
+    workflow.hydrateCustomers(props.members.data);
+}
+
+const memberList = computed<CarwashCustomer[]>(() =>
+    props.mode === 'demo' ? workflow.customers.value : props.members.data,
 );
 
-const search = ref<string>('');
-const statusFilter = ref<string>('Semua');
-const detailCustomerId = ref<number | null>(null);
+const search = ref<string>(props.filters.q);
+const statusFilter = ref<string>(props.filters.status);
+const accountFilter = ref<string>(props.filters.account);
+const selectableStatusFilters = computed<string[]>(() =>
+    props.statusFilters.filter((filter) => filter !== 'Semua'),
+);
+const allFiltersSelected = computed<boolean>(
+    () =>
+        statusFilter.value === 'Semua' && accountFilter.value === 'Semua',
+);
+const detailCustomerId = ref<number | null>(
+    props.memberDetail?.customer.id ?? null,
+);
 const detailTab = ref<'stamps' | 'orders'>('stamps');
 const isCreateOpen = ref<boolean>(false);
+const editingCustomerId = ref<number | null>(null);
 
 const draft = ref({
     name: '',
@@ -62,54 +97,27 @@ const draft = ref({
     vehicles: [emptyVehicle(true)],
 });
 
-const filterOptions = ['Semua', 'aktif', 'tidak aktif'];
+const detailCustomer = computed<CarwashCustomer | null>(() => {
+    if (props.mode === 'demo') {
+        return (
+            workflow.customers.value.find(
+                (customer) => customer.id === detailCustomerId.value,
+            ) ?? null
+        );
+    }
 
-const filteredCustomers = computed<CarwashCustomer[]>(() => {
-    const query = search.value.trim().toLowerCase();
-
-    return customerList.value.filter((customer) => {
-        const matchesStatus =
-            statusFilter.value === 'Semua' ||
-            customer.status === statusFilter.value;
-        const matchesQuery =
-            query === '' ||
-            customer.name.toLowerCase().includes(query) ||
-            customer.vehicles.some(
-                (vehicle) =>
-                    vehicle.plate.toLowerCase().includes(query) ||
-                    vehicle.name.toLowerCase().includes(query),
-            ) ||
-            customer.phone.includes(query) ||
-            customer.memberId.toLowerCase().includes(query);
-
-        return matchesStatus && matchesQuery;
-    });
+    return props.memberDetail?.customer.id === detailCustomerId.value
+        ? props.memberDetail.customer
+        : null;
 });
-
-const detailCustomer = computed<CarwashCustomer | null>(
-    () =>
-        customerList.value.find(
-            (customer) => customer.id === detailCustomerId.value,
-        ) ?? null,
-);
 
 /** Orders belonging to the customer in the drawer (BR-07). */
 const detailOrders = computed<CarwashOrder[]>(() =>
-    props.orders.filter((order) => order.customerId === detailCustomerId.value),
+    detailCustomer.value ? (props.memberDetail?.orders ?? []) : [],
 );
 
-const totalStamps = computed<number>(() =>
-    customerList.value.reduce((total, customer) => total + customer.stamps, 0),
-);
-
-const activeCount = computed<number>(
-    () =>
-        customerList.value.filter((customer) => customer.status === 'aktif')
-            .length,
-);
-
-const withAccountCount = computed<number>(
-    () => customerList.value.filter((customer) => customer.hasAccount).length,
+const stampHistory = computed<CarwashStampEntry[]>(() =>
+    detailCustomer.value ? (props.memberDetail?.stampHistory ?? []) : [],
 );
 
 /** Rewards the drawer customer can already claim. */
@@ -136,6 +144,35 @@ const canCreate = computed<boolean>(
             (vehicle) =>
                 vehicle.name.trim() !== '' && vehicle.plate.trim() !== '',
         ),
+);
+
+const memberForm = useForm({
+    name: '',
+    phone: '',
+    email: '' as string | null,
+    vehicles: [] as Array<{
+        id?: number;
+        name: string;
+        plate: string;
+        type: string;
+    }>,
+});
+const statusForm = useForm({ is_active: true });
+
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(search, () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => visit({ q: search.value, page: 1 }), 300);
+});
+
+watch(
+    () => props.memberDetail?.customer.id,
+    (memberId) => {
+        if (memberId !== undefined) {
+            detailCustomerId.value = memberId;
+        }
+    },
 );
 
 function emptyVehicle(isPrimary = false): CarwashVehicle {
@@ -171,44 +208,195 @@ function initialsOf(name: string): string {
 function openDetail(customer: CarwashCustomer): void {
     detailCustomerId.value = customer.id;
     detailTab.value = 'stamps';
+
+    router.reload({
+        only: ['memberDetail'],
+        data: { member: customer.id },
+        preserveScroll: true,
+        preserveState: true,
+    });
 }
 
-function createCustomer(): void {
-    if (!canCreate.value) {
+function closeDetail(): void {
+    detailCustomerId.value = null;
+}
+
+function visit(overrides: Partial<CarwashMemberFilters> = {}): void {
+    const filters = {
+        q: search.value,
+        status: statusFilter.value,
+        account: accountFilter.value,
+        page: props.filters.page,
+        ...overrides,
+    };
+
+    router.get(
+        props.mode === 'demo' ? admin.members.url() : indexMembers.url(),
+        filters,
+        { preserveState: true, preserveScroll: true, replace: true },
+    );
+}
+
+function resetFilters(): void {
+    statusFilter.value = 'Semua';
+    accountFilter.value = 'Semua';
+    visit({ status: 'Semua', account: 'Semua', page: 1 });
+}
+
+function toggleStatusFilter(status: string): void {
+    const nextStatus = statusFilter.value === status ? 'Semua' : status;
+
+    statusFilter.value = nextStatus;
+    visit({ status: nextStatus, page: 1 });
+}
+
+function toggleAccountFilter(account: string): void {
+    const nextAccount = accountFilter.value === account ? 'Semua' : account;
+
+    accountFilter.value = nextAccount;
+    visit({ account: nextAccount, page: 1 });
+}
+
+function openCreateForm(): void {
+    if (!props.capabilities.create) {
         return;
     }
 
-    const sequence = customerList.value.length + 1;
-    const vehicles = draft.value.vehicles.map((vehicle, index) => ({
+    editingCustomerId.value = null;
+    draft.value = {
+        name: '',
+        phone: '',
+        email: '',
+        vehicles: [emptyVehicle(true)],
+    };
+    memberForm.clearErrors();
+    isCreateOpen.value = true;
+}
+
+function openEditForm(): void {
+    if (!props.capabilities.update || !detailCustomer.value) {
+        return;
+    }
+
+    editingCustomerId.value = detailCustomer.value.id;
+    draft.value = {
+        name: detailCustomer.value.name,
+        phone: detailCustomer.value.phone,
+        email: detailCustomer.value.email,
+        vehicles: detailCustomer.value.vehicles.map((vehicle) => ({
+            ...vehicle,
+        })),
+    };
+    memberForm.clearErrors();
+    isCreateOpen.value = true;
+}
+
+function saveMember(): void {
+    const requiredCapability =
+        editingCustomerId.value === null
+            ? props.capabilities.create
+            : props.capabilities.update;
+
+    if (!requiredCapability || !canCreate.value) {
+        return;
+    }
+
+    if (props.mode === 'live') {
+        saveLiveMember();
+
+        return;
+    }
+
+    saveDemoMember();
+}
+
+function saveLiveMember(): void {
+    memberForm.name = draft.value.name;
+    memberForm.phone = draft.value.phone;
+    memberForm.email = draft.value.email || null;
+    memberForm.vehicles = draft.value.vehicles.map((vehicle) => ({
+        ...(vehicle.id ? { id: vehicle.id } : {}),
+        name: vehicle.name,
+        plate: vehicle.plate,
+        type: vehicle.type,
+    }));
+
+    const action =
+        editingCustomerId.value === null
+            ? storeMember()
+            : updateMember(editingCustomerId.value);
+
+    memberForm.submit(action, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isCreateOpen.value = false;
+            editingCustomerId.value = null;
+        },
+    });
+}
+
+function saveDemoMember(): void {
+    if (editingCustomerId.value !== null) {
+        const index = workflow.customers.value.findIndex(
+            (customer) => customer.id === editingCustomerId.value,
+        );
+
+        if (index >= 0) {
+            const current = workflow.customers.value[index];
+            const vehicles = normalizedDraftVehicles();
+            workflow.customers.value[index] = {
+                ...current,
+                name: draft.value.name.trim(),
+                phone: draft.value.phone.trim(),
+                email: draft.value.email.trim(),
+                vehicle: vehicles[0].name,
+                plate: vehicles[0].plate,
+                vehicles,
+                initials: initialsOf(draft.value.name),
+            };
+        }
+
+        isCreateOpen.value = false;
+
+        return;
+    }
+
+    createCustomer();
+}
+
+function normalizedDraftVehicles(): CarwashVehicle[] {
+    return draft.value.vehicles.map((vehicle, index) => ({
         ...vehicle,
         name: vehicle.name.trim(),
-        plate: vehicle.plate.trim().toUpperCase(),
+        plate: vehicle.plate.replace(/\s+/g, '').toUpperCase(),
         isPrimary: index === 0,
     }));
+}
+
+function createCustomer(): void {
+    const sequence = workflow.customers.value.length + 1;
+    const vehicles = normalizedDraftVehicles();
     const primaryVehicle = vehicles[0];
 
-    customerList.value = [
-        {
-            id: 1000 + sequence,
-            name: draft.value.name,
-            memberId: `ZW-2026-${String(1000 + sequence).slice(-4)}`,
-            phone: draft.value.phone,
-            email: draft.value.email || '—',
-            vehicle: primaryVehicle.name,
-            plate: primaryVehicle.plate,
-            vehicles,
-            stamps: 0,
-            lifetimeStamps: 0,
-            visits: 0,
-            spend: 0,
-            joinedAt: 'Agu 2026',
-            lastVisit: 'Belum pernah',
-            initials: initialsOf(draft.value.name),
-            status: 'aktif',
-            hasAccount: false,
-        },
-        ...customerList.value,
-    ];
+    workflow.addCustomer({
+        id: 1000 + sequence,
+        name: draft.value.name,
+        memberId: `ZW-2026-${String(1000 + sequence).slice(-4)}`,
+        phone: draft.value.phone,
+        email: draft.value.email || '—',
+        vehicle: primaryVehicle.name,
+        plate: primaryVehicle.plate,
+        vehicles,
+        stamps: 0,
+        lifetimeStamps: 0,
+        visits: 0,
+        spend: 0,
+        joinedAt: 'Agu 2026',
+        lastVisit: 'Belum pernah',
+        initials: initialsOf(draft.value.name),
+        status: 'aktif',
+        hasAccount: false,
+    });
 
     draft.value = {
         name: '',
@@ -217,6 +405,31 @@ function createCustomer(): void {
         vehicles: [emptyVehicle(true)],
     };
     isCreateOpen.value = false;
+}
+
+function toggleStatus(customer: CarwashCustomer): void {
+    if (!props.capabilities.update) {
+        return;
+    }
+
+    const isActive = customer.status !== 'aktif';
+
+    if (props.mode === 'demo') {
+        const target = workflow.customers.value.find(
+            (candidate) => candidate.id === customer.id,
+        );
+
+        if (target) {
+            target.status = isActive ? 'aktif' : 'tidak aktif';
+        }
+
+        return;
+    }
+
+    statusForm.is_active = isActive;
+    statusForm.submit(updateMemberStatus(customer.id), {
+        preserveScroll: true,
+    });
 }
 
 function stampToneClass(type: string): string {
@@ -238,20 +451,20 @@ function stampToneClass(type: string): string {
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
                 label="Total member"
-                :value="String(customerList.length)"
-                :caption="`${activeCount} aktif`"
+                :value="String(stats.total)"
+                :caption="`${stats.active} aktif`"
                 :icon="Users"
             />
             <StatCard
                 label="Punya akun portal"
-                :value="String(withAccountCount)"
+                :value="String(stats.withAccount)"
                 caption="terdaftar di aplikasi member"
                 :icon="UserPlus"
                 tone="emerald"
             />
             <StatCard
                 label="Stempel beredar"
-                :value="formatNumber(totalStamps)"
+                :value="formatNumber(stats.circulatingStamps)"
                 caption="belum ditukar reward"
                 :icon="Sparkles"
                 tone="amber"
@@ -275,21 +488,72 @@ function stampToneClass(type: string): string {
                         Database member
                     </h3>
                     <p class="mt-0.5 text-xs text-slate-500">
-                        {{ filteredCustomers.length }} member ditampilkan
+                        {{ members.meta.total }} member ditemukan
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <DataToolbar
                         v-model:search="search"
                         placeholder="Cari nama / plat / HP"
-                        :filters="filterOptions"
-                        :active-filter="statusFilter"
-                        @filter="statusFilter = $event"
-                    />
+                    >
+                        <div
+                            class="flex flex-wrap items-center gap-1.5"
+                            aria-label="Filter member"
+                        >
+                            <button
+                                type="button"
+                                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                                :class="
+                                    allFiltersSelected
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                "
+                                :aria-pressed="allFiltersSelected"
+                                @click="resetFilters"
+                            >
+                                Semua
+                            </button>
+                            <button
+                                v-for="filter in selectableStatusFilters"
+                                :key="filter"
+                                type="button"
+                                class="rounded-full px-3 py-1.5 text-xs font-medium capitalize transition"
+                                :class="
+                                    statusFilter === filter
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                "
+                                :aria-pressed="statusFilter === filter"
+                                @click="toggleStatusFilter(filter)"
+                            >
+                                {{ filter }}
+                            </button>
+                            <span
+                                class="mx-0.5 h-5 w-px bg-slate-200"
+                                aria-hidden="true"
+                            />
+                            <button
+                                v-for="filter in accountFilters"
+                                :key="filter"
+                                type="button"
+                                class="rounded-full px-3 py-1.5 text-xs font-medium transition"
+                                :class="
+                                    accountFilter === filter
+                                        ? 'bg-slate-900 text-white'
+                                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                                "
+                                :aria-pressed="accountFilter === filter"
+                                @click="toggleAccountFilter(filter)"
+                            >
+                                {{ filter }}
+                            </button>
+                        </div>
+                    </DataToolbar>
                     <button
+                        v-if="capabilities.create"
                         type="button"
                         class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
-                        @click="isCreateOpen = true"
+                        @click="openCreateForm"
                     >
                         <Plus class="h-4 w-4" />
                         Daftar Member
@@ -297,7 +561,7 @@ function stampToneClass(type: string): string {
                 </div>
             </div>
 
-            <div v-if="filteredCustomers.length > 0" class="overflow-x-auto">
+            <div v-if="memberList.length > 0" class="overflow-x-auto">
                 <table class="w-full min-w-[860px] text-sm">
                     <thead>
                         <tr
@@ -313,7 +577,7 @@ function stampToneClass(type: string): string {
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         <tr
-                            v-for="customer in filteredCustomers"
+                            v-for="customer in memberList"
                             :key="customer.id"
                             class="transition hover:bg-slate-50/70"
                         >
@@ -402,7 +666,30 @@ function stampToneClass(type: string): string {
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
-                                <StatusPill :status="customer.status" />
+                                <div
+                                    class="flex flex-col items-start gap-1.5"
+                                >
+                                    <StatusPill
+                                        :status="customer.status"
+                                        :label="
+                                            customer.status === 'aktif'
+                                                ? 'Member aktif'
+                                                : 'Member tidak aktif'
+                                        "
+                                    />
+                                    <StatusPill
+                                        :status="
+                                            customer.hasAccount
+                                                ? 'aktif'
+                                                : 'tidak aktif'
+                                        "
+                                        :label="
+                                            customer.hasAccount
+                                                ? 'Punya akun portal'
+                                                : 'Tidak punya akun portal'
+                                        "
+                                    />
+                                </div>
                             </td>
                             <td class="px-5 py-3.5 text-right">
                                 <button
@@ -424,15 +711,19 @@ function stampToneClass(type: string): string {
                 title="Member tidak ditemukan"
                 caption="Ubah kata kunci atau daftarkan member baru."
             />
+            <DataPagination
+                :meta="members.meta"
+                @change="visit({ page: $event })"
+            />
         </section>
     </div>
 
     <!-- Customer detail -->
     <SlideOver
-        :open="detailCustomer !== null"
+        :open="detailCustomerId !== null"
         :title="detailCustomer?.name"
         :caption="detailCustomer?.memberId"
-        @close="detailCustomerId = null"
+        @close="closeDetail"
     >
         <div v-if="detailCustomer" class="space-y-5">
             <!-- Stamp card -->
@@ -449,7 +740,28 @@ function stampToneClass(type: string): string {
                             </span>
                         </p>
                     </div>
-                    <StatusPill :status="detailCustomer.status" />
+                    <div class="flex flex-col items-end gap-1.5">
+                        <StatusPill
+                            :status="detailCustomer.status"
+                            :label="
+                                detailCustomer.status === 'aktif'
+                                    ? 'Member aktif'
+                                    : 'Member tidak aktif'
+                            "
+                        />
+                        <StatusPill
+                            :status="
+                                detailCustomer.hasAccount
+                                    ? 'aktif'
+                                    : 'tidak aktif'
+                            "
+                            :label="
+                                detailCustomer.hasAccount
+                                    ? 'Punya akun portal'
+                                    : 'Tidak punya akun portal'
+                            "
+                        />
+                    </div>
                 </div>
                 <div class="mt-3">
                     <StampProgress
@@ -501,8 +813,15 @@ function stampToneClass(type: string): string {
                     class="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
                 >
                     <Mail class="h-4 w-4 shrink-0 text-slate-400" />
-                    <span class="min-w-0 truncate text-sm text-slate-700">
-                        {{ detailCustomer.email }}
+                    <span
+                        class="min-w-0 truncate text-sm"
+                        :class="
+                            detailCustomer.email
+                                ? 'text-slate-700'
+                                : 'text-slate-400'
+                        "
+                    >
+                        {{ detailCustomer.email || 'Tidak ada email' }}
                     </span>
                 </div>
                 <div class="rounded-xl border border-slate-200 p-3">
@@ -535,6 +854,32 @@ function stampToneClass(type: string): string {
                         </li>
                     </ul>
                 </div>
+            </div>
+
+            <div
+                v-if="capabilities.update"
+                class="grid grid-cols-2 gap-2"
+            >
+                <button
+                    type="button"
+                    class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    @click="openEditForm"
+                >
+                    <Pencil class="h-3.5 w-3.5" />
+                    Ubah data
+                </button>
+                <button
+                    type="button"
+                    class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                    @click="toggleStatus(detailCustomer)"
+                >
+                    <Power class="h-3.5 w-3.5" />
+                    {{
+                        detailCustomer.status === 'aktif'
+                            ? 'Nonaktifkan'
+                            : 'Aktifkan'
+                    }}
+                </button>
             </div>
 
             <!-- Unlocked rewards -->
@@ -666,13 +1011,22 @@ function stampToneClass(type: string): string {
                 </div>
             </div>
         </div>
+        <div v-else class="space-y-4 animate-pulse">
+            <div class="h-28 rounded-2xl bg-slate-100"></div>
+            <div class="h-16 rounded-xl bg-slate-100"></div>
+            <div class="h-48 rounded-xl bg-slate-100"></div>
+        </div>
     </SlideOver>
 
     <!-- Register customer -->
     <ModalDialog
         :open="isCreateOpen"
         title="Daftarkan member"
-        caption="Data dasar untuk mulai mengumpulkan stempel"
+        :caption="
+            editingCustomerId === null
+                ? 'Data dasar untuk mulai mengumpulkan stempel'
+                : 'Perbarui profil dan kendaraan member'
+        "
         @close="isCreateOpen = false"
     >
         <div class="space-y-3">
@@ -809,11 +1163,13 @@ function stampToneClass(type: string): string {
                                 v-model="vehicle.type"
                                 class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 focus:border-cyan-400 focus:outline-none"
                             >
-                                <option class="bg-white text-slate-900">
-                                    Mobil
-                                </option>
-                                <option class="bg-white text-slate-900">
-                                    Motor
+                                <option
+                                    v-for="vehicleType in vehicleTypes"
+                                    :key="vehicleType"
+                                    class="bg-white text-slate-900"
+                                    :value="vehicleType"
+                                >
+                                    {{ vehicleType }}
                                 </option>
                             </select>
                         </div>
@@ -826,6 +1182,12 @@ function stampToneClass(type: string): string {
             >
                 Member baru dimulai dengan 0 stempel. Kumpulkan
                 {{ stampTarget }} stempel untuk {{ brand.stampReward }}.
+            </p>
+            <p
+                v-if="Object.keys(memberForm.errors).length > 0"
+                class="rounded-xl bg-rose-50 px-3 py-2.5 text-xs text-rose-700 ring-1 ring-rose-100"
+            >
+                {{ Object.values(memberForm.errors)[0] }}
             </p>
         </div>
 
@@ -840,8 +1202,8 @@ function stampToneClass(type: string): string {
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canCreate"
-                @click="createCustomer"
+                :disabled="!canCreate || memberForm.processing"
+                @click="saveMember"
             >
                 Simpan member
             </button>

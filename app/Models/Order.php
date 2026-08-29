@@ -2,8 +2,10 @@
 
 namespace App\Models;
 
+use App\Support\VehiclePlate;
 use Database\Factories\OrderFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -75,6 +77,17 @@ class Order extends Model
     public function transactions(): HasMany
     {
         return $this->hasMany(OrderTransaction::class)->orderBy('paid_at');
+    }
+
+    /**
+     * Kept in the same canonical form as a member's vehicle, so the car an
+     * order was written for can be matched against the ones already registered.
+     *
+     * @return Attribute<never, string>
+     */
+    protected function vehiclePlate(): Attribute
+    {
+        return Attribute::set(fn (?string $plate): string => VehiclePlate::normalize($plate));
     }
 
     /** @return array<string, string> */

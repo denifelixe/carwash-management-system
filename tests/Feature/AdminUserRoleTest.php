@@ -38,7 +38,7 @@ test('an owner sees live staff roles shifts permissions and an enabled sidebar i
                 ->has('staff', 2)
                 ->has('roles', 4)
                 ->has('shifts', 2)
-                ->has('allModules', 12)
+                ->has('allModules', 13)
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
                 ->where('modules.8.key', 'users_and_roles')
@@ -161,7 +161,7 @@ test('an owner can create and update a role permission matrix', function () {
 
     $role = AdminRole::query()->where('key', 'supervisor_operasional')->firstOrFail();
 
-    expect($role->modules()->wherePivot('can_read', true)->count())->toBe(12);
+    expect($role->modules()->wherePivot('can_read', true)->count())->toBe(13);
 
     $permissions[1]['can_read'] = false;
 
@@ -178,7 +178,7 @@ test('an owner can create and update a role permission matrix', function () {
     expect($role->refresh())
         ->name->toBe('Supervisor')
         ->is_active->toBeFalse()
-        ->and($role->modules()->wherePivot('can_read', true)->count())->toBe(11);
+        ->and($role->modules()->wherePivot('can_read', true)->count())->toBe(12);
 });
 
 test('read-only staff can view the module but cannot mutate users', function () {

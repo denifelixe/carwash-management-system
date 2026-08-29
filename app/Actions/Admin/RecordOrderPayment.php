@@ -62,7 +62,8 @@ class RecordOrderPayment
                 'shift_name' => $shift?->name,
                 'amount' => $amount,
                 'channel_breakdown' => $channels,
-                'paid_at' => now('Asia/Jakarta'),
+                /* The outlet's own clock, which is what the column holds. */
+                'paid_at' => now(),
             ]);
 
             $order->update([

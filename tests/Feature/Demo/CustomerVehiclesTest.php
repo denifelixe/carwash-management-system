@@ -16,13 +16,32 @@ test('a customer can own multiple vehicles with different plates', function () {
 
 test('the customer page receives every vehicle owned by a customer', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
-        ->get(route('demo.admin.customers'))
+        ->get(route('demo.admin.members'))
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Customers')
-                ->has('customers.0.vehicles', 2)
-                ->where('customers.0.vehicles.0.plate', 'B 5150 AB')
-                ->where('customers.0.vehicles.1.plate', 'B 2020 HG')
+                ->component('admin/Customers')
+                ->where('mode', 'demo')
+                ->has('members.meta')
+                ->has('members.data.0.vehicles', 2)
+                ->where('members.data.0.vehicles.0.plate', 'B 5150 AB')
+                ->where('members.data.0.vehicles.1.plate', 'B 2020 HG')
+                ->where('capabilities.create', true)
+        );
+});
+
+test('the demo member page combines status and portal account filters', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.members', [
+            'status' => 'tidak aktif',
+            'account' => 'Punya akun portal',
+        ]))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('filters.status', 'tidak aktif')
+                ->where('filters.account', 'Punya akun portal')
+                ->where('members.meta.total', 1)
+                ->where('members.data.0.id', 12),
         );
 });

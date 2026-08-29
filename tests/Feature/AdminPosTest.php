@@ -4,6 +4,8 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminWorkShift;
+use App\Models\Member;
+use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
@@ -236,6 +238,144 @@ test('cashier access follows the role permission matrix', function () {
     $this->actingAs($admin, 'admin')
         ->post(route('admin.pos.payments.store', $order), [])
         ->assertForbidden();
+});
+
+test('the cashier can sign the walk in behind an order up as a member', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['stamps' => 2]);
+    $order = Order::factory()->create([
+        'status' => 'pelunasan',
+        'customer_name' => 'Tamu Walk In',
+        'stamps_earned' => 0,
+    ]);
+    $order->services()->attach($service, [
+        'service_name' => $service->name,
+        'unit_price' => $service->price,
+        'stamps' => $service->stamps,
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200002222',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'B 8120 DS',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $member = Member::query()->latest('id')->firstOrFail();
+    $vehicle = MemberVehicle::query()->latest('id')->firstOrFail();
+
+    expect($member)
+        ->name->toBe('Deni Victoria')
+        ->phone->toBe('081200002222')
+        ->email->toBeNull()
+        ->password->toBeNull()
+        ->and($vehicle)
+        ->member_id->toBe($member->id)
+        ->name->toBe('Toyota Avanza')
+        ->plate->toBe('B8120DS')
+        ->is_primary->toBeTrue()
+        ->and($order->refresh())
+        ->member_id->toBe($member->id)
+        ->member_vehicle_id->toBe($vehicle->id)
+        ->customer_name->toBe('Deni Victoria')
+        ->customer_phone->toBe('081200002222')
+        ->vehicle_plate->toBe('B8120DS')
+        /* The visit was always worth its stamps; there is finally someone to hold them. */
+        ->stamps_earned->toBe(2);
+});
+
+test('a payment taken after the walk in joins belongs to the new member', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200002222',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'B 8120 DS',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 50000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $member = Member::query()->latest('id')->firstOrFail();
+
+    expect($order->refresh())
+        ->status->toBe('selesai')
+        ->member_id->toBe($member->id)
+        ->and($member->orders()->count())->toBe(1);
+});
+
+test('a walk in cannot join on a plate or phone another member already holds', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $existing = Member::factory()->create(['phone' => '081200003333']);
+    MemberVehicle::factory()->for($existing)->create(['plate' => 'B 8120 DS']);
+    $order = Order::factory()->create(['status' => 'pelunasan']);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200003333',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'b8120ds',
+        ])
+        ->assertSessionHasErrors(['phone', 'vehicle_plate']);
+
+    expect(Member::query()->count())->toBe(1)
+        ->and($order->refresh()->member_id)->toBeNull();
+});
+
+test('an order that already belongs to a member cannot be handed to another', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $order = Order::factory()->create(['status' => 'pelunasan', 'member_id' => $member->id]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200002222',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'B 8120 DS',
+        ])
+        ->assertSessionHasErrors('name');
+
+    expect($order->refresh()->member_id)->toBe($member->id)
+        ->and(Member::query()->count())->toBe(1);
+});
+
+test('registering a member follows the cashier write permission', function () {
+    $module = AdminModule::query()->where('key', 'pos')->firstOrFail();
+    $role = AdminRole::query()->create([
+        'key' => 'pos_reader_member',
+        'name' => 'POS Reader',
+        'is_active' => true,
+    ]);
+    $role->modules()->attach($module, ['can_read' => true]);
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+    $order = Order::factory()->create(['status' => 'pelunasan']);
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200002222',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'B 8120 DS',
+        ])
+        ->assertForbidden();
+
+    expect(Member::query()->count())->toBe(0);
 });
 
 test('demo and live cashier pages have one frontend source of truth', function () {

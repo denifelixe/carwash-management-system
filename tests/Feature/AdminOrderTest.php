@@ -73,7 +73,7 @@ test('an owner can create a member order with database priced services', functio
         ->member_id->toBe($member->id)
         ->member_vehicle_id->toBe($vehicle->id)
         ->customer_name->toBe($member->name)
-        ->vehicle_plate->toBe('B 1234 XYZ')
+        ->vehicle_plate->toBe('B1234XYZ')
         ->subtotal->toBe(70000)
         ->total->toBe(70000)
         ->status->toBe('menunggu')
@@ -100,7 +100,7 @@ test('an owner can create a non member order without registering a member', func
     expect(Order::query()->latest('id')->firstOrFail())
         ->member_id->toBeNull()
         ->customer_name->toBe('Tamu Walk In')
-        ->vehicle_plate->toBe('B 9876 ABC');
+        ->vehicle_plate->toBe('B9876ABC');
 });
 
 test('a member vehicle must belong to the selected member', function () {
@@ -155,6 +155,33 @@ test('order access follows the role permission matrix', function () {
     $this->actingAs($admin, 'admin')
         ->post(route('admin.orders.store'), [])
         ->assertForbidden();
+});
+
+test('a walk in order is refused when the plate already belongs to a member', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create(['name' => 'Sinta Melati']);
+    MemberVehicle::factory()->for($member)->create(['plate' => 'B 8120 DS']);
+    $service = Service::factory()->create();
+
+    /* Typed with the spacing the member's own plate was not stored with. */
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Tamu Walk In',
+            'customer_phone' => '081200001111',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'b8120ds',
+            'service_ids' => [$service->id],
+        ])
+        ->assertSessionHasErrors('vehicle_plate');
+
+    expect(Order::query()->count())->toBe(0);
+});
+
+test('a member vehicle keeps its plate in the one stored form', function () {
+    $vehicle = MemberVehicle::factory()->create(['plate' => 'b  8120  ds']);
+
+    expect($vehicle->refresh()->plate)->toBe('B8120DS');
 });
 
 test('demo and live order pages have one frontend source of truth', function () {

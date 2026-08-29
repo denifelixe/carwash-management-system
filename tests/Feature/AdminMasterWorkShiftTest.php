@@ -88,6 +88,46 @@ test('an owner can create an overnight work shift', function () {
         ->is_active->toBeTrue();
 });
 
+test('an owner can create a work shift without work hours', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.work-shifts.store'), workShiftPayload([
+            'key' => 'flexible',
+            'name' => 'Shift Fleksibel',
+            'starts_at' => null,
+            'ends_at' => null,
+        ]))
+        ->assertRedirect(route('admin.master.work-shifts.index'))
+        ->assertSessionHasNoErrors();
+
+    $workShift = AdminWorkShift::query()->where('key', 'flexible')->firstOrFail();
+
+    expect($workShift)
+        ->starts_at->toBeNull()
+        ->ends_at->toBeNull();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.work-shifts.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('workShifts.0.key', 'flexible')
+                ->where('workShifts.0.starts_at', null)
+                ->where('workShifts.0.ends_at', null),
+        );
+});
+
+test('work shift hours must either both be filled or both be empty', function (string $missingField) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.work-shifts.store'), workShiftPayload([
+            $missingField => null,
+        ]))
+        ->assertSessionHasErrors($missingField);
+})->with(['starts_at', 'ends_at']);
+
 test('an owner can update and deactivate a work shift', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $workShift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();

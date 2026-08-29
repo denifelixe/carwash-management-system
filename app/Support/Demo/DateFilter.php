@@ -2,6 +2,7 @@
 
 namespace App\Support\Demo;
 
+use App\Support\AppSettings;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Http\Request;
@@ -48,7 +49,7 @@ class DateFilter
     /**
      * Everything the filter needs to describe and re-select the day.
      *
-     * @return array{date: string, today: string, earliest: string, latest: string, label: string}
+     * @return array{date: string, today: string, earliest: string, latest: string, label: string, timezone: string}
      */
     public static function meta(string $date): array
     {
@@ -58,6 +59,7 @@ class DateFilter
             'earliest' => Reports::earliest(),
             'latest' => Reports::today()->addDays(self::FUTURE_DAYS)->toDateString(),
             'label' => self::label($date),
+            'timezone' => AppSettings::timezone(),
         ];
     }
 

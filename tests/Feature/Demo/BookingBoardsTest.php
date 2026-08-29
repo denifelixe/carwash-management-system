@@ -2,6 +2,7 @@
 
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
+use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia;
 
 test('the booking board keeps only the two schedule counters', function () {
@@ -271,7 +272,8 @@ test('the booking form is the order form plus a date', function () {
 });
 
 test('the booking form starts at the actual current date', function () {
-    $this->travelTo('2026-08-18 18:00:00');
+    /* An evening UTC instant that is already tomorrow on the outlet clock. */
+    $this->travelTo(CarbonImmutable::parse('2026-08-18 18:00', 'UTC'));
 
     $this->withSession(['carwash_role' => 'owner'])
         ->get(route('demo.admin.bookings'))

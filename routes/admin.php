@@ -3,8 +3,11 @@
 use App\Http\Controllers\Admin\AdminRoleController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\Master\ServiceController;
+use App\Http\Controllers\Admin\Master\TimezoneController;
 use App\Http\Controllers\Admin\Master\WorkShiftController;
+use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PosController;
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
@@ -56,6 +59,16 @@ Route::domain((string) config('domains.admin'))
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
             Route::get('pos', [PosController::class, 'index'])->name('pos.index');
             Route::post('pos/{order}/payments', [PosController::class, 'store'])->name('pos.payments.store');
+            Route::post('pos/{order}/member', [PosController::class, 'storeMember'])->name('pos.member.store');
+            Route::get('finance', [FinanceController::class, 'index'])->name('finance.index');
+            Route::post('finance', [FinanceController::class, 'store'])->name('finance.store');
+            Route::patch('finance/{cashEntry}', [FinanceController::class, 'update'])->name('finance.update');
+            Route::delete('finance/{cashEntry}', [FinanceController::class, 'destroy'])->name('finance.destroy');
+            Route::get('finance/{cashEntry}/attachment', [FinanceController::class, 'attachment'])->name('finance.attachment');
+            Route::get('members', [MemberController::class, 'index'])->name('members.index');
+            Route::post('members', [MemberController::class, 'store'])->name('members.store');
+            Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
+            Route::patch('members/{member}/status', [MemberController::class, 'updateStatus'])->name('members.status.update');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
             Route::patch('users/{adminUser}/shift', [AdminUserController::class, 'updateShift'])->name('users.shift.update');
@@ -70,6 +83,8 @@ Route::domain((string) config('domains.admin'))
             Route::post('master/shift', [WorkShiftController::class, 'store'])->name('master.work-shifts.store');
             Route::patch('master/shift/{workShift}', [WorkShiftController::class, 'update'])->name('master.work-shifts.update');
             Route::delete('master/shift/{workShift}', [WorkShiftController::class, 'destroy'])->name('master.work-shifts.destroy');
+            Route::get('master/zona-waktu', [TimezoneController::class, 'index'])->name('master.timezone.index');
+            Route::patch('master/zona-waktu', [TimezoneController::class, 'update'])->name('master.timezone.update');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');

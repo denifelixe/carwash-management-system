@@ -116,6 +116,14 @@ export function useCarwashWorkflow() {
         orders.value.unshift(order);
     }
 
+    function addCustomer(customer: CarwashCustomer): void {
+        if (
+            !customers.value.some((candidate) => candidate.id === customer.id)
+        ) {
+            customers.value.unshift(customer);
+        }
+    }
+
     function addMoneyIn(entry: CarwashMoneyEntry): void {
         if (!moneyIn.value.some((candidate) => candidate.id === entry.id)) {
             moneyIn.value.unshift(entry);
@@ -138,6 +146,7 @@ export function useCarwashWorkflow() {
         hydrateMoneyIn,
         hydrateMoneyOut,
         addOrder,
+        addCustomer,
         addMoneyIn,
         addMoneyOut,
     };

@@ -10,6 +10,7 @@ import {
     ClipboardList,
     Database,
     Gift,
+    Globe,
     LayoutDashboard,
     LogOut,
     Menu,
@@ -44,7 +45,7 @@ const moduleIcons: Record<string, LucideIcon> = {
     dashboard: LayoutDashboard,
     orders: ClipboardList,
     pos: ScanLine,
-    customers: Users,
+    members: Users,
     finance: Wallet,
     bookings: CalendarClock,
     inventory: Boxes,
@@ -54,6 +55,7 @@ const moduleIcons: Record<string, LucideIcon> = {
     master: Database,
     services: SprayCan,
     'work-shifts': Clock3,
+    timezone: Globe,
 };
 
 const fallbackModule: CarwashAdminModule = {

@@ -23,7 +23,9 @@ class OrderFactory extends Factory
             'customer_phone' => fake()->numerify('08##########'),
             'vehicle_name' => fake()->randomElement(['Toyota Avanza', 'Honda Brio', 'Yamaha NMax']),
             'vehicle_plate' => fake()->bothify('? #### ??'),
-            'service_date' => today(),
+            /* The service day is the Jakarta business day, the way the order
+             * module writes it — not the UTC day the app stores instants in. */
+            'service_date' => now()->toDateString(),
             'arrived_at' => now(),
             'source' => 'walk-in',
             'status' => 'menunggu',

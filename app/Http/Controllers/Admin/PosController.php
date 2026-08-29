@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\RecordOrderPayment;
+use App\Actions\Admin\RegisterOrderMember;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreOrderMemberRequest;
 use App\Http\Requests\Admin\StoreOrderPaymentRequest;
 use App\Models\Admin;
 use App\Models\Member;
@@ -37,7 +39,7 @@ class PosController extends Controller
 
         /** @var Admin $admin */
         $admin = $request->user('admin');
-        $today = CarbonImmutable::now('Asia/Jakarta')->startOfDay();
+        $today = CarbonImmutable::now()->startOfDay();
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
         $dailyOrders = OrderQueries::forDate($selectedDate);
         $bookings = OrderQueries::upcomingBookings($today->toDateString());
@@ -77,5 +79,17 @@ class PosController extends Controller
          * issued are the ones the cashier hands over.
          */
         return back()->with('success', 'Pembayaran berhasil dicatat.');
+    }
+
+    /**
+     * Signs the walk-in behind an order up as a member, without leaving the
+     * payment the cashier is already holding. The order moves onto the new
+     * member, so the payment booked next is theirs.
+     */
+    public function storeMember(StoreOrderMemberRequest $request, Order $order, RegisterOrderMember $registerMember): RedirectResponse
+    {
+        $registerMember->handle($order, $request->member());
+
+        return back()->with('success', 'Member baru berhasil dibuat dan order dipindahkan ke member tersebut.');
     }
 }

@@ -24,7 +24,7 @@ return new class extends Migration
             $table->string('vehicle_name');
             $table->string('vehicle_plate');
             $table->date('service_date')->index();
-            $table->timestamp('arrived_at')->nullable();
+            $table->dateTime('arrived_at')->nullable();
             $table->date('booking_date')->nullable();
             $table->string('source')->default('walk-in');
             $table->string('status')->default('menunggu')->index();
@@ -37,7 +37,7 @@ return new class extends Migration
             $table->string('payment_method')->nullable();
             $table->string('bay')->nullable();
             $table->text('notes')->nullable();
-            $table->timestamps();
+            $table->datetimes();
 
             $table->index(['service_date', 'status']);
         });

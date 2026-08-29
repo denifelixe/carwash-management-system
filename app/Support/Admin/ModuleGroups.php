@@ -16,6 +16,7 @@ class ModuleGroups
     private const MODULE_GROUPS = [
         'master_services' => 'master',
         'master_work_shifts' => 'master',
+        'master_timezone' => 'master',
     ];
 
     /** @var array<string, array{label: string, caption: string, icon: string}> */
