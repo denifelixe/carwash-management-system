@@ -243,7 +243,7 @@ test('the booking form is the order form plus a date', function () {
         resource_path('js/pages/demo/admin/Bookings.vue'),
     );
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     // Both forms keep the customer picker and multi-service grid.

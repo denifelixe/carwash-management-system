@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
- * Wraps a stat-card grid so mobile users land straight on the action area
- * instead of scrolling past summary cards.
+ * Wraps a stat-card grid so phone and tablet users land straight on the action
+ * area instead of scrolling past summary cards.
  *
- * By default the toggle only exists below `sm`; from `sm` up the grid is always
- * rendered, so a collapsed state can never hide the cards on desktop. Pages that
- * want the summary out of the way on every screen pass `collapsible="always"`,
- * and pages where the summary must stay visible pass `collapsible="never"` to
- * drop the toggle entirely and keep the header as a plain label.
+ * By default the toggle only exists below `lg` — the same breakpoint where the
+ * admin shell swaps its fixed sidebar for the hamburger — so tablets collapse
+ * exactly like phones. From `lg` up the grid is always rendered, so a collapsed
+ * state can never hide the cards on desktop. Pages that want the summary out of
+ * the way on every screen pass `collapsible="always"`, and pages where the
+ * summary must stay visible pass `collapsible="never"` to drop the toggle
+ * entirely and keep the header as a plain label.
  */
 import { ChevronDown } from '@lucide/vue';
 import { computed, ref, useId } from 'vue';
@@ -63,7 +65,7 @@ const contentClass = computed<string>(() => {
         return isOpen.value ? 'mt-3 grid' : 'hidden';
     }
 
-    return isOpen.value ? 'mt-3 grid sm:mt-0' : 'hidden sm:grid';
+    return isOpen.value ? 'mt-3 grid lg:mt-0' : 'hidden lg:grid';
 });
 </script>
 
@@ -83,7 +85,7 @@ const contentClass = computed<string>(() => {
             v-else
             type="button"
             class="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-left shadow-sm transition hover:bg-slate-50"
-            :class="isAlwaysCollapsible ? '' : 'sm:hidden'"
+            :class="isAlwaysCollapsible ? '' : 'lg:hidden'"
             :aria-expanded="isOpen"
             :aria-controls="contentId"
             @click="isOpen = !isOpen"

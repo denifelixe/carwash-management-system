@@ -16,7 +16,7 @@ function posReceiptModule(): string
 
 function posModule(): string
 {
-    return file_get_contents(resource_path('js/pages/demo/admin/Pos.vue'));
+    return file_get_contents(resource_path('js/pages/admin/Pos.vue'));
 }
 
 test('the slip is laid out at the printable width of the 80mm roll', function () {
@@ -66,9 +66,9 @@ test('the slip carries everything the customer needs to reconcile the payment', 
 
     expect(posModule())
         ->toContain('reference: paymentTransactionReference(transaction, order)')
-        ->toContain('lines: receiptLines')
-        ->toContain('previouslyPaid,')
-        ->toContain('priorDiscount,');
+        ->toContain('lines: snapshot.lines,')
+        ->toContain('previouslyPaid: snapshot.previouslyPaid,')
+        ->toContain('priorDiscount: snapshot.priorDiscount,');
 });
 
 test('the slip itemises every payment the order already took', function () {
@@ -87,11 +87,11 @@ test('the slip itemises every payment the order already took', function () {
         ->toContain("return 'Pembayaran';");
 
     expect(posModule())
-        ->toContain('const paymentHistory = order.transactions.map((entry) => ({')
+        ->toContain('history: order.transactions.map((entry) => ({')
         ->toContain('type: paymentHistoryTypeLabel(entry)')
         ->toContain('channels: transactionChannelsLabel(entry)')
         ->toContain('cashier: paymentTransactionRecorder(entry)')
-        ->toContain('history: paymentHistory');
+        ->toContain('history: snapshot.history,');
 });
 
 test('the POS stacks its lists as accordions with only Pelunasan open', function () {
@@ -181,14 +181,15 @@ test('the tender and change are read before the order is settled', function () {
     $pos = posModule();
 
     expect($pos)
-        ->toContain('const tendered = tenderedTotal.value;')
-        ->toContain('const change = changeAmount.value;')
-        ->toContain('tenderedTotal: tendered,')
-        ->toContain('change,')
-        ->not->toContain('tenderedTotal: tenderedTotal.value')
-        ->not->toContain('change: changeAmount.value');
+        // Both figures are banked in the snapshot the payment is built from...
+        ->toContain('tendered: tenderedTotal.value,')
+        ->toContain('change: changeAmount.value,')
+        // ...and every slip prints them from there, never re-reading them.
+        ->toContain('tenderedTotal: snapshot.tendered,')
+        ->toContain('change: snapshot.change,')
+        ->not->toContain('tenderedTotal: tenderedTotal.value');
 
-    $snapshot = strpos($pos, 'const change = changeAmount.value;');
+    $snapshot = strpos($pos, 'change: changeAmount.value,');
     $mutation = strpos($pos, 'order.paidAmount += amount;');
 
     expect($snapshot)->toBeLessThan($mutation);

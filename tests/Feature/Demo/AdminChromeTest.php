@@ -56,6 +56,8 @@ test('the sidebar modules follow the operational menu order', function () {
         'rewards',
         'users',
         'reports',
+        'master_services',
+        'master_work_shifts',
     ]);
 });
 
@@ -129,4 +131,35 @@ test('the dashboard uses finance and member metrics with the daily remaining bal
         ->not->toContain('Saldo akhir')
         ->not->toContain('cashSummary.closingBalance')
         ->not->toContain('Customer Aktif');
+});
+
+test('the summary cards collapse on tablets exactly like on phones', function () {
+    $summary = file_get_contents(
+        resource_path('js/components/demo/CollapsibleSummary.vue'),
+    );
+    $layout = file_get_contents(
+        resource_path('js/layouts/admin/AdminLayout.vue'),
+    );
+
+    expect($summary)
+        ->toContain("isAlwaysCollapsible ? '' : 'lg:hidden'")
+        ->toContain("isOpen.value ? 'mt-3 grid lg:mt-0' : 'hidden lg:grid'")
+        ->not->toContain("'sm:hidden'")
+        ->not->toContain('hidden sm:grid')
+        // The toggle survives right up to the width where the shell trades its
+        // hamburger for the fixed sidebar.
+        ->and($layout)
+        ->toContain('text-slate-600 lg:hidden');
+});
+
+test('the order overview relies on the default collapsible summary', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('<CollapsibleSummary')
+        ->toContain('title="Ringkasan hari ini"')
+        ->not->toContain('collapsible="never"')
+        ->not->toContain('collapsible="always"');
 });

@@ -12,6 +12,8 @@ use App\Http\Controllers\Demo\OrderController;
 use App\Http\Controllers\Demo\PosController;
 use App\Http\Controllers\Demo\ReportController;
 use App\Http\Controllers\Demo\RewardController;
+use App\Http\Controllers\Demo\ServiceController;
+use App\Http\Controllers\Demo\WorkShiftController;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -67,6 +69,14 @@ Route::name('demo.')->group(function () {
         Route::get('reports', [ReportController::class, 'index'])
             ->middleware('demo.module:reports')
             ->name('reports');
+
+        Route::get('master/layanan', [ServiceController::class, 'index'])
+            ->middleware('demo.module:master_services')
+            ->name('master.services');
+
+        Route::get('master/shift', [WorkShiftController::class, 'index'])
+            ->middleware('demo.module:master_work_shifts')
+            ->name('master.work-shifts');
     });
 
     /*

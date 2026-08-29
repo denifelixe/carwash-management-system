@@ -4,10 +4,14 @@ namespace App\Support\Admin;
 
 use App\Models\Admin;
 use App\Models\AdminModule;
+use App\Models\AdminRole;
 use App\Support\Demo\Brand;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
+/**
+ * @phpstan-type ShellModule array{key: string, label: string, caption: string, icon: string, href: string|null, enabled: bool, active: bool, children: list<array<string, mixed>>}
+ */
 class AdminShell
 {
     /** @var array<string, string> */
@@ -22,6 +26,8 @@ class AdminShell
         'rewards' => 'rewards',
         'users_and_roles' => 'users',
         'reports' => 'reports',
+        'master_services' => 'services',
+        'master_work_shifts' => 'work-shifts',
     ];
 
     /**
@@ -30,6 +36,7 @@ class AdminShell
     public function props(Admin $admin, string $pageTitle, ?string $activeModuleKey = null): array
     {
         $admin->loadMissing('role');
+        $role = $admin->getRelation('role');
 
         return [
             'mode' => 'live',
@@ -37,11 +44,11 @@ class AdminShell
             'brand' => Brand::identity(),
             'notifications' => [],
             'role' => [
-                'key' => $admin->is_owner ? 'owner' : ($admin->role?->key ?? 'staff'),
-                'name' => $admin->is_owner ? 'Owner' : ($admin->role?->name ?? 'Staf'),
+                'key' => $admin->is_owner ? 'owner' : ($role instanceof AdminRole ? $role->key : 'staff'),
+                'name' => $admin->is_owner ? 'Owner' : ($role instanceof AdminRole ? $role->name : 'Staf'),
                 'description' => $admin->is_owner
                     ? 'Akses penuh ke seluruh modul sistem.'
-                    : ($admin->role?->description ?? 'Akses staf belum ditentukan.'),
+                    : ($role instanceof AdminRole ? ($role->description ?? 'Akses staf belum ditentukan.') : 'Akses staf belum ditentukan.'),
                 'accent' => '#0891b2',
                 'icon' => $admin->is_owner ? '👑' : '🛡️',
             ],
@@ -55,7 +62,7 @@ class AdminShell
                     ->take(2)
                     ->map(fn (string $name): string => Str::upper(Str::substr($name, 0, 1)))
                     ->implode(''),
-                'shift' => '',
+                'shift' => $admin->workShift?->name ?? '',
             ],
             'profileHref' => route('admin.profile.edit', absolute: false),
             'headerAction' => null,
@@ -68,7 +75,7 @@ class AdminShell
     }
 
     /**
-     * @return list<array{key: string, label: string, caption: string, icon: string, href: string|null, enabled: bool, active: bool}>
+     * @return list<array<string, mixed>>
      */
     private function modulesFor(Admin $admin, ?string $activeModuleKey): array
     {
@@ -79,22 +86,40 @@ class AdminShell
                 ->get()
             : $this->readableModulesFor($admin);
 
-        return $modules
-            ->map(static function (AdminModule $module) use ($activeModuleKey): array {
-                $isDashboard = $module->key === 'dashboard';
+        $entries = [];
 
-                return [
-                    'key' => $module->key,
-                    'label' => $module->name,
-                    'caption' => $module->description ?? '',
-                    'icon' => self::MODULE_ICONS[$module->key] ?? 'dashboard',
-                    'href' => $isDashboard ? route('admin.dashboard', absolute: false) : null,
-                    'enabled' => $isDashboard,
-                    'active' => $module->key === $activeModuleKey,
-                ];
-            })
-            ->values()
-            ->all();
+        foreach ($modules as $module) {
+            $entries[] = $this->moduleEntry($module, $activeModuleKey);
+        }
+
+        return ModuleGroups::fold($entries);
+    }
+
+    /**
+     * @return ShellModule
+     */
+    private function moduleEntry(AdminModule $module, ?string $activeModuleKey): array
+    {
+        $routeName = match ($module->key) {
+            'dashboard' => 'admin.dashboard',
+            'orders' => 'admin.orders.index',
+            'pos' => 'admin.pos.index',
+            'users_and_roles' => 'admin.users.index',
+            'master_services' => 'admin.master.services.index',
+            'master_work_shifts' => 'admin.master.work-shifts.index',
+            default => null,
+        };
+
+        return [
+            'key' => $module->key,
+            'label' => $module->name,
+            'caption' => $module->description ?? '',
+            'icon' => self::MODULE_ICONS[$module->key] ?? 'dashboard',
+            'href' => $routeName !== null ? route($routeName, absolute: false) : null,
+            'enabled' => $routeName !== null,
+            'active' => $module->key === $activeModuleKey,
+            'children' => [],
+        ];
     }
 
     /**
@@ -108,7 +133,10 @@ class AdminShell
                 ->orderBy('sort_order'),
         ]);
 
-        $modules = $admin->role?->readableModules ?? new Collection;
+        $role = $admin->getRelation('role');
+        $modules = $role instanceof AdminRole && $role->is_active
+            ? $role->readableModules
+            : new Collection;
 
         if (! $modules->contains('key', 'dashboard')) {
             $dashboard = AdminModule::query()

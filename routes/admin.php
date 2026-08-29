@@ -1,6 +1,12 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminRoleController;
+use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\DashboardController;
+use App\Http\Controllers\Admin\Master\ServiceController;
+use App\Http\Controllers\Admin\Master\WorkShiftController;
+use App\Http\Controllers\Admin\OrderController;
+use App\Http\Controllers\Admin\PosController;
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -45,6 +51,25 @@ Route::domain((string) config('domains.admin'))
         Route::middleware('auth:admin')->group(function (): void {
             Route::post('logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');
             Route::get('dashboard', DashboardController::class)->name('dashboard');
+            Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
+            Route::post('orders', [OrderController::class, 'store'])->name('orders.store');
+            Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
+            Route::get('pos', [PosController::class, 'index'])->name('pos.index');
+            Route::post('pos/{order}/payments', [PosController::class, 'store'])->name('pos.payments.store');
+            Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
+            Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
+            Route::patch('users/{adminUser}/shift', [AdminUserController::class, 'updateShift'])->name('users.shift.update');
+            Route::patch('users/{adminUser}', [AdminUserController::class, 'update'])->name('users.update');
+            Route::post('roles', [AdminRoleController::class, 'store'])->name('roles.store');
+            Route::patch('roles/{adminRole}', [AdminRoleController::class, 'update'])->name('roles.update');
+            Route::get('master/layanan', [ServiceController::class, 'index'])->name('master.services.index');
+            Route::post('master/layanan', [ServiceController::class, 'store'])->name('master.services.store');
+            Route::patch('master/layanan/{service}', [ServiceController::class, 'update'])->name('master.services.update');
+            Route::delete('master/layanan/{service}', [ServiceController::class, 'destroy'])->name('master.services.destroy');
+            Route::get('master/shift', [WorkShiftController::class, 'index'])->name('master.work-shifts.index');
+            Route::post('master/shift', [WorkShiftController::class, 'store'])->name('master.work-shifts.store');
+            Route::patch('master/shift/{workShift}', [WorkShiftController::class, 'update'])->name('master.work-shifts.update');
+            Route::delete('master/shift/{workShift}', [WorkShiftController::class, 'destroy'])->name('master.work-shifts.destroy');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');

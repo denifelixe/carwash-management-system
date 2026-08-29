@@ -4,8 +4,11 @@ import {
     Bell,
     Boxes,
     CalendarClock,
+    Clock3,
     ChartColumn,
+    ChevronDown,
     ClipboardList,
+    Database,
     Gift,
     LayoutDashboard,
     LogOut,
@@ -14,6 +17,7 @@ import {
     PanelLeftOpen,
     ScanLine,
     ShieldCheck,
+    SprayCan,
     Users,
     Wallet,
     X,
@@ -47,6 +51,9 @@ const moduleIcons: Record<string, LucideIcon> = {
     rewards: Gift,
     users: ShieldCheck,
     reports: ChartColumn,
+    master: Database,
+    services: SprayCan,
+    'work-shifts': Clock3,
 };
 
 const fallbackModule: CarwashAdminModule = {
@@ -65,6 +72,7 @@ const sidebarStorageKey = computed(
 );
 const isSidebarOpen = ref<boolean>(false);
 const isSidebarCollapsed = ref<boolean>(false);
+const expandedGroups = ref<string[]>([]);
 const isNotificationsOpen = ref<boolean>(false);
 const notifications = ref<CarwashNotification[]>([]);
 
@@ -79,6 +87,21 @@ watch(
         notifications.value = newNotifications.map((notification) => ({
             ...notification,
         }));
+    },
+    { immediate: true },
+);
+
+watch(
+    modules,
+    (currentModules) => {
+        currentModules.forEach((module) => {
+            if (
+                module.children?.some((child) => child.active) &&
+                !expandedGroups.value.includes(module.key)
+            ) {
+                expandedGroups.value = [...expandedGroups.value, module.key];
+            }
+        });
     },
     { immediate: true },
 );
@@ -112,6 +135,27 @@ function toggleSidebarCollapse(): void {
         sidebarStorageKey.value,
         isSidebarCollapsed.value ? 'collapsed' : 'expanded',
     );
+}
+
+function isGroupExpanded(key: string): boolean {
+    return expandedGroups.value.includes(key);
+}
+
+/** Expands a sidebar group, widening the sidebar first when it is collapsed. */
+function toggleGroup(key: string): void {
+    if (isSidebarCollapsed.value) {
+        toggleSidebarCollapse();
+
+        if (!isGroupExpanded(key)) {
+            expandedGroups.value = [...expandedGroups.value, key];
+        }
+
+        return;
+    }
+
+    expandedGroups.value = isGroupExpanded(key)
+        ? expandedGroups.value.filter((group) => group !== key)
+        : [...expandedGroups.value, key];
 }
 
 function closeSidebar(module: CarwashAdminModule): void {
@@ -190,59 +234,164 @@ function closeSidebar(module: CarwashAdminModule): void {
             </div>
 
             <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-                <component
-                    :is="module.enabled && module.href ? Link : 'div'"
-                    v-for="module in modules"
-                    :key="module.key"
-                    :href="module.href ?? undefined"
-                    class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
-                    :class="[
-                        module.active
-                            ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-lg shadow-cyan-500/25'
-                            : module.enabled
-                              ? 'text-slate-400 hover:bg-white/5 hover:text-white'
-                              : 'cursor-not-allowed text-slate-600',
-                        isSidebarCollapsed ? 'lg:justify-center lg:px-0' : '',
-                    ]"
-                    :title="
-                        isSidebarCollapsed
-                            ? `${module.label}${module.enabled ? '' : ' — Segera hadir'}`
-                            : undefined
-                    "
-                    :aria-disabled="!module.enabled"
-                    @click="closeSidebar(module)"
-                >
+                <template v-for="module in modules" :key="module.key">
+                    <div v-if="module.children && module.children.length > 0">
+                        <button
+                            type="button"
+                            class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
+                            :class="[
+                                module.active
+                                    ? 'bg-white/5 text-white'
+                                    : 'text-slate-400 hover:bg-white/5 hover:text-white',
+                                isSidebarCollapsed
+                                    ? 'lg:justify-center lg:px-0'
+                                    : '',
+                            ]"
+                            :title="
+                                isSidebarCollapsed ? module.label : undefined
+                            "
+                            :aria-expanded="isGroupExpanded(module.key)"
+                            @click="toggleGroup(module.key)"
+                        >
+                            <component
+                                :is="
+                                    moduleIcons[module.icon] ?? LayoutDashboard
+                                "
+                                class="h-[18px] w-[18px] shrink-0"
+                            />
+                            <span
+                                class="min-w-0 flex-1 leading-tight"
+                                :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                            >
+                                <span
+                                    class="block truncate text-sm font-medium"
+                                >
+                                    {{ module.label }}
+                                </span>
+                                <span
+                                    class="block truncate text-[11px]"
+                                    :class="
+                                        module.active
+                                            ? 'text-slate-300'
+                                            : 'text-slate-500'
+                                    "
+                                >
+                                    {{ module.caption }}
+                                </span>
+                            </span>
+                            <ChevronDown
+                                class="h-4 w-4 shrink-0 text-slate-500 transition-transform duration-200"
+                                :class="[
+                                    isGroupExpanded(module.key)
+                                        ? 'rotate-180'
+                                        : '',
+                                    isSidebarCollapsed ? 'lg:hidden' : '',
+                                ]"
+                            />
+                        </button>
+
+                        <div
+                            v-if="isGroupExpanded(module.key)"
+                            class="mt-1 space-y-1"
+                        >
+                            <component
+                                :is="child.enabled && child.href ? Link : 'div'"
+                                v-for="child in module.children"
+                                :key="child.key"
+                                :href="child.href ?? undefined"
+                                class="flex w-full items-center gap-3 rounded-xl py-2 pr-3 pl-9 text-left transition"
+                                :class="[
+                                    child.active
+                                        ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-lg shadow-cyan-500/25'
+                                        : child.enabled
+                                          ? 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                          : 'cursor-not-allowed text-slate-600',
+                                    isSidebarCollapsed
+                                        ? 'lg:justify-center lg:px-0 lg:pl-0'
+                                        : '',
+                                ]"
+                                :title="
+                                    isSidebarCollapsed
+                                        ? `${module.label} — ${child.label}`
+                                        : undefined
+                                "
+                                :aria-disabled="!child.enabled"
+                                @click="closeSidebar(child)"
+                            >
+                                <component
+                                    :is="
+                                        moduleIcons[child.icon] ??
+                                        LayoutDashboard
+                                    "
+                                    class="h-4 w-4 shrink-0"
+                                />
+                                <span
+                                    class="min-w-0 flex-1 truncate text-[13px] font-medium"
+                                    :class="
+                                        isSidebarCollapsed ? 'lg:hidden' : ''
+                                    "
+                                >
+                                    {{ child.label }}
+                                </span>
+                            </component>
+                        </div>
+                    </div>
+
                     <component
-                        :is="moduleIcons[module.icon] ?? LayoutDashboard"
-                        class="h-[18px] w-[18px] shrink-0"
-                    />
-                    <span
-                        class="min-w-0 flex-1 leading-tight"
-                        :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                        v-else
+                        :is="module.enabled && module.href ? Link : 'div'"
+                        :href="module.href ?? undefined"
+                        class="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition"
+                        :class="[
+                            module.active
+                                ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-lg shadow-cyan-500/25'
+                                : module.enabled
+                                  ? 'text-slate-400 hover:bg-white/5 hover:text-white'
+                                  : 'cursor-not-allowed text-slate-600',
+                            isSidebarCollapsed
+                                ? 'lg:justify-center lg:px-0'
+                                : '',
+                        ]"
+                        :title="
+                            isSidebarCollapsed
+                                ? `${module.label}${module.enabled ? '' : ' — Segera hadir'}`
+                                : undefined
+                        "
+                        :aria-disabled="!module.enabled"
+                        @click="closeSidebar(module)"
                     >
-                        <span class="flex items-center gap-2">
-                            <span class="truncate text-sm font-medium">
-                                {{ module.label }}
+                        <component
+                            :is="moduleIcons[module.icon] ?? LayoutDashboard"
+                            class="h-[18px] w-[18px] shrink-0"
+                        />
+                        <span
+                            class="min-w-0 flex-1 leading-tight"
+                            :class="isSidebarCollapsed ? 'lg:hidden' : ''"
+                        >
+                            <span class="flex items-center gap-2">
+                                <span class="truncate text-sm font-medium">
+                                    {{ module.label }}
+                                </span>
+                                <span
+                                    v-if="!module.enabled"
+                                    class="shrink-0 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-medium text-slate-500"
+                                >
+                                    Segera hadir
+                                </span>
                             </span>
                             <span
-                                v-if="!module.enabled"
-                                class="shrink-0 rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-medium text-slate-500"
+                                class="block truncate text-[11px]"
+                                :class="
+                                    module.active
+                                        ? 'text-cyan-50/80'
+                                        : 'text-slate-500'
+                                "
                             >
-                                Segera hadir
+                                {{ module.caption }}
                             </span>
                         </span>
-                        <span
-                            class="block truncate text-[11px]"
-                            :class="
-                                module.active
-                                    ? 'text-cyan-50/80'
-                                    : 'text-slate-500'
-                            "
-                        >
-                            {{ module.caption }}
-                        </span>
-                    </span>
-                </component>
+                    </component>
+                </template>
             </nav>
 
             <div class="space-y-3 border-t border-white/5 p-4">

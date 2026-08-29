@@ -13,12 +13,6 @@ class AdminRoleController extends AdminController
 {
     public function index(Request $request): Response
     {
-        return $this->page($request, 'demo/admin/Users', [
-            'staff' => RoleAccess::staff(),
-            'roles' => RoleAccess::roles(),
-            'shifts' => RoleAccess::shifts(),
-            'matrix' => RoleAccess::matrix(),
-            'allModules' => RoleAccess::modules(),
-        ]);
+        return $this->page($request, 'admin/Users', RoleAccess::userRoleProps());
     }
 }

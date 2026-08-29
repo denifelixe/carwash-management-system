@@ -6,7 +6,7 @@ use App\Support\Demo\RoleAccess;
 
 test('new orders defer crew assignment and payment to their dedicated workflows', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -19,7 +19,7 @@ test('new orders defer crew assignment and payment to their dedicated workflows'
 
 test('the order form summary lists services without cashier totals', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -35,7 +35,7 @@ test('the order form summary lists services without cashier totals', function ()
 
 test('the order list omits totals while detail only references service prices', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -57,7 +57,7 @@ test('the order list omits totals while detail only references service prices', 
 
 test('the order detail leads with its date and highlighted vehicle information', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -74,7 +74,7 @@ test('the order detail leads with its date and highlighted vehicle information',
 
 test('the order detail shows transaction history and a full width close button', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -107,13 +107,13 @@ test('the floor can set the stages up to pelunasan or cancel the order', functio
 
 test('a booking scheduled today is marked as not arrived wherever it is shown', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
         ->toContain("const bookingStatusLabel = 'Booking - Belum Datang';")
         ->toContain('label: bookingStatusLabel,')
-        ->toContain('<StatusPill :status="displayedStatus(order)" />');
+        ->toContain(':status="displayedStatus(order)"');
 
     expect(file_get_contents(resource_path('js/components/demo/StatusPill.vue')))
         ->toContain("booking: 'Booking - Belum Datang',");
@@ -129,7 +129,7 @@ test('every order sits on one of the lifecycle stages', function () {
 
 test('the order list tracks a single status and leaves money to the cashier', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -148,7 +148,7 @@ test('the order list tracks a single status and leaves money to the cashier', fu
         // The list lands on the queue that still needs a crew.
         ->toContain("const statusFilter = ref<string>('menunggu');")
         // The status column shows the stage on its own, without a bay.
-        ->toContain('<StatusPill :status="displayedStatus(order)" />')
+        ->toContain(':status="displayedStatus(order)"')
         ->not->toContain('{{ order.bay }}')
         // Crew and bay are not tracked from the order page at all.
         ->not->toContain('Crew & bay')
@@ -158,7 +158,7 @@ test('the order list tracks a single status and leaves money to the cashier', fu
 
 test('the summary shows a card per lifecycle stage on top of the total', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -177,7 +177,7 @@ test('the summary shows a card per lifecycle stage on top of the total', functio
 
 test('the booking filter only includes vehicles that have not arrived', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -212,7 +212,7 @@ test('today booking count excludes bookings that have already arrived', function
 
 test('summary cards filter the order list and expose their active state', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
     $statCard = file_get_contents(
         resource_path('js/components/demo/StatCard.vue'),
@@ -233,7 +233,7 @@ test('summary cards filter the order list and expose their active state', functi
 
 test('the order detail edits and cancels through the status dropdown', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -251,7 +251,7 @@ test('the order detail edits and cancels through the status dropdown', function 
 
 test('cancelled orders remain editable while completed orders are locked', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -263,17 +263,64 @@ test('cancelled orders remain editable while completed orders are locked', funct
 
 test('the whole order row opens the detail, not just the Detail button', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
-        ->toContain('class="cursor-pointer transition hover:bg-slate-50/70"')
-        ->toContain('@click="detailOrderId = order.id"');
+        ->toContain('cursor-pointer transition hover:bg-slate-50/70')
+        ->toContain('@click="detailOrderId = order.id"')
+        // The narrow layout hides the button, so the row also takes a key.
+        ->toContain('@keydown.enter="detailOrderId = order.id"');
+});
+
+/*
+ * A phone and a tablet only have room for three columns, so the customer joins
+ * the vehicle cell and the Detail button drops away — the row itself opens the
+ * order there.
+ */
+test('the narrow order list keeps only vehicle, services, and status', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        // Customer column and the Detail button are wide-layout only.
+        ->toContain('<th class="hidden px-5 py-3 lg:table-cell">')
+        ->toContain('<td class="hidden px-5 py-3.5 lg:table-cell">')
+        // Kendaraan, Layanan, and Status carry no such guard.
+        ->toContain('<th class="px-5 py-3">Kendaraan</th>')
+        ->toContain('<th class="px-5 py-3">Layanan</th>')
+        ->toContain('<th class="px-5 py-3">Status</th>')
+        // The customer repeats inside the vehicle cell for that layout.
+        ->toContain('<div class="mt-1 lg:hidden">')
+        // Nothing forces a horizontal scroll before the wide layout.
+        ->toContain('min-w-[340px] text-sm lg:min-w-[900px]');
+});
+
+/*
+ * Reaching the detail panel to move a car one stage is a hop too far on a
+ * phone, so the chip in the row is the picker and saves as it is chosen.
+ */
+test('the status chip in a row changes the stage without opening the order', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('function changeRowStatus(')
+        ->toContain('statusForm.submit(updateOrderStatus(order.id), {')
+        // Only the stages the floor owns, and never on a settled order.
+        ->toContain('v-for="status in editableOrderStatuses"')
+        ->toContain("props.capabilities.update && order.status !== 'selesai'")
+        // Choosing a stage must not also open the detail panel.
+        ->toContain('<td class="px-5 py-3.5" @click.stop>')
+        // The row in flight is the only one that greys out.
+        ->toContain('pendingStatusOrderId === order.id');
 });
 
 test('the order list distinguishes customer and non customer walk-ins', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
     $walkInOrders = array_filter(
         Operations::orders(),
@@ -300,15 +347,19 @@ test('the order list distinguishes customer and non customer walk-ins', function
 
 test('the order list leads with vehicle arrival information', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
-    $vehicleColumn = strpos($ordersPage, '<th class="px-5 py-3">Kendaraan</th>');
-    $customerColumn = strpos($ordersPage, '<th class="px-5 py-3">Customer</th>');
+    $headStart = (int) strpos($ordersPage, '<thead>');
+    $head = substr(
+        $ordersPage,
+        $headStart,
+        (int) strpos($ordersPage, '</thead>') - $headStart,
+    );
 
-    expect($vehicleColumn)
+    expect(strpos($head, 'Kendaraan'))
         ->toBeInt()
-        ->toBeLessThan($customerColumn)
+        ->toBeLessThan(strpos($head, 'Customer'))
         ->and($ordersPage)
         ->not->toContain('<th class="px-5 py-3">Order</th>')
         ->toContain('class="text-xl font-bold tracking-wide text-slate-900"')
@@ -322,7 +373,7 @@ test('the order list leads with vehicle arrival information', function () {
 
 test('non member walk-ins keep their name and phone number', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
     $nonMemberOrders = array_filter(
         Operations::orders(),
@@ -347,7 +398,7 @@ test('non member walk-ins keep their name and phone number', function () {
 
 test('new orders separate members and non-members without registering members', function () {
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
@@ -393,4 +444,24 @@ test('the card in force wears its own colour, not just an outline', function () 
     foreach (['default', 'emerald', 'rose', 'amber', 'violet', 'slate'] as $tone) {
         expect($statCard)->toContain($tone.': {');
     }
+});
+
+test('the order form filters its service list from a search field', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        // The field itself, bound to the query the list reads.
+        ->toContain('v-model="serviceQuery"')
+        ->toContain('placeholder="Cari layanan"')
+        // Every token has to land, so a two-word query still narrows the list.
+        ->toContain('const visibleServices = computed<CarwashService[]>')
+        ->toContain('tokens.every((token) => haystack.includes(token))')
+        // The grid renders the filtered list, with a note when nothing matches.
+        ->toContain('v-for="service in visibleServices"')
+        ->toContain('v-if="visibleServices.length > 0"')
+        ->toContain('Layanan tidak ditemukan.')
+        // A cleared draft starts the next order with the full list.
+        ->toContain("serviceQuery.value = '';");
 });

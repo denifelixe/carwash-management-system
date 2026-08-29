@@ -9,10 +9,10 @@ test('demo workflow shares in-memory state across admin modules', function () {
         resource_path('js/composables/useCarwashWorkflow.ts'),
     );
     $orders = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
     $pos = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
     $finance = file_get_contents(
         resource_path('js/pages/demo/admin/Finance.vue'),
@@ -27,7 +27,7 @@ test('demo workflow shares in-memory state across admin modules', function () {
         ->toContain('workflow.hydrateOrders(props.orders)')
         ->toContain('workflow.addOrder({')
         ->and($pos)
-        ->toContain('const orderList = workflow.orders')
+        ->toContain('workflow.orders.value')
         ->toContain('workflow.addMoneyIn({')
         ->and($finance)
         ->toContain('const incomeList = workflow.moneyIn')
@@ -36,7 +36,7 @@ test('demo workflow shares in-memory state across admin modules', function () {
 
 test('payments are attributed to the active user and their configured shift', function () {
     $pos = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
     $finance = file_get_contents(
         resource_path('js/pages/demo/admin/Finance.vue'),
@@ -55,7 +55,7 @@ test('payments are attributed to the active user and their configured shift', fu
 
 test('order summary ignores bookings from other dates loaded by another module', function () {
     $orders = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($orders)
@@ -85,8 +85,12 @@ test('hydrating from overlapping lists stores each record once', function () {
         ->and(mb_strpos($store, 'knownIds.add(id);'))
         ->toBeLessThan(mb_strpos($store, 'target.push(clone(item));'));
 
-    expect(file_get_contents(resource_path('js/pages/demo/admin/Pos.vue')))
-        ->toContain('workflow.hydrateOrders([...props.dailyOrders, ...props.partialPaymentBookings]);');
+    expect(file_get_contents(resource_path('js/pages/admin/Pos.vue')))
+        ->toContain('workflow.hydrateOrders([')
+        ->toContain('...props.dailyOrders,')
+        ->toContain('...props.partialPaymentBookings,')
+        // The live page has no workflow store, so it keys the overlap itself.
+        ->toContain('(order) => [order.id, order],');
 });
 
 test('the POS booking queue holds only the bookings the server sent', function () {

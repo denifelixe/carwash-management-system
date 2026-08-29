@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Banknote,
     ChevronDown,
@@ -14,6 +14,10 @@ import {
     Wallet,
 } from '@lucide/vue';
 import { computed, nextTick, ref, watch } from 'vue';
+import {
+    index as indexPos,
+    store as storePosPayment,
+} from '@/actions/App/Http/Controllers/Admin/PosController';
 import AccordionSection from '@/components/demo/AccordionSection.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -28,8 +32,13 @@ import {
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import { openPosReceiptWindow, paymentChannelLabel } from '@/lib/posReceipt';
-import type { PosPaymentBreakdown, PosReceipt } from '@/lib/posReceipt';
-import admin from '@/routes/demo/admin';
+import type {
+    PosPaymentBreakdown,
+    PosReceipt,
+    PosReceiptHistoryEntry,
+    PosReceiptLine,
+} from '@/lib/posReceipt';
+import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
     CarwashBrand,
@@ -42,6 +51,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     orders: CarwashOrder[];
     dailyOrders: CarwashOrder[];
@@ -52,7 +62,30 @@ const props = defineProps<{
     rewards: CarwashReward[];
     paymentMethods: string[];
     persona: CarwashPersona;
+    capabilities: {
+        create: boolean;
+    };
 }>();
+
+/** What the cashier keeps hold of while the payment is written server-side. */
+interface PaymentSnapshot {
+    intent: 'settlement' | 'partial';
+    amount: number;
+    reward: CarwashReward | null;
+    rewardDiscount: number;
+    cashierDiscount: number;
+    discount: number;
+    /** Bill total before this payment's discounts came off. */
+    subtotal: number;
+    /** Discount an earlier payment already took off the listed services. */
+    priorDiscount: number;
+    previouslyPaid: number;
+    tendered: number;
+    change: number;
+    lines: PosReceiptLine[];
+    history: PosReceiptHistoryEntry[];
+    breakdown: PosPaymentBreakdown[];
+}
 
 interface PaymentChannelRow {
     id: number;
@@ -139,11 +172,36 @@ const partialPaymentBookingIds = new Set(
 );
 
 const workflow = useCarwashWorkflow();
-workflow.hydrateOrders([...props.dailyOrders, ...props.partialPaymentBookings]);
-workflow.hydrateCustomers(props.customers);
 
-const orderList = workflow.orders;
-const customerList = workflow.customers;
+if (props.mode === 'demo') {
+    workflow.hydrateOrders([
+        ...props.dailyOrders,
+        ...props.partialPaymentBookings,
+    ]);
+    workflow.hydrateCustomers(props.customers);
+}
+
+/**
+ * The day's orders plus the bookings still waiting for their car. A booking due
+ * today sits in both lists, so it is keyed by id to appear once.
+ */
+const liveOrders = computed<CarwashOrder[]>(() =>
+    Array.from(
+        new Map(
+            [...props.dailyOrders, ...props.partialPaymentBookings].map(
+                (order) => [order.id, order],
+            ),
+        ).values(),
+    ),
+);
+
+const orderList = computed<CarwashOrder[]>(() =>
+    props.mode === 'demo' ? workflow.orders.value : liveOrders.value,
+);
+
+const customerList = computed<CarwashCustomer[]>(() =>
+    props.mode === 'demo' ? workflow.customers.value : props.customers,
+);
 
 const settlementOrderList = computed<CarwashOrder[]>(() =>
     orderList.value.filter(
@@ -989,6 +1047,44 @@ function toggleReward(rewardId: number): void {
 }
 
 /**
+ * Everything the slip needs that the payment itself is about to change, read
+ * before the order moves so the figures printed are the ones the cashier saw.
+ */
+function paymentSnapshot(order: CarwashOrder): PaymentSnapshot {
+    return {
+        intent: paymentIntent.value,
+        amount: payAmount.value,
+        reward: selectedReward.value,
+        rewardDiscount: rewardDiscount.value,
+        cashierDiscount: cashierDiscount.value,
+        discount: totalDiscount.value,
+        subtotal: order.total,
+        priorDiscount: Math.max(orderServiceTotal.value - order.total, 0),
+        previouslyPaid: order.paidAmount,
+        /*
+         * Settling the order drives `dueAmount` to zero, which collapses
+         * `paymentTotal` and would report the whole tender as change. Both
+         * figures are therefore read before the order is touched.
+         */
+        tendered: tenderedTotal.value,
+        change: changeAmount.value,
+        lines: orderServices.value.map((service) => ({
+            name: service.name,
+            price: service.price,
+        })),
+        history: order.transactions.map((entry) => ({
+            date: entry.date,
+            time: entry.time,
+            type: paymentHistoryTypeLabel(entry),
+            channels: transactionChannelsLabel(entry),
+            cashier: paymentTransactionRecorder(entry),
+            amount: entry.amount,
+        })),
+        breakdown: paymentBreakdown.value.map((payment) => ({ ...payment })),
+    };
+}
+
+/**
  * Records money against the selected order. Anything short of the full amount
  * leaves the order with a `sebagian` payment; settling it issues the invoice and
  * releases the member's stamps.
@@ -996,49 +1092,135 @@ function toggleReward(rewardId: number): void {
 function submitPayment(): void {
     const order = selectedOrder.value;
 
-    if (!order || !canSubmit.value) {
+    if (!order || !canSubmit.value || paymentForm.processing) {
         return;
     }
 
-    const customer = orderCustomer.value;
-    const amount = payAmount.value;
-    const reward = selectedReward.value;
-    const redeemedRewardDiscount = rewardDiscount.value;
-    const manualDiscount = cashierDiscount.value;
-    const discount = totalDiscount.value;
-    const subtotal = order.total;
-    const previouslyPaid = order.paidAmount;
+    const snapshot = paymentSnapshot(order);
+
+    if (props.mode === 'live') {
+        submitLivePayment(order, snapshot);
+
+        return;
+    }
+
+    applyDemoPayment(order, snapshot);
+
     /*
-     * Settling the order drives `dueAmount` to zero, which collapses
-     * `paymentTotal` and would report the whole tender as change. Both figures
-     * are therefore read before the order is touched.
+     * Still inside the cashier's click, so the browser lets the slip window
+     * through instead of treating it as an unsolicited popup.
      */
-    const tendered = tenderedTotal.value;
-    const change = changeAmount.value;
-    /* Discounts an earlier payment already took off the printed service list. */
-    const priorDiscount = Math.max(orderServiceTotal.value - subtotal, 0);
-    const receiptLines = orderServices.value.map((service) => ({
-        name: service.name,
-        price: service.price,
+    printReceipt();
+
+    resetPanel();
+}
+
+/**
+ * Hands the payment to the server and prints from what comes back, because the
+ * invoice number and the transaction reference are issued by the write.
+ */
+function submitLivePayment(
+    order: CarwashOrder,
+    snapshot: PaymentSnapshot,
+): void {
+    paymentForm.intent = snapshot.intent;
+    paymentForm.discount = snapshot.discount;
+    paymentForm.amount = snapshot.amount;
+    paymentForm.channels = snapshot.breakdown.map((payment) => ({
+        method: payment.method,
+        amount: payment.amount,
+        provider: payment.provider,
+        reference: payment.reference,
     }));
-    /* Snapshotted before this payment joins the list. */
-    const paymentHistory = order.transactions.map((entry) => ({
-        date: entry.date,
-        time: entry.time,
-        type: paymentHistoryTypeLabel(entry),
-        channels: transactionChannelsLabel(entry),
-        cashier: paymentTransactionRecorder(entry),
-        amount: entry.amount,
-    }));
-    const breakdown = paymentBreakdown.value.map((payment) => ({
-        ...payment,
-    }));
+
+    paymentForm.submit(storePosPayment(order.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            receipt.value = settledReceipt(order.id, snapshot);
+            paymentForm.reset();
+            resetPanel();
+
+            /*
+             * The reload has already returned by the time this runs, so the
+             * slip window is no longer opening inside the cashier's click and
+             * may be blocked. The dialog keeps a retry button for that.
+             */
+            printReceipt();
+        },
+    });
+}
+
+/**
+ * The slip for a payment the server has just written, read back off the
+ * reloaded order so the invoice, reference, and totals are the stored ones.
+ */
+function settledReceipt(
+    orderId: number,
+    snapshot: PaymentSnapshot,
+): PosReceipt | null {
+    const order = orderList.value.find((candidate) => candidate.id === orderId);
+
+    if (!order) {
+        return null;
+    }
+
+    const transaction = order.transactions[order.transactions.length - 1];
+    const isSettled = transaction?.type === 'Pembayaran Lunas';
+
+    return {
+        orderNo: order.orderNo,
+        invoice: order.invoice,
+        reference: transaction
+            ? paymentTransactionReference(transaction, order)
+            : '—',
+        date: transaction?.date ?? props.filters.today,
+        time: transaction?.time ?? '—',
+        cashier: transaction?.recordedBy ?? props.persona.name,
+        shift: transaction?.shift ?? props.persona.shift,
+        customer: order.customer,
+        vehicle: order.vehicle,
+        plate: order.plate,
+        items: order.items,
+        lines: snapshot.lines,
+        subtotal: snapshot.subtotal,
+        priorDiscount: snapshot.priorDiscount,
+        rewardDiscount: snapshot.rewardDiscount,
+        cashierDiscount: snapshot.cashierDiscount,
+        total: order.total,
+        tenderedTotal: snapshot.tendered,
+        change: snapshot.change,
+        history: snapshot.history,
+        previouslyPaid: snapshot.previouslyPaid,
+        paidTotal: order.paidAmount,
+        dueAfter: Math.max(order.total - order.paidAmount, 0),
+        isSettled,
+        isReprint: false,
+        payment: order.payment,
+        paymentBreakdown: snapshot.breakdown,
+        stampsEarned: isSettled ? order.stampsEarned : 0,
+        stampsSpent: snapshot.reward?.requiredStamps ?? 0,
+        /* The live console has no stamp ledger yet, so none is printed. */
+        stampsAfter: null,
+        reward: order.reward,
+    };
+}
+
+/**
+ * Walks the demo copy of the order through the same settlement the server
+ * performs, so the console keeps behaving without a database behind it.
+ */
+function applyDemoPayment(
+    order: CarwashOrder,
+    snapshot: PaymentSnapshot,
+): void {
+    const customer = orderCustomer.value;
+    const { amount, discount, reward } = snapshot;
     const currentPaymentMethods =
         order.paidAmount > 0 && order.payment !== '—'
             ? order.payment.split(' + ')
             : [];
-    const usedPaymentMethods = breakdown.map(paymentChannelLabel);
-    const transactionChannelBreakdown = breakdown.map((payment) => ({
+    const usedPaymentMethods = snapshot.breakdown.map(paymentChannelLabel);
+    const transactionChannelBreakdown = snapshot.breakdown.map((payment) => ({
         label: paymentChannelLabel(payment),
         amount: payment.amount,
     }));
@@ -1061,7 +1243,7 @@ function submitPayment(): void {
     }
 
     const isFullyPaid = order.paidAmount >= order.total;
-    const completesOrder = isFullyPaid && paymentIntent.value === 'settlement';
+    const completesOrder = isFullyPaid && snapshot.intent === 'settlement';
 
     const transactionTime = new Intl.DateTimeFormat('id-ID', {
         hour: '2-digit',
@@ -1141,35 +1323,27 @@ function submitPayment(): void {
         vehicle: order.vehicle,
         plate: order.plate,
         items: order.items,
-        lines: receiptLines,
-        subtotal,
-        priorDiscount,
-        rewardDiscount: redeemedRewardDiscount,
-        cashierDiscount: manualDiscount,
+        lines: snapshot.lines,
+        subtotal: snapshot.subtotal,
+        priorDiscount: snapshot.priorDiscount,
+        rewardDiscount: snapshot.rewardDiscount,
+        cashierDiscount: snapshot.cashierDiscount,
         total: order.total,
-        tenderedTotal: tendered,
-        change,
-        history: paymentHistory,
-        previouslyPaid,
+        tenderedTotal: snapshot.tendered,
+        change: snapshot.change,
+        history: snapshot.history,
+        previouslyPaid: snapshot.previouslyPaid,
         paidTotal: order.paidAmount,
         dueAfter: Math.max(order.total - order.paidAmount, 0),
         isSettled: completesOrder,
         isReprint: false,
         payment: order.payment,
-        paymentBreakdown: breakdown,
+        paymentBreakdown: snapshot.breakdown,
         stampsEarned: completesOrder ? order.stampsEarned : 0,
         stampsSpent: reward?.requiredStamps ?? 0,
         stampsAfter: customer?.stamps ?? null,
         reward: order.reward,
     };
-
-    /*
-     * Still inside the cashier's click, so the browser lets the slip window
-     * through instead of treating it as an unsolicited popup.
-     */
-    printReceipt();
-
-    resetPanel();
 }
 
 /**
@@ -1303,11 +1477,18 @@ function reprintReceipt(order: CarwashOrder): void {
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
 function applyDate(date: string): void {
     router.get(
-        admin.pos.url(),
+        props.mode === 'demo' ? demoAdmin.pos.url() : indexPos.url(),
         { date },
         { preserveScroll: true, replace: true },
     );
 }
+
+const paymentForm = useForm({
+    intent: 'settlement' as 'settlement' | 'partial',
+    discount: 0,
+    amount: 0,
+    channels: [] as PosPaymentBreakdown[],
+});
 </script>
 
 <template>
@@ -3254,14 +3435,42 @@ function applyDate(date: string): void {
                                 }}
                                 stempel saat order lunas
                             </p>
+                            <div
+                                v-if="mode === 'live' && paymentForm.hasErrors"
+                                class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
+                            >
+                                <p
+                                    v-for="(
+                                        message, field
+                                    ) in paymentForm.errors"
+                                    :key="field"
+                                >
+                                    {{ message }}
+                                </p>
+                            </div>
+                            <p
+                                v-else-if="!capabilities.create"
+                                class="rounded-xl bg-slate-100 px-4 py-3 text-xs text-slate-600"
+                            >
+                                Role Anda tidak memiliki akses untuk menerima
+                                pembayaran.
+                            </p>
                             <button
                                 type="button"
                                 class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
-                                :disabled="!canSubmit"
+                                :disabled="
+                                    !canSubmit ||
+                                    !capabilities.create ||
+                                    paymentForm.processing
+                                "
                                 @click="submitPayment"
                             >
                                 <CreditCard class="h-4 w-4" />
-                                Proses
+                                {{
+                                    paymentForm.processing
+                                        ? 'Memproses…'
+                                        : 'Proses'
+                                }}
                             </button>
                         </section>
                     </div>

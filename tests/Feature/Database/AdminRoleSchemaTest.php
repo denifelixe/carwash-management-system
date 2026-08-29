@@ -102,7 +102,7 @@ test('admin modules are prefilled from the demo navigation', function () {
         ->orderBy('sort_order')
         ->get(['key', 'name', 'description', 'sort_order']);
 
-    expect($modules)->toHaveCount(10);
+    expect($modules)->toHaveCount(12);
 
     foreach (RoleAccess::modules() as $index => $demoModule) {
         $expectedKey = $demoModule['key'] === 'users'
@@ -149,7 +149,7 @@ test('staff roles shifts modules and access assignments can be persisted', funct
         'updated_at' => $now,
     ]);
     $shiftId = DB::table('admin_work_shifts')->insertGetId([
-        'key' => 'morning',
+        'key' => 'test_morning',
         'name' => 'Shift Pagi',
         'starts_at' => '08:00:00',
         'ends_at' => '16:00:00',
@@ -204,7 +204,7 @@ test('staff roles shifts modules and access assignments can be persisted', funct
 test('a module can only be assigned to a role once', function () {
     $now = now();
     $roleId = DB::table('admin_roles')->insertGetId([
-        'key' => 'cashier',
+        'key' => 'test_cashier',
         'name' => 'Kasir',
         'created_at' => $now,
         'updated_at' => $now,
@@ -238,7 +238,7 @@ test('a module can only be assigned to a role once', function () {
 test('foreign key deletion rules preserve staff integrity', function () {
     $now = now();
     $roleId = DB::table('admin_roles')->insertGetId([
-        'key' => 'manager',
+        'key' => 'test_manager',
         'name' => 'Manager',
         'created_at' => $now,
         'updated_at' => $now,

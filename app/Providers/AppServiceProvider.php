@@ -38,6 +38,15 @@ class AppServiceProvider extends ServiceProvider
             ? true
             : null);
 
+        foreach (['users_and_roles', 'orders', 'pos', 'master_services', 'master_work_shifts'] as $moduleKey) {
+            foreach (['create', 'read', 'update', 'delete'] as $permission) {
+                Gate::define(
+                    "admin.{$moduleKey}.{$permission}",
+                    fn (Admin $admin): bool => $admin->hasModulePermission($moduleKey, $permission),
+                );
+            }
+        }
+
         View::share('meta', Brand::meta());
     }
 

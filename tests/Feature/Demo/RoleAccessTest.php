@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\Demo\RoleAccess;
+use Inertia\Testing\AssertableInertia;
 
 /**
  * Walks every role × module pair so the matrix and the middleware can never
@@ -85,22 +86,44 @@ test('every staff member has an editable shift and the active persona identifies
         ->and($ownerPersona['shift'])->toBe($owner['shift']);
 });
 
-test('the role page edits shifts and the sidebar identifies the active staff shift', function () {
+test('demo and live user management share one interactive vue page', function () {
     $usersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Users.vue'),
+        resource_path('js/pages/admin/Users.vue'),
     );
     $adminLayout = file_get_contents(
         resource_path('js/layouts/admin/AdminLayout.vue'),
     );
 
     expect($usersPage)
-        ->toContain('<th class="px-5 py-3">Shift</th>')
-        ->toContain('v-model="draft.shift"')
-        ->toContain('page.props.persona.id === existing.id')
+        ->toContain("props.mode === 'demo'")
+        ->toContain('saveDemoUser()')
+        ->toContain('saveDemoRole()')
+        ->toContain('@change="changeShift(person, $event)"')
+        ->toContain('updateUserShift(person.id)')
+        ->and(resource_path('js/pages/demo/admin/Users.vue'))->not->toBeFile()
         ->and($adminLayout)
         ->toContain('{{ role.name }}')
         ->not->toContain('{{ role.name }} - {{ persona.shift }}')
         ->not->toContain('{{ modules.length }} modul');
+});
+
+test('the demo user module supplies the live page contract from dummy data', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.users'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/Users')
+                ->where('mode', 'demo')
+                ->has('staff', 8)
+                ->has('roles', 4)
+                ->has('roles.0.permissions', 12)
+                ->has('shifts', 2)
+                ->has('allModules', 12)
+                ->where('allModules.8.key', 'users_and_roles')
+                ->where('capabilities.create', true)
+                ->where('capabilities.update', true)
+        );
 });
 
 test('every module in the matrix maps to a real registered route', function () {

@@ -18,7 +18,7 @@ test('the cashier lands on the POS with the order list attached', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Pos')
+                ->component('admin/Pos')
                 ->where('role.key', 'cashier')
                 // The cashier opens on today's transactions.
                 ->has('orders', count(DateFilter::apply(Operations::settlementOrders(), Reports::todayDate())))
@@ -83,7 +83,7 @@ test('the POS recap uses received payments from the selected transaction date', 
         ->toBe($receivedPaymentTotal);
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -150,7 +150,7 @@ test('a booking that has reached settlement leaves the not-arrived booking list'
 
 test('the partial payment section sits below settlement and opens the same payment flow', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -179,7 +179,7 @@ test('the partial payment section sits below settlement and opens the same payme
 
 test('cashier bookings use today and upcoming schedule statuses', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
     $statusPill = file_get_contents(
         resource_path('js/components/demo/StatusPill.vue'),
@@ -198,7 +198,7 @@ test('cashier bookings use today and upcoming schedule statuses', function () {
 
 test('cashier bookings are ordered from today to upcoming dates', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -208,7 +208,7 @@ test('cashier bookings are ordered from today to upcoming dates', function () {
 
 test('order cards lead with the plate and classify the customer source', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -227,7 +227,7 @@ test('order cards lead with the plate and classify the customer source', functio
 
 test('the cashier summary only shows settlement balance and received payments', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -243,7 +243,7 @@ test('the cashier summary only shows settlement balance and received payments', 
 
 test('the received payment card opens a payment recap', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -292,7 +292,7 @@ test('the received payment card opens a payment recap', function () {
 
 test('payment recap rows reveal their transaction and order details', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     preg_match(
@@ -403,7 +403,7 @@ test('the cashier only receives orders in the pelunasan stage', function () {
 
 test('the POS shows one lifecycle chip and describes an existing partial payment', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     /* The heading now belongs to the accordion panel wrapping the list. */
@@ -510,7 +510,7 @@ test('partial payments keep their dates and one order may have multiple installm
         ]);
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -530,7 +530,7 @@ test('payments only use partial and fully paid transaction types', function () {
     }
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
     $types = file_get_contents(resource_path('js/types/demo.ts'));
 
@@ -565,11 +565,11 @@ test('waiting and in-progress orders remain unpaid without transactions', functi
     }
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
-        ->toContain("isFullyPaid && paymentIntent.value === 'settlement'")
+        ->toContain("isFullyPaid && snapshot.intent === 'settlement'")
         ->toContain("type: completesOrder ? 'Pembayaran Lunas' : 'Pembayaran Sebagian'")
         ->toContain('isSettled: completesOrder')
         ->toContain('stampsEarned: completesOrder ? order.stampsEarned : 0');
@@ -577,7 +577,7 @@ test('waiting and in-progress orders remain unpaid without transactions', functi
 
 test('the cashier opens the payment workflow in a modal', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -590,7 +590,7 @@ test('the cashier opens the payment workflow in a modal', function () {
 
 test('the payment modal follows the order transaction payment sequence', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -651,7 +651,7 @@ test('cashier payment channels include bank and electronic money options', funct
         ->toBe(['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money']);
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -728,7 +728,7 @@ test('the cashier receives the reward catalog for redemption', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Pos')
+                ->component('admin/Pos')
                 ->has('rewards', count(Catalog::rewards()))
         );
 });
@@ -752,7 +752,7 @@ test('cashier rewards are limited to services already in the order', function ()
     expect($waxOrderRewards)->toBeEmpty();
 
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
@@ -768,15 +768,15 @@ test('the front office order screen has no reward redemption', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Orders')
+                ->component('admin/Orders')
                 ->missing('rewards')
         );
 
     $ordersPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Orders.vue'),
+        resource_path('js/pages/admin/Orders.vue'),
     );
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($ordersPage)->not->toContain('Tukar reward')
@@ -797,7 +797,7 @@ test('the cash summary reports the real outstanding balance', function () {
 
 test('channels that need a bank or card also capture a reference number', function () {
     $posPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Pos.vue'),
+        resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)

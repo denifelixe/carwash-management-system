@@ -14,7 +14,7 @@ use Illuminate\Support\Carbon;
 /**
  * @property int $id
  * @property int|null $role_id
- * @property int|null $default_work_shift_id
+ * @property int|null $work_shift_id
  * @property string $name
  * @property string $email
  * @property string|null $phone
@@ -27,16 +27,50 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'work_shift_id', 'is_active'])]
 #[Hidden(['password', 'remember_token'])]
 class Admin extends Authenticatable
 {
     /** @use HasFactory<AdminFactory> */
     use HasFactory, Notifiable;
 
+    /**
+     * @return BelongsTo<AdminRole, $this>
+     */
     public function role(): BelongsTo
     {
         return $this->belongsTo(AdminRole::class, 'role_id');
+    }
+
+    /**
+     * @return BelongsTo<AdminWorkShift, $this>
+     */
+    public function workShift(): BelongsTo
+    {
+        return $this->belongsTo(AdminWorkShift::class, 'work_shift_id');
+    }
+
+    public function hasModulePermission(string $moduleKey, string $permission): bool
+    {
+        if ($this->is_owner) {
+            return true;
+        }
+
+        if (! in_array($permission, ['create', 'read', 'update', 'delete'], true)) {
+            return false;
+        }
+
+        $role = $this->role;
+
+        if ($role === null || ! $role->is_active) {
+            return false;
+        }
+
+        return $role->modules()
+            ->where('admin_modules.key', $moduleKey)
+            ->where('admin_modules.is_active', true)
+            ->wherePivot("can_{$permission}", true)
+            ->exists();
     }
 
     /**

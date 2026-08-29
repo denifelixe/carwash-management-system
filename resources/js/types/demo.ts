@@ -52,7 +52,6 @@ export interface CarwashService {
     name: string;
     category: string;
     price: number;
-    duration: number;
     stamps: number;
     icon: string;
     description: string;
@@ -94,6 +93,7 @@ export interface CarwashCustomer {
 }
 
 export interface CarwashVehicle {
+    id?: number;
     name: string;
     plate: string;
     type: string;
@@ -326,6 +326,7 @@ export interface CarwashAdminModule extends CarwashModule {
     href: string | null;
     enabled: boolean;
     active: boolean;
+    children?: CarwashAdminModule[];
 }
 
 export interface CarwashAdminAction {

@@ -27,7 +27,7 @@ class PosController extends AdminController
         // No date in the URL means the day the module is being used on.
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
-        return $this->page($request, 'demo/admin/Pos', [
+        return $this->page($request, 'admin/Pos', [
             'orders' => DateFilter::apply(Operations::settlementOrders(), $date),
             'dailyOrders' => DateFilter::apply(Operations::orders(), $date),
             'partialPaymentBookings' => Operations::partialPaymentBookingOrders(),
@@ -36,6 +36,7 @@ class PosController extends AdminController
             'customers' => Customers::all(),
             'rewards' => Catalog::rewards(),
             'paymentMethods' => Operations::paymentMethods(),
+            'capabilities' => ['create' => true],
         ]);
     }
 }

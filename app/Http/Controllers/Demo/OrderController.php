@@ -21,7 +21,7 @@ class OrderController extends AdminController
         // No date in the URL means the day the module is being used on.
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
-        return $this->page($request, 'demo/admin/Orders', [
+        return $this->page($request, 'admin/Orders', [
             'orders' => DateFilter::apply(Operations::orders(), $date),
             'filters' => DateFilter::meta($date),
             'orderStatuses' => Operations::orderStatuses(),
@@ -32,6 +32,10 @@ class OrderController extends AdminController
             'customers' => Customers::all(),
             'crew' => Operations::crew(),
             'paymentMethods' => Operations::paymentMethods(),
+            'capabilities' => [
+                'create' => true,
+                'update' => true,
+            ],
         ]);
     }
 }

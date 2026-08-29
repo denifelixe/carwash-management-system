@@ -1,0 +1,227 @@
+<?php
+
+use App\Models\Admin;
+use App\Models\AdminModule;
+use App\Models\AdminRole;
+use App\Models\AdminWorkShift;
+use Illuminate\Support\Facades\Hash;
+use Inertia\Testing\AssertableInertia;
+
+function rolePermissions(bool $read = true): array
+{
+    return AdminModule::query()->orderBy('sort_order')->get()->map(
+        fn (AdminModule $module): array => [
+            'module_id' => $module->id,
+            'can_create' => $read && $module->key !== 'dashboard',
+            'can_read' => $read,
+            'can_update' => $read && $module->key !== 'dashboard',
+            'can_delete' => false,
+        ],
+    )->all();
+}
+
+test('guests cannot open the live user and role module', function () {
+    $this->get(route('admin.users.index'))
+        ->assertRedirect(route('admin.login'));
+});
+
+test('an owner sees live staff roles shifts permissions and an enabled sidebar item', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/Users')
+                ->where('mode', 'live')
+                ->has('staff', 2)
+                ->has('roles', 4)
+                ->has('shifts', 2)
+                ->has('allModules', 12)
+                ->where('capabilities.create', true)
+                ->where('capabilities.update', true)
+                ->where('modules.8.key', 'users_and_roles')
+                ->where('modules.8.enabled', true)
+                ->where('modules.8.active', true)
+                ->where('modules.8.href', route('admin.users.index', absolute: false))
+        );
+});
+
+test('an owner can create a staff user with a role and shift', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'cashier')->firstOrFail();
+    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.users.store'), [
+            'name' => 'Yuni Astuti',
+            'email' => 'yuni@example.com',
+            'phone' => '081399112233',
+            'role_id' => $role->id,
+            'work_shift_id' => $shift->id,
+            'password' => 'Secret123!',
+            'password_confirmation' => 'Secret123!',
+            'is_active' => true,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    $admin = Admin::query()->where('email', 'yuni@example.com')->firstOrFail();
+
+    expect($admin)
+        ->role_id->toBe($role->id)
+        ->work_shift_id->toBe($shift->id)
+        ->is_owner->toBeFalse()
+        ->is_active->toBeTrue()
+        ->and(Hash::check('Secret123!', $admin->password))->toBeTrue();
+});
+
+test('an owner can update staff without replacing an unchanged password', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'manager')->firstOrFail();
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+    $password = $admin->password;
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.update', $admin), [
+            'name' => 'Manager Baru',
+            'email' => $admin->email,
+            'phone' => '081200000001',
+            'role_id' => $role->id,
+            'work_shift_id' => null,
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => false,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($admin->refresh())
+        ->name->toBe('Manager Baru')
+        ->phone->toBe('081200000001')
+        ->is_active->toBeFalse()
+        ->password->toBe($password);
+});
+
+test('an owner can assign a shift directly to any user including their own account', function () {
+    $owner = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
+    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('staff.0.shift_name', 'Tidak ada Shift')
+        );
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.shift.update', $owner), [
+            'work_shift_id' => $shift->id,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($owner->refresh()->work_shift_id)->toBe($shift->id);
+});
+
+test('the owner account cannot be changed from the staff module', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'manager')->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.update', $owner), [
+            'name' => 'Changed Owner',
+            'email' => $owner->email,
+            'phone' => null,
+            'role_id' => $role->id,
+            'work_shift_id' => null,
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => false,
+        ])
+        ->assertForbidden();
+
+    expect($owner->refresh()->name)->not->toBe('Changed Owner');
+});
+
+test('an owner can create and update a role permission matrix', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $permissions = rolePermissions();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.roles.store'), [
+            'name' => 'Supervisor Operasional',
+            'description' => 'Mengawasi operasional harian.',
+            'is_active' => true,
+            'permissions' => $permissions,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    $role = AdminRole::query()->where('key', 'supervisor_operasional')->firstOrFail();
+
+    expect($role->modules()->wherePivot('can_read', true)->count())->toBe(12);
+
+    $permissions[1]['can_read'] = false;
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.roles.update', $role), [
+            'name' => 'Supervisor',
+            'description' => 'Supervisor yang diperbarui.',
+            'is_active' => false,
+            'permissions' => $permissions,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($role->refresh())
+        ->name->toBe('Supervisor')
+        ->is_active->toBeFalse()
+        ->and($role->modules()->wherePivot('can_read', true)->count())->toBe(11);
+});
+
+test('read-only staff can view the module but cannot mutate users', function () {
+    $module = AdminModule::query()->where('key', 'users_and_roles')->firstOrFail();
+    $role = AdminRole::query()->create([
+        'key' => 'auditor',
+        'name' => 'Auditor',
+        'description' => 'Read only.',
+        'is_active' => true,
+    ]);
+    $role->modules()->attach($module, ['can_read' => true]);
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('capabilities.create', false)
+                ->where('capabilities.update', false)
+        );
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.users.store'), [])
+        ->assertForbidden();
+
+    $this->actingAs($admin, 'admin')
+        ->patch(route('admin.users.shift.update', $admin), ['work_shift_id' => null])
+        ->assertForbidden();
+});
+
+test('an inactive role grants no module access', function () {
+    $module = AdminModule::query()->where('key', 'users_and_roles')->firstOrFail();
+    $role = AdminRole::query()->create([
+        'key' => 'inactive_auditor',
+        'name' => 'Inactive Auditor',
+        'description' => 'Disabled role.',
+        'is_active' => false,
+    ]);
+    $role->modules()->attach($module, ['can_read' => true]);
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertForbidden();
+});

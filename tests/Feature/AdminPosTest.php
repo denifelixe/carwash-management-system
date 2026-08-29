@@ -1,0 +1,246 @@
+<?php
+
+use App\Models\Admin;
+use App\Models\AdminModule;
+use App\Models\AdminRole;
+use App\Models\AdminWorkShift;
+use App\Models\Order;
+use App\Models\OrderTransaction;
+use App\Models\Service;
+use Inertia\Testing\AssertableInertia;
+
+test('guests cannot open the live cashier module', function () {
+    $this->get(route('admin.pos.index'))
+        ->assertRedirect(route('admin.login'));
+});
+
+test('the live cashier page uses the shared component and database records', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['name' => 'Premium Wash']);
+    $order = Order::factory()->create(['number' => 'ORD-TEST-001', 'status' => 'pelunasan']);
+    $order->services()->attach($service, [
+        'service_name' => $service->name,
+        'unit_price' => $service->price,
+        'stamps' => $service->stamps,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.pos.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/Pos')
+                ->where('mode', 'live')
+                ->where('orders.0.orderNo', 'ORD-TEST-001')
+                ->where('orders.0.paidAmount', 0)
+                ->where('orders.0.paymentStatus', 'belum bayar')
+                ->where('dailyOrders.0.serviceIds.0', $service->id)
+                ->where('capabilities.create', true)
+                ->where('modules.2.key', 'pos')
+                ->where('modules.2.enabled', true)
+                ->where('modules.2.active', true),
+        );
+});
+
+test('the cashier only settles orders the floor handed over, and keeps upcoming bookings in view', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    Order::factory()->create(['status' => 'proses']);
+    $settlement = Order::factory()->create(['status' => 'pelunasan']);
+    $booking = Order::factory()->create([
+        'status' => 'booking',
+        'source' => 'booking',
+        'service_date' => today()->addDays(3),
+    ]);
+    Order::factory()->create([
+        'status' => 'booking',
+        'source' => 'booking',
+        'service_date' => today()->subDay(),
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.pos.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->has('orders', 1)
+                ->where('orders.0.id', $settlement->id)
+                ->has('dailyOrders', 2)
+                ->has('partialPaymentBookings', 1)
+                ->where('partialPaymentBookings.0.id', $booking->id),
+        );
+});
+
+test('a partial payment leaves the order open and records its channels', function () {
+    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+    $cashier = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => $shift->id]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 100000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'partial',
+            'discount' => 0,
+            'amount' => 40000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 25000, 'provider' => '', 'reference' => ''],
+                ['method' => 'Debit', 'amount' => 15000, 'provider' => 'BCA', 'reference' => '99881'],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $transaction = OrderTransaction::query()->latest('id')->firstOrFail();
+
+    expect($order->refresh())
+        ->paid_amount->toBe(40000)
+        ->total->toBe(100000)
+        ->status->toBe('pelunasan')
+        ->invoice_number->toBeNull()
+        ->payment_method->toBe('Tunai + Debit · BCA')
+        ->and($transaction)
+        ->type->toBe('Pembayaran Sebagian')
+        ->amount->toBe(40000)
+        ->shift_name->toBe('Shift Pagi')
+        ->recorded_by_admin_id->toBe($cashier->id)
+        ->reference->toBe($order->number.'-TRX-1')
+        ->and($transaction->channel_breakdown)->toBe([
+            ['label' => 'Tunai', 'amount' => 25000],
+            ['label' => 'Debit · BCA', 'amount' => 15000, 'reference' => '99881'],
+        ]);
+});
+
+test('settling the balance closes the order and issues its invoice', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'number' => 'ORD-20260829-ABCDEF',
+        'status' => 'pelunasan',
+        'total' => 100000,
+        'paid_amount' => 40000,
+        'payment_method' => 'Tunai',
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 10000,
+            'amount' => 50000,
+            'channels' => [
+                ['method' => 'QRIS', 'amount' => 50000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->status->toBe('selesai')
+        ->discount->toBe(10000)
+        ->total->toBe(90000)
+        ->paid_amount->toBe(90000)
+        ->invoice_number->toBe('ZW-20260829-ABCDEF')
+        ->payment_method->toBe('Tunai + QRIS')
+        ->and(OrderTransaction::query()->latest('id')->firstOrFail()->type)
+        ->toBe('Pembayaran Lunas');
+});
+
+test('a payment may not exceed the outstanding balance', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 60000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 60000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasErrors('amount');
+
+    expect($order->refresh()->paid_amount)->toBe(0);
+});
+
+test('the money received may not fall short of the payment being booked', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 20000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasErrors('channels');
+
+    expect($order->refresh()->paid_amount)->toBe(0);
+});
+
+test('a settled order cannot be paid again', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'status' => 'selesai',
+        'total' => 50000,
+        'paid_amount' => 50000,
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 10000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 10000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasErrors('amount');
+
+    expect(OrderTransaction::query()->count())->toBe(0);
+});
+
+test('a bill cleared entirely by a discount still books a transaction', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 20000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 20000,
+            'amount' => 0,
+            'channels' => [],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->total->toBe(0)
+        ->status->toBe('selesai')
+        ->and(OrderTransaction::query()->latest('id')->firstOrFail()->channel_breakdown)
+        ->toBe([['label' => 'Diskon', 'amount' => 0]]);
+});
+
+test('cashier access follows the role permission matrix', function () {
+    $module = AdminModule::query()->where('key', 'pos')->firstOrFail();
+    $role = AdminRole::query()->create([
+        'key' => 'pos_reader',
+        'name' => 'POS Reader',
+        'is_active' => true,
+    ]);
+    $role->modules()->attach($module, ['can_read' => true]);
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+    $order = Order::factory()->create(['status' => 'pelunasan']);
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.pos.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('capabilities.create', false));
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [])
+        ->assertForbidden();
+});
+
+test('demo and live cashier pages have one frontend source of truth', function () {
+    expect(resource_path('js/pages/admin/Pos.vue'))->toBeFile()
+        ->and(resource_path('js/pages/demo/admin/Pos.vue'))->not->toBeFile()
+        ->and(file_get_contents(app_path('Http/Controllers/Demo/PosController.php')))
+        ->toContain("'admin/Pos'");
+});

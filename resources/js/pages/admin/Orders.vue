@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Ban,
     CalendarClock,
     Car,
+    ChevronDown,
     CircleCheck,
     ClipboardList,
     Hourglass,
@@ -15,6 +16,11 @@ import type { LucideIcon } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
+import {
+    index as indexOrder,
+    store as storeOrder,
+    updateStatus as updateOrderStatus,
+} from '@/actions/App/Http/Controllers/Admin/OrderController';
 import CollapsibleSummary from '@/components/demo/CollapsibleSummary.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -29,7 +35,7 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
-import admin from '@/routes/demo/admin';
+import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
     CarwashBooking,
@@ -42,6 +48,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     orders: CarwashOrder[];
     filters: CarwashDateFilter;
@@ -53,6 +60,10 @@ const props = defineProps<{
     customers: CarwashCustomer[];
     crew: CarwashCrewMember[];
     paymentMethods: string[];
+    capabilities: {
+        create: boolean;
+        update: boolean;
+    };
 }>();
 
 /** Single lifecycle the floor tracks; payment state stays with the cashier. */
@@ -87,23 +98,31 @@ const customerTabs: { key: CustomerMode; label: string }[] = [
 
 /** Local copies used by the member and vehicle picker. */
 const workflow = useCarwashWorkflow();
-workflow.hydrateCustomers(props.customers);
-workflow.hydrateOrders(props.orders);
 
-const customerList = workflow.customers;
+if (props.mode === 'demo') {
+    workflow.hydrateCustomers(props.customers);
+    workflow.hydrateOrders(props.orders);
+}
+
+const customerList = computed<CarwashCustomer[]>(() =>
+    props.mode === 'demo' ? workflow.customers.value : props.customers,
+);
 
 /** Built from the local copies so the picker reflects a spent stamp balance. */
-const customerOptions: CustomerOption[] = customerList.value.flatMap(
-    (customer) =>
+const customerOptions = computed<CustomerOption[]>(() =>
+    customerList.value.flatMap((customer) =>
         customer.vehicles.map((vehicle, vehicleIndex) => ({
             key: `customer-${customer.id}-vehicle-${vehicleIndex}`,
             label: customer.name,
             customer,
             vehicle,
         })),
+    ),
 );
 
-const orderList = workflow.orders;
+const orderList = computed<CarwashOrder[]>(() =>
+    props.mode === 'demo' ? workflow.orders.value : props.orders,
+);
 
 /** Orders belonging to the date selected on this page. Other modules may load
  * future bookings into the shared workflow store, but they must not inflate
@@ -121,6 +140,7 @@ const detailOrderId = ref<number | null>(null);
 const isCreateOpen = ref<boolean>(false);
 const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
+const serviceQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
 
@@ -187,10 +207,10 @@ const visibleCustomerOptions = computed<CustomerOption[]>(() => {
     const query = normalizeCustomerSearch(customerQuery.value);
 
     if (query === '') {
-        return customerOptions;
+        return customerOptions.value;
     }
 
-    return customerOptions.filter(({ customer, vehicle }) =>
+    return customerOptions.value.filter(({ customer, vehicle }) =>
         [customer.name, customer.phone, vehicle.plate, vehicle.name].some(
             (value) => normalizeCustomerSearch(value).includes(query),
         ),
@@ -229,6 +249,9 @@ const isDetailReadOnly = computed<boolean>(
 
 /** The dropdown edits a draft so nothing moves before the user saves. */
 const statusDraft = ref<string>('');
+
+/** The row whose inline status is in flight, so only that chip greys out. */
+const pendingStatusOrderId = ref<number | null>(null);
 
 watch(
     detailOrder,
@@ -340,8 +363,31 @@ const draftCustomer = computed<CarwashCustomer | null>(
         ) ?? null,
 );
 
+const selectableServices = computed<CarwashService[]>(() =>
+    props.services.filter((service) => service.isActive),
+);
+
+/** Every token must land somewhere, so 'coating medium' still finds
+ * 'Coating Lite - Medium' without the words having to sit next to each other. */
+const visibleServices = computed<CarwashService[]>(() => {
+    const tokens = serviceQuery.value
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((token) => token !== '');
+
+    if (tokens.length === 0) {
+        return selectableServices.value;
+    }
+
+    return selectableServices.value.filter((service) => {
+        const haystack = `${service.name} ${service.category}`.toLowerCase();
+
+        return tokens.every((token) => haystack.includes(token));
+    });
+});
+
 const draftServices = computed<CarwashService[]>(() =>
-    props.services.filter((service) =>
+    selectableServices.value.filter((service) =>
         draft.value.serviceIds.includes(service.id),
     ),
 );
@@ -391,13 +437,63 @@ function setStatus(order: CarwashOrder, status: string): void {
     order.status = status;
 }
 
+/**
+ * Stages a row may be moved to without opening it. A settled order belongs to
+ * the cashier, so only that one is left to the read-only chip.
+ */
+function canEditStatus(order: CarwashOrder): boolean {
+    return props.capabilities.update && order.status !== 'selesai';
+}
+
+/**
+ * Moves one order straight from its row. The chip doubles as the picker on a
+ * phone, where the detail panel is a hop too far to change a stage, so the
+ * choice is saved as it is made rather than through a draft and a button.
+ */
+function changeRowStatus(order: CarwashOrder, event: Event): void {
+    const picker = event.target as HTMLSelectElement;
+    const status = picker.value;
+
+    if (status === order.status) {
+        return;
+    }
+
+    if (props.mode === 'demo') {
+        setStatus(order, status);
+
+        return;
+    }
+
+    pendingStatusOrderId.value = order.id;
+    statusForm.status = status;
+    statusForm.submit(updateOrderStatus(order.id), {
+        preserveScroll: true,
+        onError: () => {
+            /* The chip still reads the stored stage, so the picker goes back. */
+            picker.value = order.status;
+        },
+        onFinish: () => {
+            pendingStatusOrderId.value = null;
+        },
+    });
+}
+
 /** Writes the dropdown choice onto the open order. */
 function saveStatus(): void {
     if (detailOrder.value === null) {
         return;
     }
 
-    setStatus(detailOrder.value, statusDraft.value);
+    if (props.mode === 'demo') {
+        setStatus(detailOrder.value, statusDraft.value);
+
+        return;
+    }
+
+    statusForm.status = statusDraft.value;
+    statusForm.submit(updateOrderStatus(detailOrder.value.id), {
+        preserveScroll: true,
+    });
 }
 
 function pickCustomer(option: CustomerOption): void {
@@ -449,6 +545,7 @@ function resetDraft(): void {
         serviceIds: [],
     };
     customerQuery.value = '';
+    serviceQuery.value = '';
     customerMode.value = 'existing';
     selectedCustomerOption.value = null;
 }
@@ -458,8 +555,38 @@ function createOrder(): void {
         return;
     }
 
-    const sequence = orderList.value.length + 13;
     const customer = draftCustomer.value;
+
+    if (props.mode === 'live') {
+        orderForm.customer_mode = customerMode.value;
+        orderForm.member_id = customer?.id ?? null;
+        orderForm.member_vehicle_id =
+            selectedCustomerOption.value?.vehicle.id ?? null;
+        orderForm.customer_name = draft.value.walkInName.trim();
+        orderForm.customer_phone = draft.value.customerPhone.trim();
+        orderForm.vehicle_name = draft.value.vehicle.trim();
+        orderForm.vehicle_plate = draft.value.plate.trim();
+        orderForm.service_ids = [...draft.value.serviceIds];
+        orderForm.submit(storeOrder(), {
+            preserveScroll: true,
+            onSuccess: () => {
+                const createdOrder = orderList.value[0];
+                resetDraft();
+                isCreateOpen.value = false;
+                orderForm.reset();
+                createdOrderAlert.value = createdOrder
+                    ? {
+                          orderNo: createdOrder.orderNo,
+                          customer: createdOrder.customer,
+                      }
+                    : null;
+            },
+        });
+
+        return;
+    }
+
+    const sequence = orderList.value.length + 13;
     const orderNo = `ORD-${formatDateCode(props.filters.today)}${String(sequence).padStart(2, '0')}`;
     const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
     const customerName =
@@ -501,11 +628,24 @@ function createOrder(): void {
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
 function applyDate(date: string): void {
     router.get(
-        admin.orders.url(),
+        props.mode === 'demo' ? demoAdmin.orders.url() : indexOrder.url(),
         { date },
         { preserveScroll: true, replace: true },
     );
 }
+
+const orderForm = useForm({
+    customer_mode: 'existing' as CustomerMode,
+    member_id: null as number | null,
+    member_vehicle_id: null as number | null,
+    customer_name: '',
+    customer_phone: '',
+    vehicle_name: '',
+    vehicle_plate: '',
+    service_ids: [] as number[],
+});
+
+const statusForm = useForm({ status: '' });
 </script>
 
 <template>
@@ -567,6 +707,7 @@ function applyDate(date: string): void {
                         @filter="applyStatusFilter"
                     />
                     <button
+                        v-if="capabilities.create"
                         type="button"
                         class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
                         @click="isCreateOpen = true"
@@ -578,26 +719,37 @@ function applyDate(date: string): void {
             </div>
 
             <div v-if="filteredOrders.length > 0" class="overflow-x-auto">
-                <table class="w-full min-w-[900px] text-sm">
+                <!--
+                    A phone and a tablet only get Kendaraan, Layanan, and
+                    Status; the customer folds into the vehicle cell and the
+                    whole row opens the detail. The wide layout keeps its own
+                    Customer column and Detail button.
+                -->
+                <table class="w-full min-w-[340px] text-sm lg:min-w-[900px]">
                     <thead>
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
                         >
                             <th class="px-5 py-3">Kendaraan</th>
-                            <th class="px-5 py-3">Customer</th>
+                            <th class="hidden px-5 py-3 lg:table-cell">
+                                Customer
+                            </th>
                             <th class="px-5 py-3">Layanan</th>
                             <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3"></th>
+                            <th class="hidden px-5 py-3 lg:table-cell"></th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         <tr
                             v-for="order in filteredOrders"
                             :key="order.id"
-                            class="cursor-pointer transition hover:bg-slate-50/70"
+                            tabindex="0"
+                            class="cursor-pointer transition hover:bg-slate-50/70 focus-visible:bg-slate-50 focus-visible:outline-none"
                             @click="detailOrderId = order.id"
+                            @keydown.enter="detailOrderId = order.id"
+                            @keydown.space.prevent="detailOrderId = order.id"
                         >
-                            <td class="min-w-52 px-5 py-3.5">
+                            <td class="px-5 py-3.5 lg:min-w-52">
                                 <p
                                     class="text-xl font-bold tracking-wide text-slate-900"
                                 >
@@ -606,6 +758,14 @@ function applyDate(date: string): void {
                                 <p class="mt-0.5 text-xs text-slate-600">
                                     {{ order.vehicle }}
                                 </p>
+                                <div class="mt-1 lg:hidden">
+                                    <p class="text-xs text-slate-700">
+                                        {{ order.customer }}
+                                    </p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{ order.phone }}
+                                    </p>
+                                </div>
                                 <div
                                     class="mt-1.5 flex flex-col gap-0.5 text-[11px] text-slate-500"
                                 >
@@ -614,7 +774,7 @@ function applyDate(date: string): void {
                                     <span>{{ order.orderNo }}</span>
                                 </div>
                             </td>
-                            <td class="px-5 py-3.5">
+                            <td class="hidden px-5 py-3.5 lg:table-cell">
                                 <p class="text-slate-700">
                                     {{ order.customer }}
                                 </p>
@@ -623,14 +783,53 @@ function applyDate(date: string): void {
                                 </p>
                             </td>
                             <td
-                                class="max-w-[200px] px-5 py-3.5 text-slate-600"
+                                class="px-5 py-3.5 text-slate-600 lg:max-w-[200px]"
                             >
                                 {{ order.items }}
                             </td>
-                            <td class="px-5 py-3.5">
-                                <StatusPill :status="displayedStatus(order)" />
+                            <!-- Picking a stage must not also open the row. -->
+                            <td class="px-5 py-3.5" @click.stop>
+                                <div
+                                    v-if="canEditStatus(order)"
+                                    class="relative inline-flex items-center gap-0.5"
+                                    :class="
+                                        pendingStatusOrderId === order.id
+                                            ? 'opacity-50'
+                                            : ''
+                                    "
+                                >
+                                    <StatusPill
+                                        :status="displayedStatus(order)"
+                                    />
+                                    <ChevronDown
+                                        class="pointer-events-none h-3.5 w-3.5 shrink-0 text-slate-400"
+                                    />
+                                    <select
+                                        :value="order.status"
+                                        :disabled="
+                                            pendingStatusOrderId === order.id
+                                        "
+                                        aria-label="Ubah status order"
+                                        class="absolute inset-0 h-full w-full cursor-pointer appearance-none opacity-0"
+                                        @change="changeRowStatus(order, $event)"
+                                    >
+                                        <option
+                                            v-for="status in editableOrderStatuses"
+                                            :key="status"
+                                            :value="status"
+                                        >
+                                            {{ statusLabel(status) }}
+                                        </option>
+                                    </select>
+                                </div>
+                                <StatusPill
+                                    v-else
+                                    :status="displayedStatus(order)"
+                                />
                             </td>
-                            <td class="px-5 py-3.5 text-right">
+                            <td
+                                class="hidden px-5 py-3.5 text-right lg:table-cell"
+                            >
                                 <button
                                     type="button"
                                     class="rounded-lg px-3 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-50"
@@ -670,7 +869,7 @@ function applyDate(date: string): void {
                 <div v-if="isDetailReadOnly" class="mt-2 flex gap-2">
                     <StatusPill :status="detailOrder.status" />
                 </div>
-                <template v-else>
+                <template v-else-if="capabilities.update">
                     <div class="mt-2 flex gap-2">
                         <select
                             v-model="statusDraft"
@@ -697,6 +896,9 @@ function applyDate(date: string): void {
                         Status selesai dicatat kasir saat pembayaran diterima.
                     </p>
                 </template>
+                <div v-else class="mt-2 flex gap-2">
+                    <StatusPill :status="detailOrder.status" />
+                </div>
             </div>
 
             <div class="rounded-xl bg-slate-50 p-3">
@@ -835,6 +1037,15 @@ function applyDate(date: string): void {
         @close="isCreateOpen = false"
     >
         <div class="space-y-5">
+            <div
+                v-if="mode === 'live' && orderForm.hasErrors"
+                class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
+            >
+                <p v-for="(message, field) in orderForm.errors" :key="field">
+                    {{ message }}
+                </p>
+            </div>
+
             <!-- Customer -->
             <div>
                 <label
@@ -1090,10 +1301,22 @@ function applyDate(date: string): void {
                     Layanan
                 </p>
                 <div
+                    class="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100"
+                >
+                    <Search class="h-4 w-4 shrink-0 text-slate-500" />
+                    <input
+                        v-model="serviceQuery"
+                        type="search"
+                        placeholder="Cari layanan"
+                        class="min-w-0 flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
+                    />
+                </div>
+                <div
+                    v-if="visibleServices.length > 0"
                     class="mt-2 grid max-h-56 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
                 >
                     <button
-                        v-for="service in services"
+                        v-for="service in visibleServices"
                         :key="service.id"
                         type="button"
                         class="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
@@ -1124,6 +1347,12 @@ function applyDate(date: string): void {
                         />
                     </button>
                 </div>
+                <p
+                    v-else
+                    class="mt-2 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
+                >
+                    Layanan tidak ditemukan.
+                </p>
             </div>
 
             <!-- Selected services -->
@@ -1160,10 +1389,10 @@ function applyDate(date: string): void {
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canCreate"
+                :disabled="!canCreate || orderForm.processing"
                 @click="createOrder"
             >
-                Simpan order
+                {{ orderForm.processing ? 'Menyimpan...' : 'Simpan order' }}
             </button>
         </template>
     </ModalDialog>

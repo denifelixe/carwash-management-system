@@ -127,7 +127,7 @@ test('the cashier is not offered a car that has not arrived or was cancelled', f
         ->get(route('demo.admin.pos'))
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Pos')
+                ->component('admin/Pos')
                 ->where('orders', fn ($orders) => $orders
                     ->every(fn (array $order): bool => $order['status'] !== 'booking'))
         );

@@ -29,7 +29,7 @@ test('authenticated admins can visit the dashboard', function () {
         );
 });
 
-test('owner dashboard uses live member data and disables unfinished modules', function () {
+test('owner dashboard uses live member data and enables completed modules', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     Member::factory()->count(2)->create();
     Member::factory()->create(['is_active' => false]);
@@ -49,12 +49,12 @@ test('owner dashboard uses live member data and disables unfinished modules', fu
                 ->where('stats.3.value', '0')
                 ->has('shifts', 0)
                 ->has('notifications', 0)
-                ->has('modules', 10)
+                ->has('modules', 11)
                 ->where('modules.0.key', 'dashboard')
                 ->where('modules.0.enabled', true)
                 ->where('modules.0.active', true)
-                ->where('modules.1.enabled', false)
-                ->where('modules.1.href', null)
+                ->where('modules.1.enabled', true)
+                ->where('modules.1.href', route('admin.orders.index', absolute: false))
                 ->where('profileHref', route('admin.profile.edit', absolute: false))
                 ->where('headerAction', null)
                 ->where('exitAction.method', 'post')
@@ -82,7 +82,7 @@ test('demo and live dashboards share the same inertia component', function () {
 
 test('staff sidebar follows readable modules from its role', function () {
     $role = AdminRole::query()->create([
-        'key' => 'cashier',
+        'key' => 'test_cashier',
         'name' => 'Kasir',
         'description' => 'Akses kasir.',
         'is_active' => true,
@@ -106,6 +106,6 @@ test('staff sidebar follows readable modules from its role', function () {
                 ->has('modules', 2)
                 ->where('modules.0.key', 'dashboard')
                 ->where('modules.1.key', 'orders')
-                ->where('modules.1.enabled', false)
+                ->where('modules.1.enabled', true)
         );
 });

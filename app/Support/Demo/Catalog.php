@@ -10,23 +10,23 @@ class Catalog
     /**
      * Services shared by the POS grid, order builder, and customer catalog.
      *
-     * @return list<array{id: int, name: string, category: string, price: int, duration: int, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
+     * @return list<array{id: int, name: string, category: string, price: int, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
      */
     public static function services(): array
     {
         return [
-            ['id' => 1, 'name' => 'Cuci Mobil Reguler', 'category' => 'Cuci Mobil', 'price' => 45000, 'duration' => 30, 'stamps' => 1, 'icon' => '🚗', 'description' => 'Cuci body, sela ban, dan lap kering menyeluruh.', 'popular' => true, 'isActive' => true],
-            ['id' => 2, 'name' => 'Cuci Mobil + Wax', 'category' => 'Cuci Mobil', 'price' => 85000, 'duration' => 45, 'stamps' => 1, 'icon' => '✨', 'description' => 'Cuci reguler plus lapisan wax agar cat lebih berkilau.', 'popular' => true, 'isActive' => true],
-            ['id' => 3, 'name' => 'Snow Wash Premium', 'category' => 'Cuci Mobil', 'price' => 120000, 'duration' => 60, 'stamps' => 2, 'icon' => '❄️', 'description' => 'Busa salju pH netral, aman untuk cat dan lapisan coating.', 'popular' => true, 'isActive' => true],
-            ['id' => 4, 'name' => 'Cuci Motor Reguler', 'category' => 'Cuci Motor', 'price' => 20000, 'duration' => 15, 'stamps' => 1, 'icon' => '🏍️', 'description' => 'Cuci motor cepat dengan pengeringan blower.', 'popular' => false, 'isActive' => true],
-            ['id' => 5, 'name' => 'Cuci Motor + Semir', 'category' => 'Cuci Motor', 'price' => 35000, 'duration' => 25, 'stamps' => 1, 'icon' => '🛵', 'description' => 'Cuci motor lengkap dengan semir ban dan bodi mengkilap.', 'popular' => false, 'isActive' => true],
-            ['id' => 6, 'name' => 'Poles Body Detailing', 'category' => 'Detailing', 'price' => 450000, 'duration' => 180, 'stamps' => 4, 'icon' => '💎', 'description' => 'Hilangkan baret halus dan kembalikan kilau cat mobil.', 'popular' => false, 'isActive' => true],
-            ['id' => 7, 'name' => 'Nano Ceramic Coating', 'category' => 'Detailing', 'price' => 1500000, 'duration' => 300, 'stamps' => 10, 'icon' => '🛡️', 'description' => 'Proteksi cat hingga 12 bulan, anti air dan gores ringan.', 'popular' => false, 'isActive' => true],
-            ['id' => 8, 'name' => 'Engine Bay Cleaning', 'category' => 'Detailing', 'price' => 90000, 'duration' => 45, 'stamps' => 1, 'icon' => '🔧', 'description' => 'Bersihkan ruang mesin dari kerak oli dan debu.', 'popular' => false, 'isActive' => true],
-            ['id' => 9, 'name' => 'Deep Clean Interior', 'category' => 'Interior', 'price' => 150000, 'duration' => 90, 'stamps' => 2, 'icon' => '🧽', 'description' => 'Vacuum menyeluruh, bersihkan dashboard, dan door trim.', 'popular' => true, 'isActive' => true],
-            ['id' => 10, 'name' => 'Salon Jok & Karpet', 'category' => 'Interior', 'price' => 350000, 'duration' => 120, 'stamps' => 3, 'icon' => '🪑', 'description' => 'Cuci jok, karpet, dan plafon dengan mesin extractor.', 'popular' => false, 'isActive' => true],
-            ['id' => 11, 'name' => 'Parfum & Anti Jamur Kaca', 'category' => 'Add-on', 'price' => 60000, 'duration' => 20, 'stamps' => 0, 'icon' => '💨', 'description' => 'Wangi kabin tahan lama plus kaca bebas jamur.', 'popular' => false, 'isActive' => true],
-            ['id' => 12, 'name' => 'Semir Ban Premium', 'category' => 'Add-on', 'price' => 25000, 'duration' => 10, 'stamps' => 0, 'icon' => '⚫', 'description' => 'Ban hitam pekat mengkilap tahan hingga 2 minggu.', 'popular' => false, 'isActive' => true],
+            ['id' => 1, 'name' => 'Cuci Mobil Reguler', 'category' => 'Cuci Mobil', 'price' => 45000, 'stamps' => 1, 'icon' => '🚗', 'description' => 'Cuci body, sela ban, dan lap kering menyeluruh.', 'popular' => true, 'isActive' => true],
+            ['id' => 2, 'name' => 'Cuci Mobil + Wax', 'category' => 'Cuci Mobil', 'price' => 85000, 'stamps' => 1, 'icon' => '✨', 'description' => 'Cuci reguler plus lapisan wax agar cat lebih berkilau.', 'popular' => true, 'isActive' => true],
+            ['id' => 3, 'name' => 'Snow Wash Premium', 'category' => 'Cuci Mobil', 'price' => 120000, 'stamps' => 2, 'icon' => '❄️', 'description' => 'Busa salju pH netral, aman untuk cat dan lapisan coating.', 'popular' => true, 'isActive' => true],
+            ['id' => 4, 'name' => 'Cuci Motor Reguler', 'category' => 'Cuci Motor', 'price' => 20000, 'stamps' => 1, 'icon' => '🏍️', 'description' => 'Cuci motor cepat dengan pengeringan blower.', 'popular' => false, 'isActive' => true],
+            ['id' => 5, 'name' => 'Cuci Motor + Semir', 'category' => 'Cuci Motor', 'price' => 35000, 'stamps' => 1, 'icon' => '🛵', 'description' => 'Cuci motor lengkap dengan semir ban dan bodi mengkilap.', 'popular' => false, 'isActive' => true],
+            ['id' => 6, 'name' => 'Poles Body Detailing', 'category' => 'Detailing', 'price' => 450000, 'stamps' => 4, 'icon' => '💎', 'description' => 'Hilangkan baret halus dan kembalikan kilau cat mobil.', 'popular' => false, 'isActive' => true],
+            ['id' => 7, 'name' => 'Nano Ceramic Coating', 'category' => 'Detailing', 'price' => 1500000, 'stamps' => 10, 'icon' => '🛡️', 'description' => 'Proteksi cat hingga 12 bulan, anti air dan gores ringan.', 'popular' => false, 'isActive' => true],
+            ['id' => 8, 'name' => 'Engine Bay Cleaning', 'category' => 'Detailing', 'price' => 90000, 'stamps' => 1, 'icon' => '🔧', 'description' => 'Bersihkan ruang mesin dari kerak oli dan debu.', 'popular' => false, 'isActive' => true],
+            ['id' => 9, 'name' => 'Deep Clean Interior', 'category' => 'Interior', 'price' => 150000, 'stamps' => 2, 'icon' => '🧽', 'description' => 'Vacuum menyeluruh, bersihkan dashboard, dan door trim.', 'popular' => true, 'isActive' => true],
+            ['id' => 10, 'name' => 'Salon Jok & Karpet', 'category' => 'Interior', 'price' => 350000, 'stamps' => 3, 'icon' => '🪑', 'description' => 'Cuci jok, karpet, dan plafon dengan mesin extractor.', 'popular' => false, 'isActive' => true],
+            ['id' => 11, 'name' => 'Parfum & Anti Jamur Kaca', 'category' => 'Add-on', 'price' => 60000, 'stamps' => 0, 'icon' => '💨', 'description' => 'Wangi kabin tahan lama plus kaca bebas jamur.', 'popular' => false, 'isActive' => true],
+            ['id' => 12, 'name' => 'Semir Ban Premium', 'category' => 'Add-on', 'price' => 25000, 'stamps' => 0, 'icon' => '⚫', 'description' => 'Ban hitam pekat mengkilap tahan hingga 2 minggu.', 'popular' => false, 'isActive' => true],
         ];
     }
 

@@ -33,6 +33,8 @@ class RoleAccess
             ['key' => 'rewards', 'label' => 'Reward', 'caption' => 'Katalog & syarat stempel', 'icon' => 'rewards', 'route' => 'demo.admin.rewards'],
             ['key' => 'users', 'label' => 'User & Role', 'caption' => 'Hak akses pegawai', 'icon' => 'users', 'route' => 'demo.admin.users'],
             ['key' => 'reports', 'label' => 'Laporan', 'caption' => 'Monitoring & rekap', 'icon' => 'reports', 'route' => 'demo.admin.reports'],
+            ['key' => 'master_services', 'label' => 'Layanan', 'caption' => 'Master data layanan', 'icon' => 'services', 'route' => 'demo.admin.master.services'],
+            ['key' => 'master_work_shifts', 'label' => 'Shift', 'caption' => 'Master jadwal kerja', 'icon' => 'work-shifts', 'route' => 'demo.admin.master.work-shifts'],
         ];
     }
 
@@ -58,8 +60,8 @@ class RoleAccess
     public static function matrix(): array
     {
         return [
-            'owner' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports'],
-            'manager' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'reports'],
+            'owner' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports', 'master_services', 'master_work_shifts'],
+            'manager' => ['dashboard', 'orders', 'pos', 'customers', 'finance', 'bookings', 'inventory', 'rewards', 'reports', 'master_services', 'master_work_shifts'],
             'cashier' => ['pos', 'customers', 'finance', 'bookings', 'inventory'],
             'cs' => ['customers', 'orders'],
             'finance' => ['finance', 'reports'],
@@ -137,6 +139,94 @@ class RoleAccess
     public static function shifts(): array
     {
         return ['Shift Pagi', 'Shift Sore'];
+    }
+
+    /**
+     * Adapt the demo fixtures to the same page contract used by the live module.
+     *
+     * @return array<string, mixed>
+     */
+    public static function userRoleProps(): array
+    {
+        $modules = array_map(
+            fn (array $module, int $index): array => [
+                'id' => $index + 1,
+                'key' => $module['key'] === 'users' ? 'users_and_roles' : $module['key'],
+                'label' => $module['label'],
+                'caption' => $module['caption'],
+            ],
+            self::modules(),
+            array_keys(self::modules()),
+        );
+        $staffRoles = array_values(array_filter(
+            self::roles(),
+            fn (array $role): bool => $role['key'] !== 'owner',
+        ));
+        $roles = array_map(function (array $role, int $index) use ($modules): array {
+            $readableModules = self::matrix()[$role['key']] ?? [];
+
+            return [
+                'id' => $index + 1,
+                'key' => $role['key'],
+                'name' => $role['name'],
+                'description' => $role['description'],
+                'is_active' => true,
+                'staff_count' => count(array_filter(
+                    self::staff(),
+                    fn (array $staff): bool => $staff['role'] === $role['key'],
+                )),
+                'permissions' => array_map(function (array $module) use ($readableModules): array {
+                    $demoModuleKey = $module['key'] === 'users_and_roles' ? 'users' : $module['key'];
+                    $canRead = in_array($demoModuleKey, $readableModules, true);
+
+                    return [
+                        'module_id' => $module['id'],
+                        'can_create' => $canRead && $demoModuleKey !== 'dashboard',
+                        'can_read' => $canRead,
+                        'can_update' => $canRead && $demoModuleKey !== 'dashboard',
+                        'can_delete' => false,
+                    ];
+                }, $modules),
+            ];
+        }, $staffRoles, array_keys($staffRoles));
+        $roleIds = array_column($roles, 'id', 'key');
+        $shiftIds = array_flip(self::shifts());
+
+        return [
+            'staff' => array_map(fn (array $staff): array => [
+                'id' => $staff['id'],
+                'name' => $staff['name'],
+                'email' => $staff['email'],
+                'phone' => $staff['phone'],
+                'role_id' => $staff['role'] === 'owner' ? null : $roleIds[$staff['role']],
+                'role_key' => $staff['role'],
+                'role_name' => self::role($staff['role'])['name'],
+                'work_shift_id' => $shiftIds[$staff['shift']] + 1,
+                'shift_name' => $staff['shift'],
+                'is_owner' => $staff['role'] === 'owner',
+                'is_active' => $staff['status'] === 'aktif',
+                'last_active' => $staff['lastActive'],
+                'initials' => $staff['initials'],
+            ], self::staff()),
+            'roles' => $roles,
+            'shifts' => array_map(
+                fn (string $shift, int $index): array => ['id' => $index + 1, 'name' => $shift],
+                self::shifts(),
+                array_keys(self::shifts()),
+            ),
+            'allModules' => $modules,
+            'ownerSummary' => [
+                'key' => 'owner',
+                'name' => 'Owner',
+                'description' => self::role('owner')['description'],
+                'staff_count' => count(array_filter(
+                    self::staff(),
+                    fn (array $staff): bool => $staff['role'] === 'owner',
+                )),
+                'module_count' => count($modules),
+            ],
+            'capabilities' => ['create' => true, 'update' => true],
+        ];
     }
 
     /**

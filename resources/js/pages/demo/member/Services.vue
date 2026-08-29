@@ -1,15 +1,11 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
-import { Search, Sparkles, Timer, X } from '@lucide/vue';
+import { Search, Sparkles, X } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
-import type {
-    CarwashBrand,
-    CarwashMember,
-    CarwashService,
-} from '@/types/demo';
+import type { CarwashBrand, CarwashMember, CarwashService } from '@/types/demo';
 
 const props = defineProps<{
     brand: CarwashBrand;
@@ -50,7 +46,7 @@ const visibleServices = computed<CarwashService[]>(() => {
                 Katalog layanan
             </h1>
             <p class="mt-0.5 text-xs text-slate-500">
-                Harga dan durasi layanan di {{ brand.name }}.
+                Harga layanan di {{ brand.name }}.
             </p>
         </section>
 
@@ -126,12 +122,6 @@ const visibleServices = computed<CarwashService[]>(() => {
                                     {{ formatCurrency(service.price) }}
                                 </span>
                                 <span
-                                    class="flex items-center gap-1 text-[11px] text-slate-400"
-                                >
-                                    <Timer class="h-3.5 w-3.5" />
-                                    {{ service.duration }} menit
-                                </span>
-                                <span
                                     v-if="service.stamps > 0"
                                     class="flex items-center gap-1 text-[11px] font-medium text-emerald-600"
                                 >
@@ -195,12 +185,6 @@ const visibleServices = computed<CarwashService[]>(() => {
                     <dt class="text-slate-500">Harga</dt>
                     <dd class="font-semibold text-slate-900 tabular-nums">
                         {{ formatCurrency(detailService.price) }}
-                    </dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Estimasi pengerjaan</dt>
-                    <dd class="text-slate-800 tabular-nums">
-                        ± {{ detailService.duration }} menit
                     </dd>
                 </div>
                 <div class="flex justify-between">

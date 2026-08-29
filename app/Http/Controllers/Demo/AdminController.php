@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Demo;
 
 use App\Http\Controllers\Controller;
+use App\Support\Admin\ModuleGroups;
 use App\Support\Demo\Brand;
 use App\Support\Demo\RoleAccess;
 use Illuminate\Http\Request;
@@ -21,7 +22,7 @@ abstract class AdminController extends Controller
     protected function page(Request $request, string $component, array $props = []): Response
     {
         $role = (string) $request->session()->get(RoleAccess::SESSION_KEY, RoleAccess::DEFAULT_ROLE);
-        $modules = array_map(
+        $modules = ModuleGroups::fold(array_map(
             fn (array $module): array => [
                 ...$module,
                 'href' => route($module['route'], absolute: false),
@@ -29,7 +30,7 @@ abstract class AdminController extends Controller
                 'active' => $request->routeIs($module['route']),
             ],
             RoleAccess::modulesFor($role),
-        );
+        ));
 
         return Inertia::render($component, array_merge([
             'mode' => 'demo',

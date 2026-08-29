@@ -9,15 +9,17 @@ use Inertia\Testing\AssertableInertia;
  */
 dataset('admin modules', [
     'dashboard' => ['demo.admin.dashboard', 'admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'orderSummary']],
-    'orders' => ['demo.admin.orders', 'demo/admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
-    'pos' => ['demo.admin.pos', 'demo/admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
+    'orders' => ['demo.admin.orders', 'admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
+    'pos' => ['demo.admin.pos', 'admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
     'customers' => ['demo.admin.customers', 'demo/admin/Customers', ['customers', 'orders', 'stampHistory', 'stampTarget']],
     'finance' => ['demo.admin.finance', 'demo/admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'orders']],
     'bookings' => ['demo.admin.bookings', 'demo/admin/Bookings', ['bookings', 'today', 'services', 'customers']],
     'inventory' => ['demo.admin.inventory', 'demo/admin/Inventory', ['items', 'movements', 'categories', 'movementTypes']],
     'rewards' => ['demo.admin.rewards', 'demo/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
-    'users' => ['demo.admin.users', 'demo/admin/Users', ['staff', 'roles', 'shifts', 'matrix', 'allModules']],
+    'users' => ['demo.admin.users', 'admin/Users', ['staff', 'roles', 'shifts', 'ownerSummary', 'capabilities', 'allModules']],
     'reports' => ['demo.admin.reports', 'demo/admin/Reports', ['stats', 'trend', 'filters', 'customerActivity', 'bookingSummary', 'inventorySummary']],
+    'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'categories', 'capabilities']],
+    'master work shifts' => ['demo.admin.master.work-shifts', 'admin/master/WorkShifts', ['workShifts', 'capabilities']],
 ]);
 
 test('an owner can open every module with its expected props', function (string $routeName, string $component, array $props) {
@@ -36,6 +38,20 @@ test('an owner can open every module with its expected props', function (string 
             }
         });
 })->with('admin modules');
+
+test('the master module is nested under an expandable sidebar group', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.master.services'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('modules.10.key', 'master')
+                ->where('modules.10.href', null)
+                ->where('modules.10.active', true)
+                ->where('modules.10.children.0.key', 'master_services')
+                ->where('modules.10.children.0.href', route('demo.admin.master.services', absolute: false))
+        );
+});
 
 test('the sidebar only offers modules the active role may reach', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'cs'])
@@ -58,7 +74,7 @@ test('the entry screen exposes the roles and the full access matrix', function (
             fn (AssertableInertia $page) => $page
                 ->component('demo/auth/Entry')
                 ->has('roles', 5)
-                ->has('modules', 10)
+                ->has('modules', 12)
                 ->has('matrix')
         );
 });
