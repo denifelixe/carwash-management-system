@@ -126,3 +126,23 @@ test('the live domains still wear the branding the owner saved', function () {
             ->where('brand.photo', Storage::disk('public')->url('app-branding/app-photo.png'))
             ->where('brand.instagram', 'showtime.autocare'));
 });
+
+test('branding stays secure when https is terminated by a trusted proxy', function () {
+    Storage::fake('public');
+
+    AppSettings::put(AppSettings::APP_PHOTO, 'app-branding/app-photo.png');
+    AppSettings::put(AppSettings::FAVICON, 'app-branding/favicon.ico');
+    AppSettings::put(AppSettings::SITE_WEBMANIFEST, 'app-branding/site.webmanifest');
+
+    $adminDomain = (string) config('domains.admin');
+
+    $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.10'])
+        ->withHeader('X-Forwarded-Proto', 'https')
+        ->get('http://'.$adminDomain.route('admin.login', absolute: false))
+        ->assertOk()
+        ->assertSee('<link rel="canonical" href="https://'.$adminDomain.route('admin.login', absolute: false).'">', false)
+        ->assertSee('<link rel="icon" href="/storage/app-branding/favicon.ico" sizes="any">', false)
+        ->assertSee('<link rel="manifest" href="/storage/app-branding/site.webmanifest">', false);
+
+    expect(AppSettings::appPhotoUrl())->toBe('/storage/app-branding/app-photo.png');
+});
