@@ -21,6 +21,6 @@ if ($generateAllRoutes || $applicationType !== 'DEMO') {
         : (string) config('domains.app');
 
     Route::domain($appDomain)
-        ->get('/', fn (): RedirectResponse => to_route('admin.login'))
+        ->get('/', fn (): RedirectResponse => to_route('member.home'))
         ->name('home');
 }

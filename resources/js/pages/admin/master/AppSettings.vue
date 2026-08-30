@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
-import { AppWindow, ImageIcon, Save, Upload } from '@lucide/vue';
-import { onBeforeUnmount, ref } from 'vue';
+import { AppWindow, ImageIcon, Save, Trash2, Upload } from '@lucide/vue';
+import { nextTick, onBeforeUnmount, ref } from 'vue';
 import { update as updateAppSettings } from '@/actions/App/Http/Controllers/Admin/Master/AppSettingController';
 import InputError from '@/components/InputError.vue';
 import type { CarwashBrand } from '@/types/demo';
@@ -11,6 +11,7 @@ const props = defineProps<{
     settings: {
         appName: string;
         appPhotoUrl: string | null;
+        hasAppPhoto: boolean;
         faviconUrl: string | null;
         favicon16Url: string | null;
         favicon32Url: string | null;
@@ -23,6 +24,7 @@ const props = defineProps<{
         metaTitle: string;
         metaDescription: string;
         metaImageUrl: string | null;
+        hasMetaImage: boolean;
     };
     capabilities: { update: boolean };
 }>();
@@ -33,6 +35,8 @@ const form = useForm({
     instagram: props.settings.instagram,
     meta_title: props.settings.metaTitle,
     meta_description: props.settings.metaDescription,
+    remove_meta_image: false,
+    remove_app_photo: false,
     meta_image: null as File | null,
     app_photo: null as File | null,
     favicon: null as File | null,
@@ -70,10 +74,11 @@ const faviconAssets: Array<{
     {
         field: 'favicon',
         label: 'favicon.ico',
-        description: 'Fallback utama browser. ICO, maksimal 512 KB.',
+        description:
+            'ICO maksimal 512 KB. Jika kosong, favicon bawaan tetap digunakan.',
         accept: '.ico,image/x-icon,image/vnd.microsoft.icon',
         currentUrl: props.settings.faviconUrl,
-        required: true,
+        required: false,
         preview: true,
     },
     {
@@ -138,6 +143,7 @@ function selectedFile(event: Event): File | null {
 
 function selectAppPhoto(event: Event): void {
     form.app_photo = selectedFile(event);
+    form.remove_app_photo = false;
     form.clearErrors('app_photo');
 
     if (appPhotoObjectUrl !== null) {
@@ -152,6 +158,7 @@ function selectAppPhoto(event: Event): void {
 
 function selectMetaImage(event: Event): void {
     form.meta_image = selectedFile(event);
+    form.remove_meta_image = false;
     form.clearErrors('meta_image');
 
     if (metaImageObjectUrl !== null) {
@@ -164,9 +171,64 @@ function selectMetaImage(event: Event): void {
     metaImagePreview.value = metaImageObjectUrl ?? props.settings.metaImageUrl;
 }
 
+function removeAppPhoto(): void {
+    form.app_photo = null;
+    form.remove_app_photo = true;
+    form.clearErrors('app_photo');
+
+    if (appPhotoObjectUrl !== null) {
+        URL.revokeObjectURL(appPhotoObjectUrl);
+        appPhotoObjectUrl = null;
+    }
+
+    appPhotoPreview.value = null;
+}
+
+function removeMetaImage(): void {
+    form.meta_image = null;
+    form.remove_meta_image = true;
+    form.clearErrors('meta_image');
+
+    if (metaImageObjectUrl !== null) {
+        URL.revokeObjectURL(metaImageObjectUrl);
+        metaImageObjectUrl = null;
+    }
+
+    metaImagePreview.value = '/og-image.png';
+}
+
 function selectFaviconAsset(field: FaviconField, event: Event): void {
     form[field] = selectedFile(event);
     form.clearErrors(field);
+}
+
+function scrollToFirstError(errors: Record<string, string>): void {
+    void nextTick(() => {
+        const fieldName = Object.keys(errors).find(
+            (errorField) => document.getElementById(errorField) !== null,
+        );
+
+        if (fieldName === undefined) {
+            return;
+        }
+
+        const field = document.getElementById(fieldName);
+        const scrollTarget =
+            field instanceof HTMLInputElement && field.type === 'file'
+                ? document.querySelector<HTMLElement>(
+                      `label[for="${fieldName}"]`,
+                  )
+                : field;
+
+        scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+        if (
+            field instanceof HTMLElement &&
+            !(field instanceof HTMLInputElement && field.type === 'file')
+        ) {
+            field.focus({ preventScroll: true });
+        }
+    });
 }
 
 function submit(): void {
@@ -174,7 +236,10 @@ function submit(): void {
         return;
     }
 
-    form.submit(updateAppSettings(), { preserveScroll: true });
+    form.submit(updateAppSettings(), {
+        preserveScroll: true,
+        onError: scrollToFirstError,
+    });
 }
 
 onBeforeUnmount(() => {
@@ -415,23 +480,39 @@ onBeforeUnmount(() => {
                         </div>
 
                         <div>
-                            <label
-                                for="meta_image"
-                                class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
-                                :class="
-                                    capabilities.update
-                                        ? 'cursor-pointer'
-                                        : 'cursor-not-allowed opacity-60'
-                                "
-                            >
-                                <Upload class="size-4" />
-                                {{
-                                    form.meta_image?.name ??
-                                    (metaImagePreview
-                                        ? 'Ganti social image'
-                                        : 'Pilih social image')
-                                }}
-                            </label>
+                            <div class="flex flex-col gap-2 sm:flex-row">
+                                <label
+                                    for="meta_image"
+                                    class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
+                                    :class="
+                                        capabilities.update
+                                            ? 'cursor-pointer'
+                                            : 'cursor-not-allowed opacity-60'
+                                    "
+                                >
+                                    <Upload class="size-4" />
+                                    {{
+                                        form.meta_image?.name ??
+                                        (metaImagePreview
+                                            ? 'Ganti social image'
+                                            : 'Pilih social image')
+                                    }}
+                                </label>
+                                <button
+                                    v-if="
+                                        (settings.hasMetaImage ||
+                                            form.meta_image !== null) &&
+                                        !form.remove_meta_image
+                                    "
+                                    type="button"
+                                    :disabled="!capabilities.update"
+                                    class="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                    @click="removeMetaImage"
+                                >
+                                    <Trash2 class="size-4" />
+                                    Kembali ke default
+                                </button>
+                            </div>
                             <input
                                 id="meta_image"
                                 type="file"
@@ -511,18 +592,34 @@ onBeforeUnmount(() => {
                             </div>
                         </div>
 
-                        <label
-                            for="app_photo"
-                            class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
-                            :class="
-                                capabilities.update
-                                    ? 'cursor-pointer'
-                                    : 'cursor-not-allowed opacity-60'
-                            "
-                        >
-                            <Upload class="size-4" />
-                            {{ form.app_photo?.name ?? 'Pilih foto' }}
-                        </label>
+                        <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+                            <label
+                                for="app_photo"
+                                class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
+                                :class="
+                                    capabilities.update
+                                        ? 'cursor-pointer'
+                                        : 'cursor-not-allowed opacity-60'
+                                "
+                            >
+                                <Upload class="size-4" />
+                                {{ form.app_photo?.name ?? 'Pilih foto' }}
+                            </label>
+                            <button
+                                v-if="
+                                    (settings.hasAppPhoto ||
+                                        form.app_photo !== null) &&
+                                    !form.remove_app_photo
+                                "
+                                type="button"
+                                :disabled="!capabilities.update"
+                                class="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-200 px-3 py-2.5 text-sm font-medium text-rose-600 transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                                @click="removeAppPhoto"
+                            >
+                                <Trash2 class="size-4" />
+                                Hapus foto
+                            </button>
+                        </div>
                         <input
                             id="app_photo"
                             type="file"
@@ -545,8 +642,8 @@ onBeforeUnmount(() => {
                             <p
                                 class="mt-1 text-xs leading-relaxed text-slate-500"
                             >
-                                Favicon ICO wajib sebagai fallback browser.
-                                Asset perangkat dan manifest lainnya opsional.
+                                Semua asset opsional. File yang tidak diunggah
+                                akan memakai favicon bawaan aplikasi.
                             </p>
                         </div>
 

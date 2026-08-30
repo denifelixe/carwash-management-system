@@ -26,6 +26,7 @@ import {
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, onMounted, ref, watch } from 'vue';
+import { Toaster } from '@/components/ui/sonner';
 import type {
     CarwashAdminModule,
     CarwashAdminShellProps,
@@ -172,7 +173,7 @@ function closeSidebar(module: CarwashAdminModule): void {
 <template>
     <div class="min-h-screen bg-slate-100 font-sans text-slate-900">
         <aside
-            class="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 transition-[transform,width] duration-300 lg:translate-x-0"
+            class="fixed inset-y-0 left-0 z-50 flex w-72 flex-col bg-slate-950 scrollbar-dark transition-[transform,width] duration-300 lg:translate-x-0"
             :class="[
                 isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
                 isSidebarCollapsed ? 'lg:w-20' : 'lg:w-72',
@@ -243,7 +244,9 @@ function closeSidebar(module: CarwashAdminModule): void {
                 </div>
             </div>
 
-            <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+            <nav
+                class="flex-1 [scrollbar-gutter:stable] space-y-1 overflow-y-auto px-3 py-4"
+            >
                 <template v-for="module in modules" :key="module.key">
                     <div v-if="module.children && module.children.length > 0">
                         <button
@@ -636,5 +639,6 @@ function closeSidebar(module: CarwashAdminModule): void {
                 <slot />
             </main>
         </div>
+        <Toaster />
     </div>
 </template>

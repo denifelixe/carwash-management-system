@@ -85,7 +85,9 @@ onBeforeUnmount(() => syncPageScrollLock(false));
                     </button>
                 </div>
 
-                <div class="min-h-0 flex-1 overflow-y-auto p-6">
+                <div
+                    class="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto p-6"
+                >
                     <slot />
                 </div>
 

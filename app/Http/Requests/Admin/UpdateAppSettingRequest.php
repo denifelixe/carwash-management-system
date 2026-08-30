@@ -2,7 +2,6 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Support\AppSettings;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\UploadedFile;
@@ -31,16 +30,17 @@ class UpdateAppSettingRequest extends FormRequest
             'instagram' => ['required', 'string', 'max:30', 'regex:/^[a-z0-9._]+$/'],
             'meta_title' => ['required', 'string', 'max:70'],
             'meta_description' => ['required', 'string', 'max:200'],
+            'remove_meta_image' => ['boolean'],
+            'remove_app_photo' => ['boolean'],
             'meta_image' => [
                 'nullable',
                 File::image()
                     ->types(['jpg', 'jpeg', 'png', 'webp'])
-                    ->dimensions(Rule::dimensions()->width(1200)->height(630))
                     ->max('5mb'),
             ],
             'app_photo' => ['nullable', File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max('2mb')],
             'favicon' => [
-                Rule::requiredIf(AppSettings::get(AppSettings::FAVICON) === null),
+                'nullable',
                 File::types(['ico'])->max('512kb'),
             ],
             'favicon_16' => [
@@ -68,7 +68,47 @@ class UpdateAppSettingRequest extends FormRequest
     }
 
     /**
-     * @return array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}
+     * @return array<string, string>
+     */
+    public function messages(): array
+    {
+        return [
+            '*.uploaded' => 'File gagal diunggah. Periksa ukuran file lalu coba lagi.',
+            'meta_image.image' => 'Social image harus berupa gambar yang valid.',
+            'meta_image.mimes' => 'Social image harus berformat PNG, JPG, JPEG, atau WebP.',
+            'meta_image.max' => 'Ukuran social image maksimal 5 MB.',
+            'app_photo.image' => 'Foto aplikasi harus berupa gambar yang valid.',
+            'app_photo.mimes' => 'Foto aplikasi harus berformat PNG, JPG, JPEG, atau WebP.',
+            'app_photo.max' => 'Ukuran foto aplikasi maksimal 2 MB.',
+            'favicon.mimes' => 'Favicon utama harus berupa file ICO.',
+            'favicon.max' => 'Ukuran favicon utama maksimal 512 KB.',
+            'favicon_16.image' => 'Favicon 16x16 harus berupa gambar PNG yang valid.',
+            'favicon_16.mimes' => 'Favicon 16x16 harus berformat PNG.',
+            'favicon_16.dimensions' => 'Dimensi favicon 16x16 harus tepat 16x16 piksel.',
+            'favicon_16.max' => 'Ukuran favicon 16x16 maksimal 256 KB.',
+            'favicon_32.image' => 'Favicon 32x32 harus berupa gambar PNG yang valid.',
+            'favicon_32.mimes' => 'Favicon 32x32 harus berformat PNG.',
+            'favicon_32.dimensions' => 'Dimensi favicon 32x32 harus tepat 32x32 piksel.',
+            'favicon_32.max' => 'Ukuran favicon 32x32 maksimal 256 KB.',
+            'apple_touch_icon.image' => 'Apple touch icon harus berupa gambar PNG yang valid.',
+            'apple_touch_icon.mimes' => 'Apple touch icon harus berformat PNG.',
+            'apple_touch_icon.dimensions' => 'Dimensi apple touch icon harus tepat 180x180 piksel.',
+            'apple_touch_icon.max' => 'Ukuran apple touch icon maksimal 512 KB.',
+            'android_chrome_192.image' => 'Android Chrome 192 harus berupa gambar PNG yang valid.',
+            'android_chrome_192.mimes' => 'Android Chrome 192 harus berformat PNG.',
+            'android_chrome_192.dimensions' => 'Dimensi Android Chrome 192 harus tepat 192x192 piksel.',
+            'android_chrome_192.max' => 'Ukuran Android Chrome 192 maksimal 1 MB.',
+            'android_chrome_512.image' => 'Android Chrome 512 harus berupa gambar PNG yang valid.',
+            'android_chrome_512.mimes' => 'Android Chrome 512 harus berformat PNG.',
+            'android_chrome_512.dimensions' => 'Dimensi Android Chrome 512 harus tepat 512x512 piksel.',
+            'android_chrome_512.max' => 'Ukuran Android Chrome 512 maksimal 2 MB.',
+            'site_webmanifest.mimes' => 'Site webmanifest harus berupa file JSON atau WEBMANIFEST.',
+            'site_webmanifest.max' => 'Ukuran site webmanifest maksimal 100 KB.',
+        ];
+    }
+
+    /**
+     * @return array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, remove_meta_image: bool, remove_app_photo: bool, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}
      */
     public function branding(): array
     {
@@ -78,6 +118,8 @@ class UpdateAppSettingRequest extends FormRequest
             'instagram' => $this->string('instagram')->toString(),
             'meta_title' => $this->string('meta_title')->toString(),
             'meta_description' => $this->string('meta_description')->toString(),
+            'remove_meta_image' => $this->boolean('remove_meta_image'),
+            'remove_app_photo' => $this->boolean('remove_app_photo'),
             'meta_image' => $this->file('meta_image'),
             'app_photo' => $this->file('app_photo'),
             'favicon' => $this->file('favicon'),

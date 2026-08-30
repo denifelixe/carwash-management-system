@@ -248,7 +248,7 @@ function activityToneClass(type: string): string {
                 <span class="text-[11px] text-slate-400">Geser →</span>
             </div>
             <div
-                class="-mx-5 mt-3 snap-x snap-mandatory scroll-px-5 [scrollbar-width:none] overflow-x-auto px-5 pb-1 [&::-webkit-scrollbar]:hidden"
+                class="-mx-5 mt-3 scrollbar-none snap-x snap-mandatory scroll-px-5 overflow-x-auto px-5 pb-1"
             >
                 <div class="flex w-max gap-3">
                     <article

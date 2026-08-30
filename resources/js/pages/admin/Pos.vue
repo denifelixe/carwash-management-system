@@ -3164,7 +3164,7 @@ const memberForm = useForm({
                                 </span>
                             </summary>
                             <ul
-                                class="max-h-44 space-y-2 overflow-y-auto px-6 pb-4"
+                                class="max-h-44 [scrollbar-gutter:stable] space-y-2 overflow-y-auto px-6 pb-4"
                             >
                                 <li
                                     v-for="service in orderServices"
@@ -3459,7 +3459,7 @@ const memberForm = useForm({
                                     selectedOrder.reward === '—' &&
                                     redeemableRewards.length > 0
                                 "
-                                class="grid max-h-44 grid-cols-1 gap-2 overflow-y-auto px-6 pb-4 sm:grid-cols-2"
+                                class="grid max-h-44 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto px-6 pb-4 sm:grid-cols-2"
                             >
                                 <button
                                     v-for="reward in redeemableRewards"

@@ -984,7 +984,7 @@ function saveBooking(): void {
                     Layanan
                 </p>
                 <div
-                    class="mt-2 grid max-h-56 grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
+                    class="mt-2 grid max-h-56 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
                 >
                     <button
                         v-for="service in services"

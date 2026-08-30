@@ -14,6 +14,7 @@ class AppSettingController extends AdminController
             'settings' => [
                 'appName' => AppSettings::appName(),
                 'appPhotoUrl' => AppSettings::appPhotoUrl(),
+                'hasAppPhoto' => AppSettings::get(AppSettings::APP_PHOTO) !== null,
                 'faviconUrl' => AppSettings::faviconUrl(),
                 'favicon16Url' => AppSettings::favicon16Url(),
                 'favicon32Url' => AppSettings::favicon32Url(),
@@ -26,6 +27,7 @@ class AppSettingController extends AdminController
                 'metaTitle' => AppSettings::metaTitle(),
                 'metaDescription' => AppSettings::metaDescription(),
                 'metaImageUrl' => AppSettings::metaImageUrl() ?? '/og-image.png',
+                'hasMetaImage' => AppSettings::get(AppSettings::META_IMAGE) !== null,
             ],
             'capabilities' => ['update' => false],
         ]);

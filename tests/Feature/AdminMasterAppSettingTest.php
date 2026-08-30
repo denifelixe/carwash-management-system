@@ -79,7 +79,9 @@ test('an owner sees app setting in the master sidebar', function () {
                 ->where('settings.metaTitle', 'ZenWash Auto Care Management System')
                 ->where('settings.metaDescription', 'Aplikasi manajemen carwash ZenWash Auto Care: kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.')
                 ->where('settings.metaImageUrl', '/og-image.png')
+                ->where('settings.hasMetaImage', false)
                 ->where('settings.appPhotoUrl', null)
+                ->where('settings.hasAppPhoto', false)
                 ->where('settings.faviconUrl', null)
                 ->where('settings.favicon16Url', null)
                 ->where('settings.favicon32Url', null)
@@ -109,7 +111,7 @@ test('an owner can update the name photo and favicon', function () {
             'whatsapp' => '0812-3456-7890',
             'instagram' => '@Kilap.AutoSpa',
             ...appMetadataPayload(),
-            'meta_image' => UploadedFile::fake()->image('social-preview.png', 1200, 630),
+            'meta_image' => UploadedFile::fake()->image('social-preview.png', 600, 315),
             'app_photo' => UploadedFile::fake()->image('app-photo.png', 400, 400),
             'favicon' => fakeFavicon(),
             'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 16, 16),
@@ -123,7 +125,8 @@ test('an owner can update the name photo and favicon', function () {
             ),
         ])
         ->assertRedirect(route('admin.master.app-settings.index'))
-        ->assertSessionHas('success');
+        ->assertInertiaFlash('toast.type', 'success')
+        ->assertInertiaFlash('toast.message', 'App setting berhasil diperbarui.');
 
     $settings = AppSetting::query()
         ->whereIn('key', [
@@ -222,7 +225,51 @@ test('replacing an app photo deletes the previous file', function () {
     Storage::disk('public')->assertExists(AppSettings::get(AppSettings::APP_PHOTO));
 });
 
-test('favicon ico is mandatory until one has been uploaded', function () {
+test('an owner can remove app and metadata photos to restore defaults', function () {
+    Storage::fake('public');
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $appPhotoPath = 'app-branding/app-photo.png';
+    $metaImagePath = 'app-branding/meta-image.png';
+
+    Storage::disk('public')->put($appPhotoPath, 'app-photo');
+    Storage::disk('public')->put($metaImagePath, 'meta-image');
+    AppSettings::put(AppSettings::APP_PHOTO, $appPhotoPath, $owner->id);
+    AppSettings::put(AppSettings::META_IMAGE, $metaImagePath, $owner->id);
+    AppSettings::put(AppSettings::FAVICON, 'app-branding/favicon.ico', $owner->id);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.app-settings.update'), [
+            'app_name' => 'Kilap Auto Spa',
+            'whatsapp' => '6281234567890',
+            'instagram' => 'kilap.autospa',
+            ...appMetadataPayload(),
+            'remove_app_photo' => true,
+            'remove_meta_image' => true,
+        ])
+        ->assertRedirect(route('admin.master.app-settings.index'))
+        ->assertSessionHasNoErrors();
+
+    expect(AppSettings::get(AppSettings::APP_PHOTO))->toBeNull()
+        ->and(AppSettings::get(AppSettings::META_IMAGE))->toBeNull();
+    Storage::disk('public')->assertMissing($appPhotoPath);
+    Storage::disk('public')->assertMissing($metaImagePath);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('settings.appPhotoUrl', null)
+                ->where('settings.hasAppPhoto', false)
+                ->where('settings.metaImageUrl', '/og-image.png')
+                ->where('settings.hasMetaImage', false),
+        );
+
+    $this->get(route('demo.home'))
+        ->assertSee('<meta property="og:image" content="'.url('/og-image.png').'">', false)
+        ->assertSee('<meta property="twitter:image" content="'.url('/og-image.png').'">', false);
+});
+
+test('favicon is optional and uses the default when none has been uploaded', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
@@ -232,7 +279,13 @@ test('favicon ico is mandatory until one has been uploaded', function () {
             'instagram' => 'kilap.autospa',
             ...appMetadataPayload(),
         ])
-        ->assertSessionHasErrors('favicon');
+        ->assertRedirect(route('admin.master.app-settings.index'))
+        ->assertSessionHasNoErrors();
+
+    expect(AppSettings::get(AppSettings::FAVICON))->toBeNull();
+
+    $this->get(route('demo.home'))
+        ->assertSee('<link rel="icon" href="/favicon.ico" sizes="any">', false);
 });
 
 test('app setting rejects invalid names and files', function () {
@@ -247,7 +300,7 @@ test('app setting rejects invalid names and files', function () {
             'instagram' => 'instagram tidak valid',
             'meta_title' => '',
             'meta_description' => '',
-            'meta_image' => UploadedFile::fake()->image('social-preview.png', 600, 315),
+            'meta_image' => UploadedFile::fake()->create('social-preview.pdf', 10, 'application/pdf'),
             'app_photo' => UploadedFile::fake()->create('app.pdf', 10, 'application/pdf'),
             'favicon' => UploadedFile::fake()->create('favicon.svg', 10, 'image/svg+xml'),
             'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 32, 32),
@@ -273,7 +326,21 @@ test('app setting rejects invalid names and files', function () {
             'android_chrome_192',
             'android_chrome_512',
             'site_webmanifest',
+        ])
+        ->assertSessionHasErrors([
+            'meta_image' => 'Social image harus berupa gambar yang valid.',
+            'favicon' => 'Favicon utama harus berupa file ICO.',
+            'favicon_16' => 'Dimensi favicon 16x16 harus tepat 16x16 piksel.',
         ]);
+});
+
+test('app setting page scrolls to the first validation error', function () {
+    $source = file_get_contents(resource_path('js/pages/admin/master/AppSettings.vue'));
+
+    expect($source)
+        ->toContain('onError: scrollToFirstError')
+        ->toContain("scrollIntoView({ behavior: 'smooth', block: 'center' })")
+        ->toContain('`label[for="${fieldName}"]`');
 });
 
 test('staff access follows app setting capabilities', function () {

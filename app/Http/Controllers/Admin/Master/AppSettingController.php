@@ -28,6 +28,7 @@ class AppSettingController extends Controller
             'settings' => [
                 'appName' => AppSettings::appName(),
                 'appPhotoUrl' => AppSettings::appPhotoUrl(),
+                'hasAppPhoto' => AppSettings::get(AppSettings::APP_PHOTO) !== null,
                 'faviconUrl' => AppSettings::faviconUrl(),
                 'favicon16Url' => AppSettings::favicon16Url(),
                 'favicon32Url' => AppSettings::favicon32Url(),
@@ -40,6 +41,7 @@ class AppSettingController extends Controller
                 'metaTitle' => AppSettings::metaTitle(),
                 'metaDescription' => AppSettings::metaDescription(),
                 'metaImageUrl' => AppSettings::metaImageUrl() ?? '/og-image.png',
+                'hasMetaImage' => AppSettings::get(AppSettings::META_IMAGE) !== null,
             ],
             'capabilities' => [
                 'update' => Gate::allows('admin.master_app_settings.update'),
@@ -56,7 +58,11 @@ class AppSettingController extends Controller
 
         $updateAppBranding->handle($request->branding(), $authenticatedAdmin);
 
-        return to_route('admin.master.app-settings.index')
-            ->with('success', 'App setting berhasil diperbarui.');
+        Inertia::flash('toast', [
+            'type' => 'success',
+            'message' => 'App setting berhasil diperbarui.',
+        ]);
+
+        return to_route('admin.master.app-settings.index');
     }
 }

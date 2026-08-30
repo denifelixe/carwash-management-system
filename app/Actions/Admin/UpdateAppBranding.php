@@ -11,7 +11,7 @@ use RuntimeException;
 class UpdateAppBranding
 {
     /**
-     * @param  array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}  $settings
+     * @param  array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, remove_meta_image: bool, remove_app_photo: bool, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}  $settings
      */
     public function handle(array $settings, Admin $admin): void
     {
@@ -21,8 +21,17 @@ class UpdateAppBranding
         AppSettings::put(AppSettings::META_TITLE, $settings['meta_title'], $admin->id);
         AppSettings::put(AppSettings::META_DESCRIPTION, $settings['meta_description'], $admin->id);
 
-        $this->storeAsset($settings['meta_image'], AppSettings::META_IMAGE, $admin);
-        $this->storeAsset($settings['app_photo'], AppSettings::APP_PHOTO, $admin);
+        if ($settings['remove_meta_image']) {
+            $this->removeAsset(AppSettings::META_IMAGE);
+        } else {
+            $this->storeAsset($settings['meta_image'], AppSettings::META_IMAGE, $admin);
+        }
+
+        if ($settings['remove_app_photo']) {
+            $this->removeAsset(AppSettings::APP_PHOTO);
+        } else {
+            $this->storeAsset($settings['app_photo'], AppSettings::APP_PHOTO, $admin);
+        }
         $this->storeAsset($settings['favicon'], AppSettings::FAVICON, $admin);
         $this->storeAsset($settings['favicon_16'], AppSettings::FAVICON_16, $admin);
         $this->storeAsset($settings['favicon_32'], AppSettings::FAVICON_32, $admin);
@@ -52,5 +61,17 @@ class UpdateAppBranding
         if ($oldPath !== null && $oldPath !== $newPath) {
             Storage::disk('public')->delete($oldPath);
         }
+    }
+
+    private function removeAsset(string $settingKey): void
+    {
+        $path = AppSettings::get($settingKey);
+
+        if ($path === null) {
+            return;
+        }
+
+        Storage::disk('public')->delete($path);
+        AppSettings::forget($settingKey);
     }
 }

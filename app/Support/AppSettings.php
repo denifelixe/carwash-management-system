@@ -151,6 +151,13 @@ class AppSettings
         Cache::forget(self::CACHE_KEY);
     }
 
+    public static function forget(string $key): void
+    {
+        AppSetting::query()->where('key', $key)->delete();
+
+        Cache::forget(self::CACHE_KEY);
+    }
+
     /**
      * Hand the configured zone to PHP itself. Called first thing in
      * AppServiceProvider::boot, and again right after the zone is changed so

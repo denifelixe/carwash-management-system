@@ -94,9 +94,9 @@ test('an invalid application type prevents the application from booting', functi
         ->toContain('APP_TYPE must be one of: DEMO, LIVE, ALL.');
 });
 
-test('the main domain sends visitors to the admin login', function () {
+test('the main domain sends visitors to the member portal', function () {
     $this->get('https://carwash-management-system.test/')
-        ->assertRedirect(route('admin.login'));
+        ->assertRedirect(route('member.home'));
 });
 
 test('the admin domain only serves admin authentication', function () {
