@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\AdminLoginRequest;
 use App\Models\Admin;
+use App\Support\Demo\Brand;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,7 @@ class AdminAuthenticatedSessionController extends Controller
     {
         return Inertia::render('auth/AdminLogin', [
             'status' => $request->session()->get('status'),
+            'brand' => Brand::identity(),
         ]);
     }
 

@@ -1,6 +1,9 @@
 <script setup lang="ts">
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { home } from '@/routes';
+import type { CarwashBrand } from '@/types/demo';
+
+const page = usePage<{ brand?: CarwashBrand }>();
 
 defineProps<{
     title?: string;
@@ -20,10 +23,20 @@ defineProps<{
                         class="flex flex-col items-center gap-2 font-medium"
                     >
                         <div
-                            class="mb-1 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-2xl shadow-lg shadow-cyan-500/30"
-                            aria-hidden="true"
+                            class="mb-1 flex size-14 items-center justify-center overflow-hidden rounded-2xl text-2xl shadow-lg"
+                            :class="
+                                page.props.brand?.photo
+                                    ? 'bg-white shadow-black/10'
+                                    : 'bg-gradient-to-br from-cyan-400 to-sky-600 shadow-cyan-500/30'
+                            "
                         >
-                            🚗
+                            <img
+                                v-if="page.props.brand?.photo"
+                                :src="page.props.brand.photo"
+                                :alt="page.props.brand.name"
+                                class="h-full w-full object-contain"
+                            />
+                            <span v-else aria-hidden="true">🚗</span>
                         </div>
                         <span class="sr-only">{{ title }}</span>
                     </Link>

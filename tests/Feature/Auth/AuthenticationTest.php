@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Admin;
+use App\Support\AppSettings;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('login screen can be rendered', function () {
@@ -9,7 +11,23 @@ test('login screen can be rendered', function () {
     $response
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('auth/AdminLogin'),
+            ->component('auth/AdminLogin')
+            ->where('brand.photo', null),
+        );
+});
+
+test('admin login screen uses the uploaded app logo', function () {
+    Storage::fake('public');
+
+    AppSettings::put(AppSettings::APP_NAME, 'Showtime Autocare');
+    AppSettings::put(AppSettings::APP_PHOTO, 'app-branding/app-photo.png');
+
+    $this->get(route('admin.login'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('auth/AdminLogin')
+            ->where('brand.name', 'Showtime Autocare')
+            ->where('brand.photo', Storage::disk('public')->url('app-branding/app-photo.png')),
         );
 });
 
