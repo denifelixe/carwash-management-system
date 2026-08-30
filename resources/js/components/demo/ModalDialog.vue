@@ -63,6 +63,10 @@ onBeforeUnmount(() => syncPageScrollLock(false));
                 class="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
                 :class="widths[size ?? 'md']"
             >
+                <div v-if="$slots.hero" class="shrink-0">
+                    <slot name="hero" />
+                </div>
+
                 <div
                     v-if="title"
                     class="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-6 py-4"

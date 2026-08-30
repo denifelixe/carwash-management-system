@@ -3921,9 +3921,10 @@ const memberForm = useForm({
 
     <!-- Receipt -->
     <ModalDialog :open="receipt !== null" size="sm" @close="closeReceipt">
-        <div v-if="receipt">
+        <template #hero>
             <div
-                class="-m-6 mb-4 px-6 py-7 text-center text-white"
+                v-if="receipt"
+                class="px-6 py-7 text-center text-white"
                 :class="
                     receipt.isSettled
                         ? 'bg-gradient-to-br from-emerald-500 to-teal-600'
@@ -3948,138 +3949,130 @@ const memberForm = useForm({
                     • {{ receipt.payment }}
                 </p>
             </div>
+        </template>
 
-            <div class="space-y-3 pt-4 text-sm">
-                <div class="flex justify-between">
-                    <span class="text-slate-500">Customer</span>
-                    <span class="font-medium text-slate-800">
-                        {{ receipt.customer }}
-                    </span>
-                </div>
-                <div class="flex justify-between gap-4">
-                    <span class="shrink-0 text-slate-500">Layanan</span>
-                    <span class="text-right text-slate-700">
-                        {{ receipt.items }}
-                    </span>
-                </div>
+        <div v-if="receipt" class="space-y-3 text-sm">
+            <div class="flex justify-between">
+                <span class="text-slate-500">Customer</span>
+                <span class="font-medium text-slate-800">
+                    {{ receipt.customer }}
+                </span>
+            </div>
+            <div class="flex justify-between gap-4">
+                <span class="shrink-0 text-slate-500">Layanan</span>
+                <span class="text-right text-slate-700">
+                    {{ receipt.items }}
+                </span>
+            </div>
+            <div
+                v-if="receipt.reward !== '—'"
+                class="flex justify-between gap-4"
+            >
+                <span class="shrink-0 text-slate-500">Reward dipakai</span>
+                <span class="text-right text-cyan-700">
+                    {{ receipt.reward }}
+                </span>
+            </div>
+            <div
+                v-if="receipt.rewardDiscount > 0 || receipt.cashierDiscount > 0"
+                class="flex justify-between"
+            >
+                <span class="text-slate-500">Subtotal</span>
+                <span class="text-slate-700 tabular-nums">
+                    {{ formatCurrency(receipt.subtotal) }}
+                </span>
+            </div>
+            <div v-if="receipt.rewardDiscount > 0" class="flex justify-between">
+                <span class="text-slate-500">Potongan reward</span>
+                <span class="font-medium text-emerald-600 tabular-nums">
+                    −{{ formatCurrency(receipt.rewardDiscount) }}
+                </span>
+            </div>
+            <div
+                v-if="receipt.cashierDiscount > 0"
+                class="flex justify-between"
+            >
+                <span class="text-slate-500">Diskon kasir</span>
+                <span class="font-medium text-emerald-600 tabular-nums">
+                    −{{ formatCurrency(receipt.cashierDiscount) }}
+                </span>
+            </div>
+            <div class="flex justify-between font-medium">
+                <span class="text-slate-600">Total setelah potongan</span>
+                <span class="text-slate-700 tabular-nums">
+                    {{ formatCurrency(receipt.total) }}
+                </span>
+            </div>
+            <div
+                v-if="receipt.paymentBreakdown.length > 0"
+                class="space-y-1 border-t border-dashed border-slate-200 pt-3"
+            >
                 <div
-                    v-if="receipt.reward !== '—'"
-                    class="flex justify-between gap-4"
+                    v-for="payment in receipt.paymentBreakdown"
+                    :key="payment.method"
+                    class="flex items-start justify-between gap-3 text-xs"
                 >
-                    <span class="shrink-0 text-slate-500">Reward dipakai</span>
-                    <span class="text-right text-cyan-700">
-                        {{ receipt.reward }}
+                    <span class="text-slate-500">
+                        {{ paymentChannelLabel(payment) }}
+                        <span
+                            v-if="payment.reference !== ''"
+                            class="block text-[10px] text-slate-400"
+                        >
+                            Ref. {{ payment.reference }}
+                        </span>
                     </span>
-                </div>
-                <div
-                    v-if="
-                        receipt.rewardDiscount > 0 ||
-                        receipt.cashierDiscount > 0
-                    "
-                    class="flex justify-between"
-                >
-                    <span class="text-slate-500">Subtotal</span>
                     <span class="text-slate-700 tabular-nums">
-                        {{ formatCurrency(receipt.subtotal) }}
+                        {{ formatCurrency(payment.amount) }}
                     </span>
                 </div>
-                <div
-                    v-if="receipt.rewardDiscount > 0"
-                    class="flex justify-between"
-                >
-                    <span class="text-slate-500">Potongan reward</span>
-                    <span class="font-medium text-emerald-600 tabular-nums">
-                        −{{ formatCurrency(receipt.rewardDiscount) }}
-                    </span>
-                </div>
-                <div
-                    v-if="receipt.cashierDiscount > 0"
-                    class="flex justify-between"
-                >
-                    <span class="text-slate-500">Diskon kasir</span>
-                    <span class="font-medium text-emerald-600 tabular-nums">
-                        −{{ formatCurrency(receipt.cashierDiscount) }}
-                    </span>
-                </div>
-                <div class="flex justify-between font-medium">
-                    <span class="text-slate-600">Total setelah potongan</span>
-                    <span class="text-slate-700 tabular-nums">
-                        {{ formatCurrency(receipt.total) }}
-                    </span>
-                </div>
-                <div
-                    v-if="receipt.paymentBreakdown.length > 0"
-                    class="space-y-1 border-t border-dashed border-slate-200 pt-3"
-                >
-                    <div
-                        v-for="payment in receipt.paymentBreakdown"
-                        :key="payment.method"
-                        class="flex items-start justify-between gap-3 text-xs"
-                    >
-                        <span class="text-slate-500">
-                            {{ paymentChannelLabel(payment) }}
-                            <span
-                                v-if="payment.reference !== ''"
-                                class="block text-[10px] text-slate-400"
-                            >
-                                Ref. {{ payment.reference }}
-                            </span>
-                        </span>
-                        <span class="text-slate-700 tabular-nums">
-                            {{ formatCurrency(payment.amount) }}
-                        </span>
-                    </div>
-                </div>
-                <div
-                    class="flex justify-between border-t border-dashed border-slate-200 pt-3"
-                >
-                    <span class="text-slate-500">Total diterima</span>
-                    <span
-                        class="text-lg font-semibold text-slate-900 tabular-nums"
-                    >
-                        {{ formatCurrency(receipt.tenderedTotal) }}
-                    </span>
-                </div>
-                <div
-                    v-if="receipt.change > 0"
-                    class="flex justify-between rounded-xl bg-orange-50 p-3 font-medium text-orange-900 ring-1 ring-orange-100"
-                >
-                    <span>Kembalian</span>
-                    <span class="tabular-nums">
-                        {{ formatCurrency(receipt.change) }}
-                    </span>
-                </div>
+            </div>
+            <div
+                class="flex justify-between border-t border-dashed border-slate-200 pt-3"
+            >
+                <span class="text-slate-500">Total diterima</span>
+                <span class="text-lg font-semibold text-slate-900 tabular-nums">
+                    {{ formatCurrency(receipt.tenderedTotal) }}
+                </span>
+            </div>
+            <div
+                v-if="receipt.change > 0"
+                class="flex justify-between rounded-xl bg-orange-50 p-3 font-medium text-orange-900 ring-1 ring-orange-100"
+            >
+                <span>Kembalian</span>
+                <span class="tabular-nums">
+                    {{ formatCurrency(receipt.change) }}
+                </span>
+            </div>
 
-                <div
-                    v-if="!receipt.isSettled"
-                    class="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-100"
-                >
-                    <p
-                        class="flex items-center justify-between text-xs text-amber-900"
-                    >
-                        <span>Total sudah dibayar</span>
-                        <span class="font-semibold tabular-nums">
-                            {{ formatCurrency(receipt.paidTotal) }}
-                        </span>
-                    </p>
-                    <p
-                        class="mt-1 flex items-center justify-between border-t border-amber-200/60 pt-1 text-xs font-medium text-amber-900"
-                    >
-                        <span>Sisa tagihan</span>
-                        <span class="tabular-nums">
-                            {{ formatCurrency(receipt.dueAfter) }}
-                        </span>
-                    </p>
-                </div>
-
+            <div
+                v-if="!receipt.isSettled"
+                class="rounded-xl bg-amber-50 p-3 ring-1 ring-amber-100"
+            >
                 <p
-                    v-if="isReceiptWindowBlocked"
-                    class="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-700 ring-1 ring-rose-100"
+                    class="flex items-center justify-between text-xs text-amber-900"
                 >
-                    Jendela struk diblokir browser. Izinkan pop-up untuk situs
-                    ini, lalu tekan “Buka struk”.
+                    <span>Total sudah dibayar</span>
+                    <span class="font-semibold tabular-nums">
+                        {{ formatCurrency(receipt.paidTotal) }}
+                    </span>
+                </p>
+                <p
+                    class="mt-1 flex items-center justify-between border-t border-amber-200/60 pt-1 text-xs font-medium text-amber-900"
+                >
+                    <span>Sisa tagihan</span>
+                    <span class="tabular-nums">
+                        {{ formatCurrency(receipt.dueAfter) }}
+                    </span>
                 </p>
             </div>
+
+            <p
+                v-if="isReceiptWindowBlocked"
+                class="rounded-xl bg-rose-50 p-3 text-xs font-medium text-rose-700 ring-1 ring-rose-100"
+            >
+                Jendela struk diblokir browser. Izinkan pop-up untuk situs ini,
+                lalu tekan “Buka struk”.
+            </p>
         </div>
 
         <template #footer>
