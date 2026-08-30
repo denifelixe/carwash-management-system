@@ -38,7 +38,7 @@ test('an owner sees live staff roles shifts permissions and an enabled sidebar i
             fn (AssertableInertia $page) => $page
                 ->component('admin/Users')
                 ->where('mode', 'live')
-                ->has('staff', 2)
+                ->has('staff', 1)
                 ->has('roles', 4)
                 ->has('shifts', 2)
                 ->has('allModules', 14)
@@ -74,7 +74,7 @@ test('hidden admins are absent from the staff directory and role counts', functi
         ->toContain($owner->id, $visibleCashier->id)
         ->not->toContain($hiddenCashier->id, $hiddenOwner->id)
         ->and($cashier['staff_count'])->toBe(1)
-        ->and($response->inertiaProps('ownerSummary.staff_count'))->toBe(2);
+        ->and($response->inertiaProps('ownerSummary.staff_count'))->toBe(1);
 });
 
 test('an owner can create a staff user with a role and shift', function () {

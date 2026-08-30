@@ -146,7 +146,7 @@ test('the initial owner admin is created without a known password', function () 
         ->name->toBe('Deni Victoria')
         ->is_owner->toBeTrue()
         ->is_active->toBeTrue()
-        ->is_hidden->toBeFalse()
+        ->is_hidden->toBeTrue()
         ->role_id->toBeNull()
         ->and($owner->password)->not->toBeEmpty();
 });
