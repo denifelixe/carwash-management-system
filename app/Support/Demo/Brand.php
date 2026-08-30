@@ -39,12 +39,12 @@ class Brand
         $identity = self::identity();
 
         return [
-            'title' => $identity['system'],
-            'description' => 'Aplikasi manajemen carwash '.$identity['name'].': kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.',
+            'title' => AppSettings::metaTitle(),
+            'description' => AppSettings::metaDescription(),
             'keywords' => 'carwash, cuci mobil, aplikasi carwash, kasir carwash, pos cuci mobil, detailing, coating, kartu stempel, loyalty member',
             'themeColor' => '#0284C7',
             'locale' => 'id_ID',
-            'ogImage' => '/og-image.png',
+            'ogImage' => AppSettings::metaImageUrl() ?? '/og-image.png',
             'favicon' => AppSettings::faviconUrl() ?? '/favicon.ico',
             'favicon16' => AppSettings::favicon16Url(),
             'favicon32' => AppSettings::favicon32Url(),

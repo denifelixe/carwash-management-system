@@ -6,6 +6,7 @@
         <meta name="color-scheme" content="light">
 
         {{-- Search engine & crawler metadata --}}
+        <meta name="title" content="{{ $meta['title'] }}">
         <meta name="description" content="{{ $meta['description'] }}">
         <meta name="keywords" content="{{ $meta['keywords'] }}">
         <meta name="author" content="{{ config('app.name') }}">
@@ -26,10 +27,11 @@
         <meta property="og:image:alt" content="{{ $meta['title'] }}">
 
         {{-- Twitter / X --}}
-        <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:title" content="{{ $meta['title'] }}">
-        <meta name="twitter:description" content="{{ $meta['description'] }}">
-        <meta name="twitter:image" content="{{ url($meta['ogImage']) }}">
+        <meta property="twitter:card" content="summary_large_image">
+        <meta property="twitter:url" content="{{ url()->current() }}">
+        <meta property="twitter:title" content="{{ $meta['title'] }}">
+        <meta property="twitter:description" content="{{ $meta['description'] }}">
+        <meta property="twitter:image" content="{{ url($meta['ogImage']) }}">
 
         {{-- Installable web app --}}
         <meta name="application-name" content="{{ config('app.name') }}">
@@ -54,7 +56,7 @@
 
         @vite(['resources/css/app.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         <x-inertia::head>
-            <title>{{ config('app.name', 'Laravel') }}</title>
+            <title>{{ $meta['title'] }}</title>
         </x-inertia::head>
     </head>
     <body class="font-sans antialiased">

@@ -39,6 +39,12 @@ class AppSettings
 
     public const SITE_WEBMANIFEST = 'site_webmanifest';
 
+    public const META_TITLE = 'meta_title';
+
+    public const META_DESCRIPTION = 'meta_description';
+
+    public const META_IMAGE = 'meta_image';
+
     public const WHATSAPP = 'whatsapp';
 
     public const INSTAGRAM = 'instagram';
@@ -102,6 +108,22 @@ class AppSettings
     public static function siteWebmanifestUrl(): ?string
     {
         return self::publicUrl(self::SITE_WEBMANIFEST);
+    }
+
+    public static function metaTitle(): string
+    {
+        return self::get(self::META_TITLE) ?? self::appName().' Management System';
+    }
+
+    public static function metaDescription(): string
+    {
+        return self::get(self::META_DESCRIPTION)
+            ?? 'Aplikasi manajemen carwash '.self::appName().': kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.';
+    }
+
+    public static function metaImageUrl(): ?string
+    {
+        return self::publicUrl(self::META_IMAGE);
     }
 
     public static function whatsapp(): string

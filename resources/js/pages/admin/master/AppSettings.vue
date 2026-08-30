@@ -20,6 +20,9 @@ const props = defineProps<{
         siteWebmanifestUrl: string | null;
         whatsapp: string;
         instagram: string;
+        metaTitle: string;
+        metaDescription: string;
+        metaImageUrl: string | null;
     };
     capabilities: { update: boolean };
 }>();
@@ -28,6 +31,9 @@ const form = useForm({
     app_name: props.settings.appName,
     whatsapp: props.settings.whatsapp,
     instagram: props.settings.instagram,
+    meta_title: props.settings.metaTitle,
+    meta_description: props.settings.metaDescription,
+    meta_image: null as File | null,
     app_photo: null as File | null,
     favicon: null as File | null,
     favicon_16: null as File | null,
@@ -39,7 +45,9 @@ const form = useForm({
 });
 
 const appPhotoPreview = ref<string | null>(props.settings.appPhotoUrl);
+const metaImagePreview = ref<string | null>(props.settings.metaImageUrl);
 let appPhotoObjectUrl: string | null = null;
+let metaImageObjectUrl: string | null = null;
 
 type FaviconField =
     | 'favicon'
@@ -142,6 +150,20 @@ function selectAppPhoto(event: Event): void {
     appPhotoPreview.value = appPhotoObjectUrl ?? props.settings.appPhotoUrl;
 }
 
+function selectMetaImage(event: Event): void {
+    form.meta_image = selectedFile(event);
+    form.clearErrors('meta_image');
+
+    if (metaImageObjectUrl !== null) {
+        URL.revokeObjectURL(metaImageObjectUrl);
+    }
+
+    metaImageObjectUrl = form.meta_image
+        ? URL.createObjectURL(form.meta_image)
+        : null;
+    metaImagePreview.value = metaImageObjectUrl ?? props.settings.metaImageUrl;
+}
+
 function selectFaviconAsset(field: FaviconField, event: Event): void {
     form[field] = selectedFile(event);
     form.clearErrors(field);
@@ -158,6 +180,10 @@ function submit(): void {
 onBeforeUnmount(() => {
     if (appPhotoObjectUrl !== null) {
         URL.revokeObjectURL(appPhotoObjectUrl);
+    }
+
+    if (metaImageObjectUrl !== null) {
+        URL.revokeObjectURL(metaImageObjectUrl);
     }
 });
 </script>
@@ -310,6 +336,152 @@ onBeforeUnmount(() => {
                             class="mt-2"
                             :message="form.errors.instagram"
                         />
+                    </div>
+                </div>
+
+                <div
+                    class="grid gap-5 border-b border-slate-100 p-5 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]"
+                >
+                    <div class="space-y-4">
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-900">
+                                Metadata & social preview
+                            </h3>
+                            <p
+                                class="mt-1 text-xs leading-relaxed text-slate-500"
+                            >
+                                Digunakan oleh mesin pencari, Facebook,
+                                WhatsApp, LinkedIn, dan X. URL mengikuti halaman
+                                yang sedang dibuka.
+                            </p>
+                        </div>
+
+                        <div>
+                            <div
+                                class="flex items-center justify-between gap-3"
+                            >
+                                <label
+                                    for="meta_title"
+                                    class="text-xs font-semibold text-slate-700"
+                                >
+                                    Meta title
+                                </label>
+                                <span class="text-[11px] text-slate-400">
+                                    {{ form.meta_title.length }}/70
+                                </span>
+                            </div>
+                            <input
+                                id="meta_title"
+                                v-model="form.meta_title"
+                                type="text"
+                                maxlength="70"
+                                required
+                                :disabled="!capabilities.update"
+                                class="mt-2 block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-cyan-400 focus:ring-3 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:bg-slate-50"
+                            />
+                            <InputError
+                                class="mt-2"
+                                :message="form.errors.meta_title"
+                            />
+                        </div>
+
+                        <div>
+                            <div
+                                class="flex items-center justify-between gap-3"
+                            >
+                                <label
+                                    for="meta_description"
+                                    class="text-xs font-semibold text-slate-700"
+                                >
+                                    Meta description
+                                </label>
+                                <span class="text-[11px] text-slate-400">
+                                    {{ form.meta_description.length }}/200
+                                </span>
+                            </div>
+                            <textarea
+                                id="meta_description"
+                                v-model="form.meta_description"
+                                rows="4"
+                                maxlength="200"
+                                required
+                                :disabled="!capabilities.update"
+                                class="mt-2 block w-full resize-y rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-cyan-400 focus:ring-3 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:bg-slate-50"
+                            />
+                            <InputError
+                                class="mt-2"
+                                :message="form.errors.meta_description"
+                            />
+                        </div>
+
+                        <div>
+                            <label
+                                for="meta_image"
+                                class="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
+                                :class="
+                                    capabilities.update
+                                        ? 'cursor-pointer'
+                                        : 'cursor-not-allowed opacity-60'
+                                "
+                            >
+                                <Upload class="size-4" />
+                                {{
+                                    form.meta_image?.name ??
+                                    (metaImagePreview
+                                        ? 'Ganti social image'
+                                        : 'Pilih social image')
+                                }}
+                            </label>
+                            <input
+                                id="meta_image"
+                                type="file"
+                                accept="image/png,image/jpeg,image/webp"
+                                :disabled="!capabilities.update"
+                                class="sr-only"
+                                @change="selectMetaImage"
+                            />
+                            <p class="mt-1.5 text-[11px] text-slate-500">
+                                PNG, JPG, atau WebP. Rekomendasi 1200×630
+                                piksel, maksimal 5 MB.
+                            </p>
+                            <InputError
+                                class="mt-2"
+                                :message="form.errors.meta_image"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <p class="text-xs font-semibold text-slate-700">
+                            Pratinjau saat dibagikan
+                        </p>
+                        <div
+                            class="mt-2 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+                        >
+                            <div
+                                class="flex aspect-[1200/630] items-center justify-center overflow-hidden bg-gradient-to-br from-sky-100 to-cyan-50 text-slate-400"
+                            >
+                                <img
+                                    v-if="metaImagePreview"
+                                    :src="metaImagePreview"
+                                    alt="Pratinjau social image"
+                                    class="h-full w-full object-cover"
+                                />
+                                <ImageIcon v-else class="size-10" />
+                            </div>
+                            <div class="space-y-1 p-3.5">
+                                <p
+                                    class="line-clamp-2 text-sm font-semibold text-slate-900"
+                                >
+                                    {{ form.meta_title }}
+                                </p>
+                                <p
+                                    class="line-clamp-3 text-xs leading-relaxed text-slate-500"
+                                >
+                                    {{ form.meta_description }}
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

@@ -24,6 +24,17 @@ function fakeFavicon(): UploadedFile
 }
 
 /**
+ * @return array{meta_title: string, meta_description: string}
+ */
+function appMetadataPayload(): array
+{
+    return [
+        'meta_title' => 'Kilap Auto Spa — Carwash & Detailing',
+        'meta_description' => 'Layanan cuci mobil, detailing, dan perawatan kendaraan profesional.',
+    ];
+}
+
+/**
  * @param  array<string, bool>  $abilities
  */
 function appSettingStaff(array $abilities): Admin
@@ -65,6 +76,9 @@ test('an owner sees app setting in the master sidebar', function () {
                 ->where('settings.appName', 'ZenWash Auto Care')
                 ->where('settings.whatsapp', '6281800090009')
                 ->where('settings.instagram', 'zenwash.id')
+                ->where('settings.metaTitle', 'ZenWash Auto Care Management System')
+                ->where('settings.metaDescription', 'Aplikasi manajemen carwash ZenWash Auto Care: kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.')
+                ->where('settings.metaImageUrl', '/og-image.png')
                 ->where('settings.appPhotoUrl', null)
                 ->where('settings.faviconUrl', null)
                 ->where('settings.favicon16Url', null)
@@ -94,6 +108,8 @@ test('an owner can update the name photo and favicon', function () {
             'app_name' => 'Kilap Auto Spa',
             'whatsapp' => '0812-3456-7890',
             'instagram' => '@Kilap.AutoSpa',
+            ...appMetadataPayload(),
+            'meta_image' => UploadedFile::fake()->image('social-preview.png', 1200, 630),
             'app_photo' => UploadedFile::fake()->image('app-photo.png', 400, 400),
             'favicon' => fakeFavicon(),
             'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 16, 16),
@@ -114,6 +130,9 @@ test('an owner can update the name photo and favicon', function () {
             AppSettings::APP_NAME,
             AppSettings::WHATSAPP,
             AppSettings::INSTAGRAM,
+            AppSettings::META_TITLE,
+            AppSettings::META_DESCRIPTION,
+            AppSettings::META_IMAGE,
             AppSettings::APP_PHOTO,
             AppSettings::FAVICON,
             AppSettings::FAVICON_16,
@@ -128,8 +147,11 @@ test('an owner can update the name photo and favicon', function () {
     expect($settings[AppSettings::APP_NAME])->toBe('Kilap Auto Spa')
         ->and($settings[AppSettings::WHATSAPP])->toBe('6281234567890')
         ->and($settings[AppSettings::INSTAGRAM])->toBe('kilap.autospa')
+        ->and($settings[AppSettings::META_TITLE])->toBe(appMetadataPayload()['meta_title'])
+        ->and($settings[AppSettings::META_DESCRIPTION])->toBe(appMetadataPayload()['meta_description'])
         ->and(config('app.name'))->toBe('Kilap Auto Spa');
 
+    Storage::disk('public')->assertExists($settings[AppSettings::META_IMAGE]);
     Storage::disk('public')->assertExists($settings[AppSettings::APP_PHOTO]);
     Storage::disk('public')->assertExists($settings[AppSettings::FAVICON]);
     Storage::disk('public')->assertExists($settings[AppSettings::FAVICON_16]);
@@ -140,6 +162,7 @@ test('an owner can update the name photo and favicon', function () {
     Storage::disk('public')->assertExists($settings[AppSettings::SITE_WEBMANIFEST]);
 
     $photoUrl = Storage::disk('public')->url($settings[AppSettings::APP_PHOTO]);
+    $metaImageUrl = Storage::disk('public')->url($settings[AppSettings::META_IMAGE]);
     $faviconUrl = Storage::disk('public')->url($settings[AppSettings::FAVICON]);
     $favicon16Url = Storage::disk('public')->url($settings[AppSettings::FAVICON_16]);
     $favicon32Url = Storage::disk('public')->url($settings[AppSettings::FAVICON_32]);
@@ -159,6 +182,10 @@ test('an owner can update the name photo and favicon', function () {
         );
 
     $this->get(route('demo.home'))
+        ->assertSee('<meta name="title" content="'.e(appMetadataPayload()['meta_title']).'">', false)
+        ->assertSee('<meta name="description" content="'.e(appMetadataPayload()['meta_description']).'">', false)
+        ->assertSee('<meta property="og:image" content="'.url($metaImageUrl).'">', false)
+        ->assertSee('<meta property="twitter:image" content="'.url($metaImageUrl).'">', false)
         ->assertSee('<link rel="icon" href="'.$faviconUrl.'" sizes="any">', false)
         ->assertSee('<link rel="icon" type="image/png" sizes="16x16" href="'.$favicon16Url.'">', false)
         ->assertSee('<link rel="icon" type="image/png" sizes="32x32" href="'.$favicon32Url.'">', false)
@@ -176,6 +203,7 @@ test('replacing an app photo deletes the previous file', function () {
         'app_name' => 'Kilap Auto Spa',
         'whatsapp' => '6281234567890',
         'instagram' => 'kilap.autospa',
+        ...appMetadataPayload(),
         'favicon' => fakeFavicon(),
         'app_photo' => UploadedFile::fake()->image('first.png'),
     ]);
@@ -186,6 +214,7 @@ test('replacing an app photo deletes the previous file', function () {
         'app_name' => 'Kilap Auto Spa',
         'whatsapp' => '6281234567890',
         'instagram' => 'kilap.autospa',
+        ...appMetadataPayload(),
         'app_photo' => UploadedFile::fake()->image('second.png'),
     ]);
 
@@ -201,6 +230,7 @@ test('favicon ico is mandatory until one has been uploaded', function () {
             'app_name' => 'Kilap Auto Spa',
             'whatsapp' => '6281234567890',
             'instagram' => 'kilap.autospa',
+            ...appMetadataPayload(),
         ])
         ->assertSessionHasErrors('favicon');
 });
@@ -215,6 +245,9 @@ test('app setting rejects invalid names and files', function () {
             'app_name' => '',
             'whatsapp' => 'nomor-wa',
             'instagram' => 'instagram tidak valid',
+            'meta_title' => '',
+            'meta_description' => '',
+            'meta_image' => UploadedFile::fake()->image('social-preview.png', 600, 315),
             'app_photo' => UploadedFile::fake()->create('app.pdf', 10, 'application/pdf'),
             'favicon' => UploadedFile::fake()->create('favicon.svg', 10, 'image/svg+xml'),
             'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 32, 32),
@@ -229,6 +262,9 @@ test('app setting rejects invalid names and files', function () {
             'app_name',
             'whatsapp',
             'instagram',
+            'meta_title',
+            'meta_description',
+            'meta_image',
             'app_photo',
             'favicon',
             'favicon_16',

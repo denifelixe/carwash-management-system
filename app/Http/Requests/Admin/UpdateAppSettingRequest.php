@@ -29,6 +29,15 @@ class UpdateAppSettingRequest extends FormRequest
             'app_name' => ['required', 'string', 'max:100'],
             'whatsapp' => ['required', 'string', 'regex:/^62[0-9]{8,13}$/'],
             'instagram' => ['required', 'string', 'max:30', 'regex:/^[a-z0-9._]+$/'],
+            'meta_title' => ['required', 'string', 'max:70'],
+            'meta_description' => ['required', 'string', 'max:200'],
+            'meta_image' => [
+                'nullable',
+                File::image()
+                    ->types(['jpg', 'jpeg', 'png', 'webp'])
+                    ->dimensions(Rule::dimensions()->width(1200)->height(630))
+                    ->max('5mb'),
+            ],
             'app_photo' => ['nullable', File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max('2mb')],
             'favicon' => [
                 Rule::requiredIf(AppSettings::get(AppSettings::FAVICON) === null),
@@ -59,7 +68,7 @@ class UpdateAppSettingRequest extends FormRequest
     }
 
     /**
-     * @return array{app_name: string, whatsapp: string, instagram: string, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}
+     * @return array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}
      */
     public function branding(): array
     {
@@ -67,6 +76,9 @@ class UpdateAppSettingRequest extends FormRequest
             'app_name' => $this->string('app_name')->toString(),
             'whatsapp' => $this->string('whatsapp')->toString(),
             'instagram' => $this->string('instagram')->toString(),
+            'meta_title' => $this->string('meta_title')->toString(),
+            'meta_description' => $this->string('meta_description')->toString(),
+            'meta_image' => $this->file('meta_image'),
             'app_photo' => $this->file('app_photo'),
             'favicon' => $this->file('favicon'),
             'favicon_16' => $this->file('favicon_16'),

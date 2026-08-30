@@ -37,6 +37,9 @@ class AppSettingController extends Controller
                 'siteWebmanifestUrl' => AppSettings::siteWebmanifestUrl(),
                 'whatsapp' => AppSettings::whatsapp(),
                 'instagram' => AppSettings::instagram(),
+                'metaTitle' => AppSettings::metaTitle(),
+                'metaDescription' => AppSettings::metaDescription(),
+                'metaImageUrl' => AppSettings::metaImageUrl() ?? '/og-image.png',
             ],
             'capabilities' => [
                 'update' => Gate::allows('admin.master_app_settings.update'),

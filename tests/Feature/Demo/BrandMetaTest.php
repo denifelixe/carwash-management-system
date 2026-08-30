@@ -31,13 +31,15 @@ test('the root template renders the document metadata', function () {
     $this->get(route('demo.home'))
         ->assertOk()
         ->assertSee('<meta name="description" content="'.e($meta['description']).'">', false)
+        ->assertSee('<meta name="title" content="'.e($meta['title']).'">', false)
         ->assertSee('<meta name="keywords" content="'.e($meta['keywords']).'">', false)
         ->assertSee('<meta name="theme-color" content="'.$meta['themeColor'].'">', false)
         ->assertSee('<meta property="og:title" content="'.e($meta['title']).'">', false)
         ->assertSee('<meta property="og:description" content="'.e($meta['description']).'">', false)
         ->assertSee('<meta property="og:image" content="'.url($meta['ogImage']).'">', false)
         ->assertSee('<meta property="og:locale" content="'.$meta['locale'].'">', false)
-        ->assertSee('<meta name="twitter:card" content="summary_large_image">', false)
+        ->assertSee('<meta property="twitter:card" content="summary_large_image">', false)
+        ->assertSee('<meta property="twitter:url" content="'.route('demo.home').'">', false)
         ->assertSee('<link rel="canonical" href="'.route('demo.home').'">', false);
 });
 

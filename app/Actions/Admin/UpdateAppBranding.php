@@ -11,14 +11,17 @@ use RuntimeException;
 class UpdateAppBranding
 {
     /**
-     * @param  array{app_name: string, whatsapp: string, instagram: string, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}  $settings
+     * @param  array{app_name: string, whatsapp: string, instagram: string, meta_title: string, meta_description: string, meta_image: UploadedFile|null, app_photo: UploadedFile|null, favicon: UploadedFile|null, favicon_16: UploadedFile|null, favicon_32: UploadedFile|null, apple_touch_icon: UploadedFile|null, android_chrome_192: UploadedFile|null, android_chrome_512: UploadedFile|null, site_webmanifest: UploadedFile|null}  $settings
      */
     public function handle(array $settings, Admin $admin): void
     {
         AppSettings::put(AppSettings::APP_NAME, $settings['app_name'], $admin->id);
         AppSettings::put(AppSettings::WHATSAPP, $settings['whatsapp'], $admin->id);
         AppSettings::put(AppSettings::INSTAGRAM, $settings['instagram'], $admin->id);
+        AppSettings::put(AppSettings::META_TITLE, $settings['meta_title'], $admin->id);
+        AppSettings::put(AppSettings::META_DESCRIPTION, $settings['meta_description'], $admin->id);
 
+        $this->storeAsset($settings['meta_image'], AppSettings::META_IMAGE, $admin);
         $this->storeAsset($settings['app_photo'], AppSettings::APP_PHOTO, $admin);
         $this->storeAsset($settings['favicon'], AppSettings::FAVICON, $admin);
         $this->storeAsset($settings['favicon_16'], AppSettings::FAVICON_16, $admin);
