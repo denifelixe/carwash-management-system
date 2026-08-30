@@ -173,7 +173,9 @@ test('one paper picker serves both recaps', function () {
 
 test('every value on the sheet comes from user input and none of it is raw', function () {
     expect(recapSheetModule())
-        ->toContain("import { brandContacts, escapeHtml, printedAt } from '@/lib/printDocument';")
+        ->toContain('brandMark,')
+        ->toContain('${brandMark(brand.photo, brand.logo, brand.name)}')
+        ->toContain('.logo-image')
         ->toContain('${brandContacts(brand.whatsapp, brand.instagram)}')
         ->toContain('escapeHtml(sheet.title)')
         ->toContain('escapeHtml(row.label)')

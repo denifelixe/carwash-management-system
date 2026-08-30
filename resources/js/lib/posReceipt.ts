@@ -1,5 +1,10 @@
 import { formatCurrency, formatDate } from '@/composables/useCarwashFormat';
-import { brandContacts, escapeHtml, printedAt } from '@/lib/printDocument';
+import {
+    brandContacts,
+    brandMark,
+    escapeHtml,
+    printedAt,
+} from '@/lib/printDocument';
 import type { CarwashBrand } from '@/types/demo';
 
 /**
@@ -231,7 +236,7 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
         : 'BUKTI PEMBAYARAN SEBAGIAN';
 
     return `<header class="brand">
-    <p class="logo">${escapeHtml(brand.logo)}</p>
+    ${brandMark(brand.photo, brand.logo, brand.name)}
     <p class="name">${escapeHtml(brand.name)}</p>
     ${brandContacts(brand.whatsapp, brand.instagram)}
 </header>
@@ -305,6 +310,7 @@ body {
 }
 .brand { text-align: center; }
 .logo { font-size: 20px; line-height: 1.2; }
+.logo-image { display: block; height: auto; margin: 0 auto 4px; max-height: 40px; max-width: 56px; object-fit: contain; }
 .name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
 .contacts { align-items: center; display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
 .contact { align-items: center; color: #475569; display: inline-flex; font-size: 10px; gap: 4px; }

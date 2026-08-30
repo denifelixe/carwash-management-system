@@ -39,6 +39,19 @@ export function brandContacts(whatsapp: string, instagram: string): string {
 </div>`;
 }
 
+/** Uses the uploaded app photo on printed documents, with the emoji as fallback. */
+export function brandMark(
+    photo: string | null,
+    logo: string,
+    name: string,
+): string {
+    if (photo !== null) {
+        return `<img class="logo-image" src="${escapeHtml(photo)}" alt="${escapeHtml(name)}">`;
+    }
+
+    return `<p class="logo">${escapeHtml(logo)}</p>`;
+}
+
 /**
  * Stamped on a document so the desk knows when it left the app. The zone comes
  * from the page's `filters.timezone`, never the machine, or a cashier on a

@@ -1,4 +1,9 @@
-import { brandContacts, escapeHtml, printedAt } from '@/lib/printDocument';
+import {
+    brandContacts,
+    brandMark,
+    escapeHtml,
+    printedAt,
+} from '@/lib/printDocument';
 import type { CarwashBrand } from '@/types/demo';
 
 /**
@@ -181,7 +186,7 @@ function recapSheetBody(sheet: RecapSheet, brand: CarwashBrand): string {
             : `<p class="shift-caption">${escapeHtml(sheet.shiftCaption)}</p>`;
 
     return `<header class="brand">
-    <p class="logo">${escapeHtml(brand.logo)}</p>
+    ${brandMark(brand.photo, brand.logo, brand.name)}
     <p class="name">${escapeHtml(brand.name)}</p>
     ${brandContacts(brand.whatsapp, brand.instagram)}
 </header>
@@ -248,6 +253,7 @@ function a4Styles(): string {
 .toolbar { width: 180mm; }
 .paper { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); padding: 14mm; width: 180mm; }
 .logo { font-size: 26px; line-height: 1.2; }
+.logo-image { display: block; height: auto; margin: 0 auto 6px; max-height: 64px; max-width: 90px; object-fit: contain; }
 .name { font-size: 17px; font-weight: 700; letter-spacing: 0.04em; }
 .contact { color: #475569; font-size: 11px; }
 .block { border-top: 1px solid #cbd5e1; margin-top: 14px; padding-top: 14px; }
@@ -299,6 +305,7 @@ function strukStyles(): string {
 .toolbar { width: ${PAPER_WIDTH}; }
 .paper { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); padding: 14px 10px 18px; width: ${PAPER_WIDTH}; }
 .logo { font-size: 20px; line-height: 1.2; }
+.logo-image { display: block; height: auto; margin: 0 auto 4px; max-height: 40px; max-width: 56px; object-fit: contain; }
 .name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
 .contact { color: #475569; font-size: 10px; }
 .block { border-top: 1px dashed #94a3b8; margin-top: 8px; padding-top: 8px; }

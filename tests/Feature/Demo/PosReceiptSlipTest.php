@@ -72,11 +72,18 @@ test('the slip carries everything the customer needs to reconcile the payment', 
     expect(printDocumentModule())
         ->toContain('export function escapeHtml(value: string): string')
         ->toContain("replaceAll('<', '&lt;')")
+        ->toContain('export function brandMark(')
+        ->toContain('if (photo !== null)')
+        ->toContain('src="${escapeHtml(photo)}"')
+        ->toContain('alt="${escapeHtml(name)}"')
+        ->toContain('${escapeHtml(logo)}')
         ->toContain('export function brandContacts(')
         ->toContain('contact-icon whatsapp')
         ->toContain('contact-icon instagram');
 
     expect(posReceiptModule())
+        ->toContain('${brandMark(brand.photo, brand.logo, brand.name)}')
+        ->toContain('.logo-image')
         ->toContain('${brandContacts(brand.whatsapp, brand.instagram)}')
         ->not->toContain('stampBlock')
         ->not->toContain('Stempel didapat')
