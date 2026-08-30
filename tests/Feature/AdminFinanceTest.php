@@ -5,6 +5,9 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminWorkShift;
 use App\Models\CashEntry;
+use App\Models\CashEntryAttachment;
+use App\Models\Order;
+use App\Models\OrderTransaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -54,6 +57,11 @@ function cashEntryPayload(array $overrides = []): array
         'amount' => 360000,
         'method' => 'Tunai',
     ], $overrides);
+}
+
+function financeDisk(): string
+{
+    return (string) config('filesystems.default');
 }
 
 test('guests cannot open the finance module', function () {
@@ -126,9 +134,88 @@ test('a payment taken by the cashier is read back as money in', function () {
                 ->where('moneyIn.0.orderNo', $order->number)
                 ->where('moneyIn.0.shift', 'Shift Pagi')
                 ->where('moneyIn.0.id', 'pos-'.$order->number.'-TRX-1')
+                ->where('moneyIn.0.transactionId', $order->transactions()->sole()->id)
                 ->where('cashSummary.todayIn', 150000)
                 ->has('orders', 1),
         );
+});
+
+test('an owner can correct the payment channel of a settled POS transaction', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($owner);
+    $transaction = $order->transactions()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 150000,
+            'channels' => [[
+                'label' => 'QRIS',
+                'amount' => 150000,
+                'reference' => 'QR-REV-001',
+            ]],
+        ])
+        ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-30']))
+        ->assertSessionHasNoErrors();
+
+    expect($transaction->refresh()->channel_breakdown)->toBe([[
+        'label' => 'QRIS',
+        'amount' => 150000,
+        'reference' => 'QR-REV-001',
+    ]])
+        ->and($order->refresh()->paid_amount)->toBe(150000)
+        ->and($order->payment_method)->toBe('QRIS')
+        ->and($order->status)->toBe('selesai');
+});
+
+test('an owner can correct a partial POS transaction amount', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'total' => 200000,
+        'paid_amount' => 50000,
+        'status' => 'proses',
+    ]);
+    $transaction = OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'recorded_by_admin_id' => $owner->id,
+        'amount' => 50000,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 50000]],
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 75000,
+            'channels' => [['label' => 'Tunai', 'amount' => 75000]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($transaction->refresh()->amount)->toBe(75000)
+        ->and($order->refresh()->paid_amount)->toBe(75000);
+});
+
+test('a correction cannot make a settled order unpaid', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $transaction = paidOrder($owner)->transactions()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 100000,
+            'channels' => [['label' => 'Tunai', 'amount' => 100000]],
+        ])
+        ->assertSessionHasErrors('amount');
+
+    expect($transaction->refresh()->amount)->toBe(150000);
+});
+
+test('a staff member without update access cannot correct a POS transaction', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $transaction = paidOrder($owner)->transactions()->sole();
+
+    $this->actingAs(financeStaff(['read' => true]), 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 150000,
+            'channels' => [['label' => 'QRIS', 'amount' => 150000]],
+        ])
+        ->assertForbidden();
 });
 
 test('an evening payment is filed on the day the outlet clock says', function () {
@@ -195,7 +282,7 @@ test('an owner can record money in', function () {
     expect($entry->direction)->toBe('in')
         ->and($entry->amount)->toBe(360000)
         ->and($entry->recorded_by_admin_id)->toBe($owner->id)
-        ->and($entry->attachment_path)->toBeNull()
+        ->and($entry->attachments()->count())->toBe(0)
         ->and($entry->reference)->toBe('TRX-PP-'.substr(str_replace('-', '', $today), 2).'-'.str_pad((string) $entry->id, 4, '0', STR_PAD_LEFT));
 });
 
@@ -207,45 +294,81 @@ test('money out is refused without its supporting document', function () {
             'direction' => 'out',
             'category' => 'Pembelian Bahan',
         ]))
-        ->assertSessionHasErrors('attachment');
+        ->assertSessionHasErrors('attachments');
 
     expect(CashEntry::query()->count())->toBe(0);
 });
 
 test('money out stores its supporting document', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.finance.store'), cashEntryPayload([
             'direction' => 'out',
             'category' => 'Pembelian Bahan',
-            'attachment' => UploadedFile::fake()->image('nota-supplier.jpg'),
+            'attachments' => [UploadedFile::fake()->image('nota-supplier.jpg')],
         ]))
         ->assertSessionHasNoErrors();
 
     $entry = CashEntry::query()->sole();
 
-    expect(config('filesystems.disks.s3.root'))->toBe('carwash-management-system/testing')
-        ->and($entry->attachment_name)->toBe('nota-supplier.jpg')
-        ->and($entry->attachment_path)->toStartWith($entry->reference.'/')
-        ->and($entry->attachment_path)->toEndWith('.jpg');
-    Storage::disk('s3')->assertExists($entry->attachment_path);
+    $attachment = $entry->attachments()->sole();
+
+    expect($attachment->original_name)->toBe('nota-supplier.jpg')
+        ->and($attachment->disk)->toBe(financeDisk())
+        ->and($attachment->path)->toStartWith($entry->reference.'/')
+        ->and($attachment->path)->toEndWith('.jpg');
+    Storage::assertExists($attachment->path);
 
     $this->actingAs($owner, 'admin')
-        ->get(route('admin.finance.attachment', $entry))
+        ->get(route('admin.finance.attachment', $attachment))
+        ->assertOk();
+});
+
+test('manual money in can store multiple attachments on the configured default disk', function () {
+    config(['filesystems.default' => 'local']);
+    Storage::fake('local');
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload([
+            'attachments' => [
+                UploadedFile::fake()->image('bukti-transfer.png'),
+                UploadedFile::fake()->create('invoice.pdf', 64, 'application/pdf'),
+            ],
+        ]))
+        ->assertSessionHasNoErrors();
+
+    $entry = CashEntry::query()->sole();
+    $attachments = $entry->attachments()->get();
+
+    expect($attachments)->toHaveCount(2)
+        ->and($attachments->pluck('original_name')->all())->toBe([
+            'bukti-transfer.png',
+            'invoice.pdf',
+        ])
+        ->and($attachments->pluck('disk')->unique()->all())->toBe(['local']);
+
+    foreach ($attachments as $attachment) {
+        Storage::disk('local')->assertExists($attachment->path);
+    }
+
+    config(['filesystems.default' => 's3']);
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.finance.attachment', $attachments->first()))
         ->assertOk();
 });
 
 test('an image attachment is flagged and served inline for the lightbox', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.finance.store'), cashEntryPayload([
             'direction' => 'out',
             'category' => 'Pembelian Bahan',
-            'attachment' => UploadedFile::fake()->image('nota-supplier.jpg'),
+            'attachments' => [UploadedFile::fake()->image('nota-supplier.jpg')],
         ]))
         ->assertSessionHasNoErrors();
 
@@ -253,71 +376,71 @@ test('an image attachment is flagged and served inline for the lightbox', functi
         ->get(route('admin.finance.index'))
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->where('moneyOut.0.attachmentIsImage', true)
-                ->where('moneyOut.0.attachment.name', 'nota-supplier.jpg'),
+                ->where('moneyOut.0.attachments.0.isImage', true)
+                ->where('moneyOut.0.attachments.0.name', 'nota-supplier.jpg'),
         );
 
     /* Inline, not an attachment: the lightbox has to render it in the page. */
     $this->actingAs($owner, 'admin')
-        ->get(route('admin.finance.attachment', CashEntry::query()->sole()))
+        ->get(route('admin.finance.attachment', CashEntryAttachment::query()->sole()))
         ->assertOk()
         ->assertHeader('Content-Disposition', 'inline; filename=nota-supplier.jpg');
 });
 
 test('a document attachment is not flagged and is still handed over', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.finance.store'), cashEntryPayload([
             'direction' => 'out',
             'category' => 'Pembelian Bahan',
-            'attachment' => UploadedFile::fake()->create('struk-token.pdf', 64, 'application/pdf'),
+            'attachments' => [UploadedFile::fake()->create('struk-token.pdf', 64, 'application/pdf')],
         ]))
         ->assertSessionHasNoErrors();
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.finance.index'))
         ->assertInertia(
-            fn (AssertableInertia $page) => $page->where('moneyOut.0.attachmentIsImage', false),
+            fn (AssertableInertia $page) => $page->where('moneyOut.0.attachments.0.isImage', false),
         );
 
     $this->actingAs($owner, 'admin')
-        ->get(route('admin.finance.attachment', CashEntry::query()->sole()))
+        ->get(route('admin.finance.attachment', CashEntryAttachment::query()->sole()))
         ->assertOk()
         ->assertDownload('struk-token.pdf');
 });
 
 test('a video attachment is refused', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.finance.store'), cashEntryPayload([
             'direction' => 'out',
             'category' => 'Pembelian Bahan',
-            'attachment' => UploadedFile::fake()->create('bukti.mp4', 64, 'video/mp4'),
+            'attachments' => [UploadedFile::fake()->create('bukti.mp4', 64, 'video/mp4')],
         ]))
-        ->assertSessionHasErrors('attachment');
+        ->assertSessionHasErrors('attachments.0');
 
     expect(CashEntry::query()->count())->toBe(0);
 });
 
 test('a staff member without read access cannot download an attachment', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $entry = CashEntry::factory()->moneyOut()->create();
 
     $this->actingAs(financeStaff(['read' => false]), 'admin')
-        ->get(route('admin.finance.attachment', $entry))
+        ->get(route('admin.finance.attachment', $entry->attachments()->sole()))
         ->assertForbidden();
 });
 
-test('an owner can change a recorded entry and replace its document', function () {
-    Storage::fake('s3');
+test('an owner can change a recorded entry and append another document', function () {
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    $previousPath = $entry->attachment_path;
-    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
+    $previousAttachment = $entry->attachments()->sole();
+    Storage::put($previousAttachment->path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
@@ -325,7 +448,7 @@ test('an owner can change a recorded entry and replace its document', function (
             'description' => 'Token listrik bulanan',
             'amount' => 500000,
             'method' => 'QRIS',
-            'attachment' => UploadedFile::fake()->create('struk-token.pdf', 64, 'application/pdf'),
+            'attachments' => [UploadedFile::fake()->create('struk-token.pdf', 64, 'application/pdf')],
         ]))
         ->assertSessionHasNoErrors();
 
@@ -333,17 +456,20 @@ test('an owner can change a recorded entry and replace its document', function (
 
     expect($entry->category)->toBe('Operasional')
         ->and($entry->amount)->toBe(500000)
-        ->and($entry->attachment_name)->toBe('struk-token.pdf')
-        ->and($entry->attachment_path)->toStartWith($entry->reference.'/');
-    Storage::disk('s3')->assertMissing($previousPath);
-    Storage::disk('s3')->assertExists($entry->attachment_path);
+        ->and($entry->attachments()->count())->toBe(2)
+        ->and($entry->attachments()->where('original_name', 'struk-token.pdf')->exists())->toBeTrue();
+    Storage::assertExists($previousAttachment->path);
+    Storage::assertExists(
+        $entry->attachments()->where('original_name', 'struk-token.pdf')->firstOrFail()->path,
+    );
 });
 
 test('an entry keeps the document already on file when none is uploaded', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
+    $attachment = $entry->attachments()->sole();
+    Storage::put($attachment->path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
@@ -354,22 +480,83 @@ test('an entry keeps the document already on file when none is uploaded', functi
         ]))
         ->assertSessionHasNoErrors();
 
-    expect($entry->refresh()->attachment_name)->toBe('nota-supplier.jpg');
-    Storage::disk('s3')->assertExists($entry->attachment_path);
+    expect($entry->refresh()->attachments()->sole()->original_name)->toBe('nota-supplier.jpg');
+    Storage::assertExists($attachment->path);
+});
+
+test('an owner can remove one stored attachment while keeping another', function () {
+    Storage::fake(financeDisk());
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $entry = CashEntry::factory()->moneyOut()->create();
+    $removedAttachment = $entry->attachments()->sole();
+    $keptAttachment = CashEntryAttachment::factory()->for($entry)->create([
+        'path' => $entry->reference.'/invoice.pdf',
+        'original_name' => 'invoice.pdf',
+    ]);
+    Storage::put($removedAttachment->path, 'nota lama');
+    Storage::put($keptAttachment->path, 'invoice');
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'category' => 'Operasional',
+            'removed_attachment_ids' => [$removedAttachment->id],
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect($entry->attachments()->sole()->is($keptAttachment))->toBeTrue();
+    Storage::assertMissing($removedAttachment->path);
+    Storage::assertExists($keptAttachment->path);
+});
+
+test('the last attachment of money out cannot be removed without a replacement', function () {
+    Storage::fake(financeDisk());
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $entry = CashEntry::factory()->moneyOut()->create();
+    $attachment = $entry->attachments()->sole();
+    Storage::put($attachment->path, 'nota lama');
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'category' => 'Operasional',
+            'removed_attachment_ids' => [$attachment->id],
+        ]))
+        ->assertSessionHasErrors('attachments');
+
+    expect($entry->attachments()->sole()->is($attachment))->toBeTrue();
+    Storage::assertExists($attachment->path);
+});
+
+test('an attachment from another entry cannot be removed', function () {
+    Storage::fake(financeDisk());
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $entry = CashEntry::factory()->moneyOut()->create();
+    $otherEntry = CashEntry::factory()->moneyOut()->create();
+    $otherAttachment = $otherEntry->attachments()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'category' => 'Operasional',
+            'removed_attachment_ids' => [$otherAttachment->id],
+        ]))
+        ->assertSessionHasErrors('removed_attachment_ids.0');
+
+    expect($otherEntry->attachments()->sole()->is($otherAttachment))->toBeTrue();
 });
 
 test('an owner can delete an entry along with its document', function () {
-    Storage::fake('s3');
+    Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
+    $attachment = $entry->attachments()->sole();
+    Storage::put($attachment->path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->delete(route('admin.finance.destroy', $entry))
         ->assertSessionHasNoErrors();
 
     expect(CashEntry::query()->count())->toBe(0);
-    Storage::disk('s3')->assertMissing($entry->attachment_path);
+    expect(CashEntryAttachment::query()->count())->toBe(0);
+    Storage::assertMissing($attachment->path);
 });
 
 test('a staff member without update or delete access cannot change an entry', function () {

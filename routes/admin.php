@@ -67,14 +67,16 @@ Route::domain((string) config('domains.admin'))
             Route::post('pos/{order}/member', [PosController::class, 'storeMember'])->name('pos.member.store');
             Route::get('finance', [FinanceController::class, 'index'])->name('finance.index');
             Route::post('finance', [FinanceController::class, 'store'])->name('finance.store');
+            Route::patch('finance/transactions/{orderTransaction}', [FinanceController::class, 'updateTransaction'])->name('finance.transactions.update');
             Route::patch('finance/{cashEntry}', [FinanceController::class, 'update'])->name('finance.update');
             Route::delete('finance/{cashEntry}', [FinanceController::class, 'destroy'])->name('finance.destroy');
-            Route::get('finance/{cashEntry}/attachment', [FinanceController::class, 'attachment'])->name('finance.attachment');
+            Route::get('finance/attachments/{cashEntryAttachment}', [FinanceController::class, 'attachment'])->name('finance.attachment');
             Route::get('members', [MemberController::class, 'index'])->name('members.index');
             Route::post('members', [MemberController::class, 'store'])->name('members.store');
             Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
             Route::patch('members/{member}/status', [MemberController::class, 'updateStatus'])->name('members.status.update');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
+            Route::get('users/{adminUser}/photo', [AdminUserController::class, 'photo'])->name('users.photo');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
             Route::patch('users/{adminUser}/shift', [AdminUserController::class, 'updateShift'])->name('users.shift.update');
             Route::patch('users/{adminUser}', [AdminUserController::class, 'update'])->name('users.update');

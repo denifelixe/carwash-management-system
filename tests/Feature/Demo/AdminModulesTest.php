@@ -139,8 +139,8 @@ test('every recorded expense carries a supporting attachment', function () {
             expect($expenses)->not->toBeEmpty();
 
             foreach ($expenses as $expense) {
-                expect($expense['attachment'])->not->toBeNull()
-                    ->and($expense['attachment']['name'])->not->toBeEmpty();
+                expect($expense['attachments'])->not->toBeEmpty()
+                    ->and($expense['attachments'][0]['name'])->not->toBeEmpty();
             }
         });
 });

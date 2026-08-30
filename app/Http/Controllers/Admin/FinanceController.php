@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\UpdateOrderTransaction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreCashEntryRequest;
 use App\Http\Requests\Admin\UpdateCashEntryRequest;
+use App\Http\Requests\Admin\UpdateOrderTransactionRequest;
 use App\Models\Admin;
 use App\Models\CashEntry;
+use App\Models\CashEntryAttachment;
 use App\Models\Order;
+use App\Models\OrderTransaction;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\FinancePresenter;
@@ -20,11 +24,14 @@ use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 /**
  * Money in and money out for daily operations (BR-10).
@@ -36,8 +43,6 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class FinanceController extends Controller
 {
-    private const ATTACHMENT_DISK = 's3';
-
     public function index(Request $request, AdminShell $adminShell): Response
     {
         Gate::authorize('admin.finance.read');
@@ -83,27 +88,44 @@ class FinanceController extends Controller
         $occurredAt = CarbonImmutable::now();
         $entryDate = $occurredAt->toDateString();
 
-        $entry = new CashEntry([
-            'direction' => $data['direction'],
-            'category' => $data['category'],
-            'description' => $data['description'],
-            'amount' => $data['amount'],
-            'method' => $data['method'],
-            'recorded_by_admin_id' => $admin->getKey(),
-            'shift_name' => $admin->workShift?->name,
-            'entry_date' => $entryDate,
-            'occurred_at' => $occurredAt,
-            /* Placeholder: the reference is only stable once the row has an ID. */
-            'reference' => 'TRX-'.$occurredAt->format('YmdHisu'),
-        ]);
+        /** @var list<UploadedFile> $attachments */
+        $attachments = $request->file('attachments', []);
+        $storedFiles = [];
 
-        $entry->save();
+        try {
+            DB::transaction(function () use (
+                $data,
+                $admin,
+                $entryDate,
+                $occurredAt,
+                $attachments,
+                &$storedFiles,
+            ): void {
+                $entry = new CashEntry([
+                    'direction' => $data['direction'],
+                    'category' => $data['category'],
+                    'description' => $data['description'],
+                    'amount' => $data['amount'],
+                    'method' => $data['method'],
+                    'recorded_by_admin_id' => $admin->getKey(),
+                    'shift_name' => $admin->workShift?->name,
+                    'entry_date' => $entryDate,
+                    'occurred_at' => $occurredAt,
+                    /* Placeholder: the reference is only stable once the row has an ID. */
+                    'reference' => 'TRX-'.$occurredAt->format('YmdHisu'),
+                ]);
 
-        $entry->reference = FinanceReference::make($data['category'], $entryDate, $entry->id);
-        $entry->fill($this->attachmentAttributes(
-            $request->file('attachment'),
-            $entry->reference,
-        ))->save();
+                $entry->save();
+
+                $entry->reference = FinanceReference::make($data['category'], $entryDate, $entry->id);
+                $entry->save();
+                $this->storeAttachments($entry, $attachments, $storedFiles);
+            });
+        } catch (Throwable $exception) {
+            $this->deleteStoredFiles($storedFiles);
+
+            throw $exception;
+        }
 
         return to_route('admin.finance.index', ['date' => $entryDate])
             ->with('success', 'Catatan keuangan berhasil disimpan.');
@@ -112,37 +134,67 @@ class FinanceController extends Controller
     public function update(UpdateCashEntryRequest $request, CashEntry $cashEntry): RedirectResponse
     {
         $data = $request->validated();
-        $attachment = $request->file('attachment');
-        $previousPath = $cashEntry->attachment_path;
+        /** @var list<UploadedFile> $attachments */
+        $attachments = $request->file('attachments', []);
+        /** @var list<int> $removedAttachmentIds */
+        $removedAttachmentIds = $data['removed_attachment_ids'] ?? [];
+        $storedFiles = [];
+        $removedFiles = $cashEntry->attachments()
+            ->whereKey($removedAttachmentIds)
+            ->get()
+            ->map(fn (CashEntryAttachment $attachment): array => [
+                'disk' => $attachment->disk,
+                'path' => $attachment->path,
+            ])
+            ->all();
 
-        $cashEntry->fill([
-            'category' => $data['category'],
-            'description' => $data['description'],
-            'amount' => $data['amount'],
-            'method' => $data['method'],
-            'reference' => FinanceReference::make(
-                $data['category'],
-                $cashEntry->entry_date->toDateString(),
-                $cashEntry->id,
-            ),
-        ]);
+        try {
+            DB::transaction(function () use (
+                $data,
+                $cashEntry,
+                $attachments,
+                $removedAttachmentIds,
+                &$storedFiles,
+            ): void {
+                $cashEntry->fill([
+                    'category' => $data['category'],
+                    'description' => $data['description'],
+                    'amount' => $data['amount'],
+                    'method' => $data['method'],
+                    'reference' => FinanceReference::make(
+                        $data['category'],
+                        $cashEntry->entry_date->toDateString(),
+                        $cashEntry->id,
+                    ),
+                ])->save();
 
-        if ($attachment instanceof UploadedFile) {
-            $cashEntry->fill($this->attachmentAttributes(
-                $attachment,
-                $cashEntry->reference,
-            ));
+                $cashEntry->attachments()->whereKey($removedAttachmentIds)->delete();
+                $this->storeAttachments($cashEntry, $attachments, $storedFiles);
+            });
+        } catch (Throwable $exception) {
+            $this->deleteStoredFiles($storedFiles);
+
+            throw $exception;
         }
 
-        $cashEntry->save();
-
-        /* Only drop the old document once its replacement is on the row. */
-        if ($attachment instanceof UploadedFile && $previousPath !== null) {
-            Storage::disk(self::ATTACHMENT_DISK)->delete($previousPath);
-        }
+        $this->deleteStoredFiles($removedFiles);
 
         return to_route('admin.finance.index', ['date' => $cashEntry->entry_date->toDateString()])
             ->with('success', 'Catatan keuangan berhasil diperbarui.');
+    }
+
+    public function updateTransaction(
+        UpdateOrderTransactionRequest $request,
+        OrderTransaction $orderTransaction,
+        UpdateOrderTransaction $updateOrderTransaction,
+    ): RedirectResponse {
+        $updateOrderTransaction->handle($orderTransaction, [
+            'amount' => $request->integer('amount'),
+            'channels' => $request->channels(),
+        ]);
+
+        return to_route('admin.finance.index', ['date' => $orderTransaction->paid_at->toDateString()])
+            ->with('success', 'Transaksi pembayaran berhasil diperbarui.');
     }
 
     public function destroy(CashEntry $cashEntry): RedirectResponse
@@ -150,51 +202,66 @@ class FinanceController extends Controller
         Gate::authorize('admin.finance.delete');
 
         $entryDate = $cashEntry->entry_date->toDateString();
-
-        if ($cashEntry->attachment_path !== null) {
-            Storage::disk(self::ATTACHMENT_DISK)->delete($cashEntry->attachment_path);
-        }
+        $cashEntry->loadMissing('attachments');
+        $storedFiles = $cashEntry->attachments
+            ->map(fn (CashEntryAttachment $attachment): array => [
+                'disk' => $attachment->disk,
+                'path' => $attachment->path,
+            ])
+            ->all();
 
         $cashEntry->delete();
+        $this->deleteStoredFiles($storedFiles);
 
         return to_route('admin.finance.index', ['date' => $entryDate])
             ->with('success', 'Catatan keuangan berhasil dihapus.');
     }
 
-    public function attachment(CashEntry $cashEntry): StreamedResponse
+    public function attachment(CashEntryAttachment $cashEntryAttachment): StreamedResponse
     {
         Gate::authorize('admin.finance.read');
 
-        abort_if($cashEntry->attachment_path === null, 404);
-
-        $disk = Storage::disk(self::ATTACHMENT_DISK);
-        $name = $cashEntry->attachment_name ?? 'lampiran';
+        $disk = Storage::disk($cashEntryAttachment->disk);
 
         /*
          * An image is served inline so the ledger can show it in place; a
          * document has nothing to show and is handed over to be opened.
          */
-        return FinancePresenter::isImage($cashEntry->attachment_path)
-            ? $disk->response($cashEntry->attachment_path, $name)
-            : $disk->download($cashEntry->attachment_path, $name);
+        return FinancePresenter::isImage($cashEntryAttachment->path)
+            ? $disk->response($cashEntryAttachment->path, $cashEntryAttachment->original_name)
+            : $disk->download($cashEntryAttachment->path, $cashEntryAttachment->original_name);
     }
 
     /**
-     * @return array<string, mixed>
+     * @param  list<UploadedFile>  $attachments
+     * @param  list<array{disk: string, path: string}>  $storedFiles
      */
-    private function attachmentAttributes(?UploadedFile $attachment, string $reference): array
+    private function storeAttachments(CashEntry $entry, array $attachments, array &$storedFiles): void
     {
-        if (! $attachment instanceof UploadedFile) {
-            return [];
-        }
+        $disk = (string) config('filesystems.default');
 
-        return [
-            'attachment_path' => $attachment->store(
-                $reference,
-                self::ATTACHMENT_DISK,
-            ),
-            'attachment_name' => $attachment->getClientOriginalName(),
-            'attachment_size' => $attachment->getSize(),
-        ];
+        foreach ($attachments as $attachment) {
+            $path = $attachment->store($entry->reference, $disk);
+
+            if ($path === false) {
+                throw new RuntimeException('Lampiran keuangan gagal disimpan.');
+            }
+
+            $storedFiles[] = ['disk' => $disk, 'path' => $path];
+            $entry->attachments()->create([
+                'disk' => $disk,
+                'path' => $path,
+                'original_name' => $attachment->getClientOriginalName(),
+                'size' => $attachment->getSize(),
+            ]);
+        }
+    }
+
+    /** @param list<array{disk: string, path: string}> $storedFiles */
+    private function deleteStoredFiles(array $storedFiles): void
+    {
+        foreach ($storedFiles as $storedFile) {
+            Storage::disk($storedFile['disk'])->delete($storedFile['path']);
+        }
     }
 }

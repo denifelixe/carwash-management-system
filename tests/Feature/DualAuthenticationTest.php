@@ -7,7 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
-    config(['session.driver' => 'database']);
+    config(['session.driver' => 'database', 'app.member_portal_enabled' => true]);
 
     app('session')->forgetDrivers();
 });

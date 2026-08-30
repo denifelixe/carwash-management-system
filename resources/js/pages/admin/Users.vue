@@ -33,6 +33,7 @@ type Staff = {
     is_active: boolean;
     last_active: string;
     initials: string;
+    avatar: string | null;
 };
 
 type Permission = {
@@ -82,6 +83,7 @@ const props = defineProps<{
     capabilities: {
         create: boolean;
         update: boolean;
+        update_photo: boolean;
     };
 }>();
 
@@ -133,6 +135,7 @@ const userForm = useForm({
     password: '',
     password_confirmation: '',
     is_active: true,
+    photo: null as File | null,
 });
 
 const roleForm = useForm({
@@ -223,6 +226,7 @@ function openEditUser(person: Staff): void {
         password: '',
         password_confirmation: '',
         is_active: person.is_active,
+        photo: null,
     });
     userForm.reset();
     isUserFormOpen.value = true;
@@ -235,18 +239,26 @@ function submitUser(): void {
         return;
     }
 
-    const action =
-        editingUserId.value === null
-            ? storeUser()
-            : updateUser(editingUserId.value);
-
-    userForm.submit(action, {
+    const options = {
         preserveScroll: true,
         onSuccess: () => {
             isUserFormOpen.value = false;
             userForm.reset();
         },
-    });
+    };
+
+    if (editingUserId.value === null) {
+        userForm.transform((data) => data).submit(storeUser(), options);
+
+        return;
+    }
+
+    userForm
+        .transform((data) => ({ ...data, _method: 'patch' }))
+        .post(updateUser.url(editingUserId.value), {
+            ...options,
+            forceFormData: true,
+        });
 }
 
 function changeShift(person: Staff, event: Event): void {
@@ -328,6 +340,7 @@ function saveDemoUser(): void {
             ...values,
             is_owner: false,
             last_active: 'Belum pernah login',
+            avatar: null,
         });
     } else {
         const person = staffList.value.find(
@@ -653,9 +666,17 @@ function saveDemoRole(): void {
                             <td class="px-5 py-3.5">
                                 <div class="flex items-center gap-3">
                                     <div
-                                        class="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-xs font-semibold text-slate-600"
+                                        class="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-slate-100 to-slate-200 text-xs font-semibold text-slate-600"
                                     >
-                                        {{ person.initials }}
+                                        <img
+                                            v-if="person.avatar"
+                                            :src="person.avatar"
+                                            :alt="person.name"
+                                            class="h-full w-full object-cover"
+                                        />
+                                        <template v-else>
+                                            {{ person.initials }}
+                                        </template>
                                     </div>
                                     <div>
                                         <p class="font-medium text-slate-900">
@@ -837,6 +858,28 @@ function saveDemoRole(): void {
             class="space-y-4"
             @submit.prevent="submitUser"
         >
+            <div v-if="editingUserId && capabilities.update_photo">
+                <label
+                    for="user-photo"
+                    class="text-xs font-medium text-slate-600"
+                    >Foto profil</label
+                >
+                <input
+                    id="user-photo"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    class="mt-1.5 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-cyan-700 hover:file:bg-cyan-100"
+                    @input="
+                        userForm.photo =
+                            ($event.target as HTMLInputElement).files?.[0] ??
+                            null
+                    "
+                />
+                <p class="mt-1 text-[11px] text-slate-500">
+                    JPG, PNG, atau WebP. Maksimal 20 MB.
+                </p>
+                <InputError class="mt-1" :message="userForm.errors.photo" />
+            </div>
             <div>
                 <label
                     for="user-name"

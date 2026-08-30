@@ -4,6 +4,7 @@ namespace App\Support\Admin;
 
 use App\Models\Admin;
 use App\Models\CashEntry;
+use App\Models\CashEntryAttachment;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use Illuminate\Support\Str;
@@ -34,6 +35,7 @@ class FinancePresenter
             /* Prefixed so the page can tell a booked payment from a hand-written
              * row, and can trace it back to its transaction in the order recap. */
             'id' => 'pos-'.$transaction->reference,
+            'transactionId' => $transaction->id,
             'ref' => FinanceReference::make(
                 $transaction->type.' Order',
                 $paidAt->toDateString(),
@@ -54,9 +56,7 @@ class FinancePresenter
             'customer' => $order->customer_name,
             'vehicle' => $order->vehicle_name,
             'plate' => $order->vehicle_plate,
-            'attachment' => null,
-            'attachmentUrl' => null,
-            'attachmentIsImage' => false,
+            'attachments' => [],
         ];
     }
 
@@ -66,6 +66,7 @@ class FinancePresenter
     public static function cashEntry(CashEntry $entry): array
     {
         $recordedBy = $entry->getRelation('recordedBy');
+        $attachments = $entry->getRelation('attachments');
         $occurredAt = $entry->occurred_at;
 
         return [
@@ -86,15 +87,16 @@ class FinancePresenter
             'customer' => null,
             'vehicle' => null,
             'plate' => null,
-            'attachment' => $entry->attachment_path === null ? null : [
-                'name' => $entry->attachment_name ?? 'lampiran',
-                'size' => self::fileSize($entry->attachment_size),
-            ],
-            'attachmentUrl' => $entry->attachment_path === null
-                ? null
-                : route('admin.finance.attachment', $entry, absolute: false),
-            /* An image opens in the lightbox; anything else is downloaded. */
-            'attachmentIsImage' => self::isImage($entry->attachment_path),
+            'attachments' => $attachments
+                ->map(fn (CashEntryAttachment $attachment): array => [
+                    'id' => $attachment->id,
+                    'name' => $attachment->original_name,
+                    'size' => self::fileSize($attachment->size),
+                    'url' => route('admin.finance.attachment', $attachment, absolute: false),
+                    /* Images open in the lightbox; other files are downloaded. */
+                    'isImage' => self::isImage($attachment->path),
+                ])
+                ->all(),
         ];
     }
 

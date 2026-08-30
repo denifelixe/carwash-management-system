@@ -122,16 +122,16 @@ class RoleAccess
     /**
      * The staff account bound to each role in the demo, shown in the sidebar footer.
      *
-     * @return array<string, array{id: int, name: string, initials: string, shift: string}>
+     * @return array<string, array{id: int, name: string, initials: string, shift: string, avatar: null}>
      */
     public static function personaFor(): array
     {
         return [
-            'owner' => ['id' => 1, 'name' => 'Achmad Tarmizi', 'initials' => 'AT', 'shift' => 'Shift Pagi'],
-            'manager' => ['id' => 2, 'name' => 'Sinta Dewi', 'initials' => 'SD', 'shift' => 'Shift Pagi'],
-            'cashier' => ['id' => 3, 'name' => 'Yuni Astuti', 'initials' => 'YA', 'shift' => 'Shift Pagi'],
-            'cs' => ['id' => 4, 'name' => 'Rina Marlina', 'initials' => 'RM', 'shift' => 'Shift Sore'],
-            'finance' => ['id' => 5, 'name' => 'Bayu Anggara', 'initials' => 'BA', 'shift' => 'Shift Pagi'],
+            'owner' => ['id' => 1, 'name' => 'Achmad Tarmizi', 'initials' => 'AT', 'shift' => 'Shift Pagi', 'avatar' => null],
+            'manager' => ['id' => 2, 'name' => 'Sinta Dewi', 'initials' => 'SD', 'shift' => 'Shift Pagi', 'avatar' => null],
+            'cashier' => ['id' => 3, 'name' => 'Yuni Astuti', 'initials' => 'YA', 'shift' => 'Shift Pagi', 'avatar' => null],
+            'cs' => ['id' => 4, 'name' => 'Rina Marlina', 'initials' => 'RM', 'shift' => 'Shift Sore', 'avatar' => null],
+            'finance' => ['id' => 5, 'name' => 'Bayu Anggara', 'initials' => 'BA', 'shift' => 'Shift Pagi', 'avatar' => null],
         ];
     }
 
@@ -209,6 +209,7 @@ class RoleAccess
                 'is_active' => $staff['status'] === 'aktif',
                 'last_active' => $staff['lastActive'],
                 'initials' => $staff['initials'],
+                'avatar' => null,
             ], self::staff()),
             'roles' => $roles,
             'shifts' => array_map(
@@ -227,7 +228,7 @@ class RoleAccess
                 )),
                 'module_count' => count($modules),
             ],
-            'capabilities' => ['create' => true, 'update' => true],
+            'capabilities' => ['create' => true, 'update' => true, 'update_photo' => false],
         ];
     }
 

@@ -22,6 +22,9 @@ class ProfileUpdateRequest extends FormRequest
 
         abort_unless($admin instanceof Admin, 403);
 
-        return $this->profileRules($admin->id);
+        return [
+            ...$this->profileRules($admin->id),
+            'photo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480'],
+        ];
     }
 }

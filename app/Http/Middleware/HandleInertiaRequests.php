@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Admin;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -35,11 +36,15 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $admin = $request->user('admin');
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'admin' => $request->user('admin'),
+                'admin' => $admin instanceof Admin
+                    ? [...$admin->toArray(), 'avatar' => $admin->profilePhotoUrl()]
+                    : null,
                 'member' => $request->user('member'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',

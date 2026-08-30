@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Settings;
 
+use App\Actions\Admin\ReplaceAdminProfilePhoto;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileDeleteRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
@@ -30,15 +31,21 @@ class ProfileController extends Controller
     /**
      * Update the admin's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
-    {
+    public function update(
+        ProfileUpdateRequest $request,
+        ReplaceAdminProfilePhoto $replaceAdminProfilePhoto,
+    ): RedirectResponse {
         $admin = $request->user('admin');
 
         abort_unless($admin instanceof Admin, 403);
 
-        $admin->fill($request->validated());
+        $admin->fill($request->safe()->except('photo'));
 
         $admin->save();
+
+        if ($request->hasFile('photo')) {
+            $replaceAdminProfilePhoto->handle($admin, $request->file('photo'));
+        }
 
         Inertia::flash('toast', ['type' => 'success', 'message' => __('Profile updated.')]);
 

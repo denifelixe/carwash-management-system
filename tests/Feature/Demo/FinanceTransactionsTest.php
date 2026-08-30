@@ -217,6 +217,20 @@ test('dashboard shift figures follow the shift each ledger row was booked under'
     expect($shifts['pagi']['vehiclesServed'])->toBe(6)
         ->and($shifts['sore']['vehiclesServed'])->toBe(0)
         ->and($shifts->sum('vehiclesServed'))->toBe(6);
+
+    /* The bucket closing the cards holds whatever no rostered shift claimed. */
+    $unclaimed = collect($todayIncome)->whereNotIn('shift', ['Shift Pagi', 'Shift Sore']);
+
+    expect($shifts['tanpa-shift'])
+        ->toMatchArray([
+            'name' => 'Tanpa Shift',
+            'status' => '',
+            'moneyIn' => $unclaimed->sum('amount'),
+            'moneyOut' => collect($todayExpenses)
+                ->whereNotIn('shift', ['Shift Pagi', 'Shift Sore'])
+                ->sum('amount'),
+        ])
+        ->and($shifts->sum('moneyIn'))->toBe(collect($todayIncome)->sum('amount'));
 });
 
 test('finance page exposes and displays related order details', function () {
@@ -255,8 +269,8 @@ test('finance page exposes and displays related order details', function () {
         ->toContain('{{ entry.customer }}')
         ->toContain('@click="openTransactionRecap(entry)"')
         ->toContain('@click="openOrderRecap(entry)"')
-        ->toContain('title="Rekap Transaksi"')
-        ->toContain('title="Rekap Order"')
+        ->toContain('title="Detail Transaksi"')
+        ->toContain('title="Detail Order"')
         ->toContain('Riwayat transaksi')
         ->toContain('highlightedTransactionId')
         ->toContain('before:inset-y-2 before:left-0 before:w-1')
@@ -345,6 +359,21 @@ test('finance transaction summary keeps the requested money labels', function ()
         ->toContain('label="Uang keluar"')
         ->toContain('label="Sisa saldo"')
         ->not->toContain('label="Arus kas bersih"');
+});
+
+test('finance transaction summary exposes permitted editing and the recorded shift', function () {
+    $financePage = file_get_contents(
+        resource_path('js/pages/admin/Finance.vue'),
+    );
+
+    expect($financePage)
+        ->toContain('capabilities.update &&')
+        ->toContain('isEditable(selectedTransactionEntry)')
+        ->toContain('@click="editSelectedTransaction"')
+        ->toContain('Ubah transaksi')
+        ->toContain('updateOrderTransaction(transactionId)')
+        ->toContain('title="Ubah Transaksi"')
+        ->toContain("selectedTransactionEntry.shift ?? 'Tanpa shift'");
 });
 
 test('finance transaction toolbar shows a wide search and category chips', function () {

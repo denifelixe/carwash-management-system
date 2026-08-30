@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\CashEntry;
+use App\Models\CashEntryAttachment;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -35,14 +36,17 @@ class CashEntryFactory extends Factory
     /** Outgoing money always carries its supporting document (BR-10). */
     public function moneyOut(): static
     {
-        return $this->state(fn (array $attributes): array => [
-            'direction' => 'out',
-            'category' => 'Pembelian Bahan',
-            'description' => 'Snow foam 4 galon',
-            'amount' => 1280000,
-            'attachment_path' => $attributes['reference'].'/nota-supplier.jpg',
-            'attachment_name' => 'nota-supplier.jpg',
-            'attachment_size' => 412000,
-        ]);
+        return $this
+            ->state(fn (): array => [
+                'direction' => 'out',
+                'category' => 'Pembelian Bahan',
+                'description' => 'Snow foam 4 galon',
+                'amount' => 1280000,
+            ])
+            ->afterCreating(function (CashEntry $entry): void {
+                CashEntryAttachment::factory()->for($entry)->create([
+                    'path' => $entry->reference.'/nota-supplier.jpg',
+                ]);
+            });
     }
 }

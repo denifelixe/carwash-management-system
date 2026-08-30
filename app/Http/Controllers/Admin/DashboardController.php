@@ -38,7 +38,7 @@ class DashboardController extends Controller
             'filterUrl' => route('admin.dashboard', absolute: false),
             'filters' => OrderQueries::filters($date, $today),
             'stats' => DashboardStats::forDate($date, $moneyIn),
-            'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $date),
+            'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $date, withUnassigned: true),
             'orderSummary' => OrderQueries::summaryForDate($date),
             'cashSummary' => FinanceQueries::cashSummary($moneyIn, $moneyOut),
         ]);

@@ -101,7 +101,79 @@ function applyDate(date: string): void {
             />
         </section>
 
-        <section class="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <section class="space-y-4">
+            <article
+                class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+            >
+                <h3 class="text-sm font-semibold text-slate-900">
+                    Ringkasan shift
+                </h3>
+                <p class="mt-0.5 text-xs text-slate-500">
+                    Performa kasir per shift hari ini
+                </p>
+
+                <div
+                    v-if="shifts.length > 0"
+                    class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3"
+                >
+                    <div
+                        v-for="shift in shifts"
+                        :key="shift.id"
+                        class="rounded-xl border border-slate-100 bg-slate-50/60 p-4"
+                    >
+                        <div class="flex items-center gap-3">
+                            <div class="min-w-0 flex-1">
+                                <p
+                                    class="truncate text-sm font-medium text-slate-900"
+                                >
+                                    {{ shift.name }}
+                                </p>
+                                <p
+                                    v-if="shift.time"
+                                    class="text-[11px] text-slate-500"
+                                >
+                                    {{ shift.time }}
+                                </p>
+                            </div>
+                            <StatusPill
+                                v-if="shift.status"
+                                :status="shift.status"
+                            />
+                        </div>
+
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <p class="text-[10px] text-slate-500">Omzet</p>
+                                <p
+                                    class="text-sm font-semibold text-slate-900 tabular-nums"
+                                >
+                                    {{ formatCurrency(shift.revenue) }}
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] text-slate-500">
+                                    Kendaraan dilayani
+                                </p>
+                                <p
+                                    class="text-sm font-semibold text-slate-900 tabular-nums"
+                                >
+                                    {{ shift.vehiclesServed }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    v-else
+                    class="mt-4 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center"
+                >
+                    <p class="text-sm text-slate-500">
+                        Belum ada data performa shift untuk tanggal ini.
+                    </p>
+                </div>
+            </article>
+
             <article
                 class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
             >
@@ -109,7 +181,7 @@ function applyDate(date: string): void {
                     Arus kas hari ini
                 </h3>
 
-                <div class="mt-4 space-y-3">
+                <div class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div class="flex items-center gap-3">
                         <span
                             class="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"
@@ -140,17 +212,23 @@ function applyDate(date: string): void {
                             </p>
                         </div>
                     </div>
-                </div>
-
-                <div
-                    class="mt-4 flex items-end justify-between border-t border-dashed border-slate-200 pt-3"
-                >
-                    <p class="text-xs text-slate-600">Sisa Saldo</p>
-                    <p
-                        class="text-base font-semibold text-slate-900 tabular-nums"
-                    >
-                        {{ formatCurrency(cashSummary.remainingBalance) }}
-                    </p>
+                    <div class="flex items-center gap-3">
+                        <span
+                            class="flex h-9 w-9 items-center justify-center rounded-xl bg-cyan-50 text-cyan-600"
+                        >
+                            <Wallet class="h-4 w-4" />
+                        </span>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-xs text-slate-500">Sisa Saldo</p>
+                            <p
+                                class="text-sm font-semibold text-slate-900 tabular-nums"
+                            >
+                                {{
+                                    formatCurrency(cashSummary.remainingBalance)
+                                }}
+                            </p>
+                        </div>
+                    </div>
                 </div>
 
                 <p
@@ -160,88 +238,6 @@ function applyDate(date: string): void {
                     {{ formatCurrency(cashSummary.pendingPayments) }} belum
                     tertagih dari order berjalan.
                 </p>
-            </article>
-
-            <article
-                class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm xl:col-span-2"
-            >
-                <h3 class="text-sm font-semibold text-slate-900">
-                    Ringkasan shift
-                </h3>
-                <p class="mt-0.5 text-xs text-slate-500">
-                    Performa kasir per shift hari ini
-                </p>
-
-                <div
-                    v-if="shifts.length > 0"
-                    class="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2"
-                >
-                    <div
-                        v-for="shift in shifts"
-                        :key="shift.id"
-                        class="rounded-xl border border-slate-100 bg-slate-50/60 p-4"
-                    >
-                        <div class="flex items-center gap-3">
-                            <div
-                                class="flex h-9 w-9 items-center justify-center rounded-full bg-white text-xs font-semibold text-slate-600 ring-1 ring-slate-200"
-                            >
-                                {{ shift.initials }}
-                            </div>
-                            <div class="min-w-0 flex-1">
-                                <p
-                                    class="truncate text-sm font-medium text-slate-900"
-                                >
-                                    {{ shift.name }}
-                                </p>
-                                <p
-                                    v-if="shift.time"
-                                    class="text-[11px] text-slate-500"
-                                >
-                                    {{ shift.time }}
-                                </p>
-                            </div>
-                            <StatusPill :status="shift.status" />
-                        </div>
-
-                        <div class="mt-3 grid grid-cols-3 gap-2">
-                            <div>
-                                <p class="text-[10px] text-slate-500">Omzet</p>
-                                <p
-                                    class="text-sm font-semibold text-slate-900 tabular-nums"
-                                >
-                                    {{ formatCurrency(shift.revenue) }}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="text-[10px] text-slate-500">
-                                    Kendaraan dilayani
-                                </p>
-                                <p
-                                    class="text-sm font-semibold text-slate-900 tabular-nums"
-                                >
-                                    {{ shift.vehiclesServed }}
-                                </p>
-                            </div>
-                            <div>
-                                <p class="text-[10px] text-slate-500">Kasir</p>
-                                <p
-                                    class="truncate text-sm font-medium text-slate-700"
-                                >
-                                    {{ shift.cashier.split(' ')[0] }}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div
-                    v-else
-                    class="mt-4 flex min-h-28 items-center justify-center rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 text-center"
-                >
-                    <p class="text-sm text-slate-500">
-                        Belum ada data performa shift untuk tanggal ini.
-                    </p>
-                </div>
             </article>
         </section>
     </div>

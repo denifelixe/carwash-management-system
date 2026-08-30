@@ -20,6 +20,7 @@ import {
     index as indexFinance,
     store as storeCashEntry,
     update as updateCashEntry,
+    updateTransaction as updateOrderTransaction,
 } from '@/actions/App/Http/Controllers/Admin/FinanceController';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -81,6 +82,7 @@ const search = ref<string>('');
 const categoryFilter = ref<string>('Semua');
 const isFormOpen = ref<boolean>(false);
 const editingEntry = ref<CarwashMoneyEntry | null>(null);
+const editingPosEntry = ref<CarwashMoneyEntry | null>(null);
 const deletingEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedOrder = ref<CarwashOrder | null>(null);
@@ -108,12 +110,20 @@ const orderList = computed<CarwashOrder[]>(() =>
     props.mode === 'demo' ? workflow.orders.value : props.orders,
 );
 
+interface PendingAttachment {
+    id: string;
+    file: File;
+    previewUrl: string | null;
+}
+
+const pendingAttachments = ref<PendingAttachment[]>([]);
+const removedAttachmentIds = ref<number[]>([]);
+
 const draft = ref({
     category: props.incomeCategories[0],
     description: '',
     amount: 0,
     method: 'Tunai',
-    attachmentName: '',
 });
 
 /** The live ledger posts the entry, including a real supporting document. */
@@ -123,17 +133,31 @@ const entryForm = useForm<{
     description: string;
     amount: number;
     method: string;
-    attachment: File | null;
+    attachments: File[];
+    removed_attachment_ids: number[];
 }>({
     direction: 'in',
     category: props.incomeCategories[0],
     description: '',
     amount: 0,
     method: 'Tunai',
-    attachment: null,
+    attachments: [],
+    removed_attachment_ids: [],
 });
 
 const deleteForm = useForm({});
+
+const transactionForm = useForm<{
+    amount: number;
+    channels: Array<{
+        label: string;
+        amount: number;
+        reference: string;
+    }>;
+}>({
+    amount: 0,
+    channels: [],
+});
 
 const activeCategories = computed<string[]>(() =>
     activeLedger.value === 'in'
@@ -379,13 +403,24 @@ function printRecap(paper: RecapPaper): void {
         openRecapSheetWindow(financeRecapSheet(), props.brand, paper) === null;
 }
 
-/**
- * Outgoing money must carry supporting documentation (BR-10), so the save
- * button stays disabled until an attachment is named. An entry being edited
- * keeps the document already on file unless a new one is chosen.
- */
+const visibleStoredAttachments = computed(() =>
+    (editingEntry.value?.attachments ?? []).filter(
+        (attachment) =>
+            typeof attachment.id !== 'number' ||
+            !removedAttachmentIds.value.includes(attachment.id),
+    ),
+);
+
+const attachmentCount = computed(
+    () =>
+        visibleStoredAttachments.value.length + pendingAttachments.value.length,
+);
+
+const canAddAttachment = computed(() => attachmentCount.value < 10);
+
+/** Outgoing money must retain at least one supporting document (BR-10). */
 const requiresAttachment = computed<boolean>(
-    () => activeLedger.value === 'out' && !editingEntry.value?.attachment,
+    () => activeLedger.value === 'out' && attachmentCount.value === 0,
 );
 
 const canSave = computed<boolean>(() => {
@@ -393,12 +428,25 @@ const canSave = computed<boolean>(() => {
         return false;
     }
 
-    return !requiresAttachment.value || draft.value.attachmentName !== '';
+    return !requiresAttachment.value;
 });
 
-/** Payments booked by the cashier are read-only here: they belong to the till. */
+const attachmentError = computed<string | undefined>(() => {
+    const errors = entryForm.errors as Record<string, string | undefined>;
+
+    return (
+        errors.attachments ??
+        Object.entries(errors).find(([key]) =>
+            key.startsWith('attachments.'),
+        )?.[1]
+    );
+});
+
 function isEditable(entry: CarwashMoneyEntry): boolean {
-    return props.mode === 'live' && cashEntryId(entry) !== null;
+    return (
+        props.mode === 'live' &&
+        (cashEntryId(entry) !== null || posTransactionId(entry) !== null)
+    );
 }
 
 /**
@@ -407,6 +455,12 @@ function isEditable(entry: CarwashMoneyEntry): boolean {
  */
 function cashEntryId(entry: CarwashMoneyEntry): number | null {
     return typeof entry.id === 'number' ? entry.id : null;
+}
+
+function posTransactionId(entry: CarwashMoneyEntry): number | null {
+    return entry.source === 'pos' && typeof entry.transactionId === 'number'
+        ? entry.transactionId
+        : null;
 }
 
 function switchLedger(ledger: Ledger): void {
@@ -421,17 +475,37 @@ function switchShift(shift: Shift): void {
     search.value = '';
 }
 
+function clearPendingAttachments(): void {
+    pendingAttachments.value.forEach((attachment) => {
+        if (attachment.previewUrl) {
+            URL.revokeObjectURL(attachment.previewUrl);
+        }
+    });
+    pendingAttachments.value = [];
+    entryForm.attachments = [];
+}
+
+function resetAttachmentDraft(): void {
+    clearPendingAttachments();
+    removedAttachmentIds.value = [];
+    entryForm.removed_attachment_ids = [];
+}
+
+function closeEntryForm(): void {
+    isFormOpen.value = false;
+    resetAttachmentDraft();
+}
+
 function openForm(): void {
+    resetAttachmentDraft();
     editingEntry.value = null;
     draft.value = {
         category: activeCategories.value[0],
         description: '',
         amount: 0,
         method: 'Tunai',
-        attachmentName: '',
     };
     entryForm.clearErrors();
-    entryForm.attachment = null;
     isFormOpen.value = true;
 }
 
@@ -440,21 +514,35 @@ function openEditForm(entry: CarwashMoneyEntry): void {
         return;
     }
 
+    selectedTransactionEntry.value = null;
+
+    if (posTransactionId(entry) !== null) {
+        editingPosEntry.value = entry;
+        transactionForm.clearErrors();
+        transactionForm.amount = entry.amount;
+        transactionForm.channels = entry.channelBreakdown.map((channel) => ({
+            label: channel.label,
+            amount: channel.amount,
+            reference: channel.reference ?? '',
+        }));
+
+        return;
+    }
+
+    resetAttachmentDraft();
     editingEntry.value = entry;
     draft.value = {
         category: entry.category,
         description: entry.description,
         amount: entry.amount,
         method: entry.method,
-        attachmentName: '',
     };
     entryForm.clearErrors();
-    entryForm.attachment = null;
     isFormOpen.value = true;
 }
 
 function openDeleteEntry(entry: CarwashMoneyEntry): void {
-    if (!isEditable(entry) || !props.capabilities.delete) {
+    if (cashEntryId(entry) === null || !props.capabilities.delete) {
         return;
     }
 
@@ -496,6 +584,90 @@ function openTransactionRecap(entry: CarwashMoneyEntry): void {
     selectedTransactionEntry.value = entry;
 }
 
+function editSelectedTransaction(): void {
+    if (selectedTransactionEntry.value === null) {
+        return;
+    }
+
+    const entry = selectedTransactionEntry.value;
+
+    openEditForm(entry);
+}
+
+const transactionChannelTotal = computed<number>(() =>
+    transactionForm.channels.reduce(
+        (total, channel) => total + Math.max(channel.amount, 0),
+        0,
+    ),
+);
+
+const canSavePosTransaction = computed<boolean>(
+    () =>
+        editingPosEntry.value !== null &&
+        transactionForm.amount > 0 &&
+        transactionForm.channels.length > 0 &&
+        transactionForm.channels.every(
+            (channel) => channel.label !== '' && channel.amount > 0,
+        ) &&
+        transactionChannelTotal.value === transactionForm.amount,
+);
+
+function addTransactionChannel(): void {
+    const method = props.paymentMethods.find(
+        (candidate) =>
+            !transactionForm.channels.some(
+                (channel) => channel.label === candidate,
+            ),
+    );
+
+    if (!method) {
+        return;
+    }
+
+    transactionForm.channels.push({
+        label: method,
+        amount: 0,
+        reference: '',
+    });
+}
+
+function removeTransactionChannel(index: number): void {
+    if (transactionForm.channels.length <= 1) {
+        return;
+    }
+
+    transactionForm.channels.splice(index, 1);
+}
+
+function isTransactionMethodDisabled(method: string, index: number): boolean {
+    return transactionForm.channels.some(
+        (channel, channelIndex) =>
+            channelIndex !== index && channel.label === method,
+    );
+}
+
+function closePosTransactionForm(): void {
+    editingPosEntry.value = null;
+    transactionForm.clearErrors();
+    transactionForm.reset();
+}
+
+function savePosTransaction(): void {
+    const transactionId =
+        editingPosEntry.value === null
+            ? null
+            : posTransactionId(editingPosEntry.value);
+
+    if (transactionId === null || !canSavePosTransaction.value) {
+        return;
+    }
+
+    transactionForm.submit(updateOrderTransaction(transactionId), {
+        preserveScroll: true,
+        onSuccess: closePosTransactionForm,
+    });
+}
+
 function openOrderRecap(entry: CarwashMoneyEntry): void {
     const order = findRelatedOrder(entry);
 
@@ -532,14 +704,57 @@ function transactionTypeLabel(entry: CarwashMoneyEntry): string {
     return entry.category;
 }
 
-/** The demo only records the chosen file's name; the live ledger uploads it. */
-function onFileSelected(event: Event): void {
-    const file = (event.target as HTMLInputElement).files?.[0];
+function syncPendingAttachments(): void {
+    entryForm.attachments = pendingAttachments.value.map(
+        (attachment) => attachment.file,
+    );
+}
 
-    if (file) {
-        draft.value.attachmentName = file.name;
-        entryForm.attachment = file;
+function formatAttachmentSize(bytes: number): string {
+    return bytes >= 1048576
+        ? `${(bytes / 1048576).toFixed(1)} MB`
+        : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+/** Each selection appends to the current draft until the ten-file limit. */
+function onFileSelected(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const availableSlots = Math.max(0, 10 - attachmentCount.value);
+    const files = Array.from(input.files ?? []).slice(0, availableSlots);
+
+    pendingAttachments.value.push(
+        ...files.map((file) => ({
+            id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`,
+            file,
+            previewUrl: file.type.startsWith('image/')
+                ? URL.createObjectURL(file)
+                : null,
+        })),
+    );
+    syncPendingAttachments();
+    input.value = '';
+}
+
+function removePendingAttachment(id: string): void {
+    const attachment = pendingAttachments.value.find((item) => item.id === id);
+
+    if (attachment?.previewUrl) {
+        URL.revokeObjectURL(attachment.previewUrl);
     }
+
+    pendingAttachments.value = pendingAttachments.value.filter(
+        (item) => item.id !== id,
+    );
+    syncPendingAttachments();
+}
+
+function removeStoredAttachment(id: number | string): void {
+    if (typeof id !== 'number') {
+        return;
+    }
+
+    removedAttachmentIds.value.push(id);
+    entryForm.removed_attachment_ids = [...removedAttachmentIds.value];
 }
 
 function transactionReference(
@@ -590,6 +805,8 @@ function saveLiveEntry(): void {
         onSuccess: () => {
             isFormOpen.value = false;
             editingEntry.value = null;
+            clearPendingAttachments();
+            removedAttachmentIds.value = [];
             entryForm.reset();
         },
     });
@@ -626,9 +843,13 @@ function saveDemoEntry(): void {
         ],
         recordedBy: props.persona.name,
         shift: props.persona.shift,
-        attachment: isIncome
-            ? null
-            : { name: draft.value.attachmentName, size: '—' },
+        attachments: pendingAttachments.value.map((attachment, index) => ({
+            id: `demo-${sequence}-${index}`,
+            name: attachment.file.name,
+            size: '—',
+            url: null,
+            isImage: attachment.file.type.startsWith('image/'),
+        })),
     };
 
     if (isIncome) {
@@ -637,7 +858,7 @@ function saveDemoEntry(): void {
         workflow.addMoneyOut(entry);
     }
 
-    isFormOpen.value = false;
+    closeEntryForm();
 }
 
 /*
@@ -655,6 +876,7 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+    clearPendingAttachments();
     Fancybox.destroy();
 });
 
@@ -881,9 +1103,7 @@ function applyDate(date: string): void {
                             <th class="px-5 py-3">Order terkait</th>
                             <th class="px-5 py-3">Metode</th>
                             <th class="px-5 py-3">Dicatat oleh</th>
-                            <th v-if="activeLedger === 'out'" class="px-5 py-3">
-                                Lampiran
-                            </th>
+                            <th class="px-5 py-3">Lampiran</th>
                             <th class="px-5 py-3 text-right">Nominal</th>
                             <th
                                 v-if="mode === 'live'"
@@ -992,54 +1212,58 @@ function applyDate(date: string): void {
                                     {{ entry.shift }}
                                 </p>
                             </td>
-                            <td
-                                v-if="activeLedger === 'out'"
-                                class="px-5 py-3.5"
-                            >
-                                <a
-                                    v-if="
-                                        entry.attachment && entry.attachmentUrl
-                                    "
-                                    :href="entry.attachmentUrl"
-                                    :data-fancybox="
-                                        entry.attachmentIsImage
-                                            ? LIGHTBOX_GROUP
-                                            : null
-                                    "
-                                    :data-caption="
-                                        entry.attachmentIsImage
-                                            ? `${entry.ref} — ${entry.description}`
-                                            : null
-                                    "
-                                    class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
+                            <td class="px-5 py-3.5">
+                                <div
+                                    v-if="entry.attachments?.length"
+                                    class="space-y-1.5"
                                 >
-                                    <component
-                                        :is="
-                                            entry.attachmentIsImage
-                                                ? ImageIcon
-                                                : Paperclip
+                                    <a
+                                        v-for="attachment in entry.attachments"
+                                        :key="attachment.id"
+                                        :href="attachment.url || undefined"
+                                        :data-fancybox="
+                                            attachment.isImage
+                                                ? LIGHTBOX_GROUP
+                                                : null
                                         "
-                                        class="h-3.5 w-3.5 shrink-0"
-                                    />
-                                    <span class="max-w-[10rem] truncate">
-                                        {{ entry.attachment.name }}
-                                    </span>
-                                </a>
-                                <span
-                                    v-else-if="entry.attachment"
-                                    class="flex items-center gap-1.5 text-[11px] text-cyan-700"
-                                >
-                                    <Paperclip class="h-3.5 w-3.5 shrink-0" />
-                                    <span class="max-w-[10rem] truncate">
-                                        {{ entry.attachment.name }}
-                                    </span>
-                                </span>
+                                        :data-caption="
+                                            attachment.isImage
+                                                ? `${entry.ref} — ${entry.description}`
+                                                : null
+                                        "
+                                        class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
+                                    >
+                                        <component
+                                            :is="
+                                                attachment.isImage
+                                                    ? ImageIcon
+                                                    : Paperclip
+                                            "
+                                            class="h-3.5 w-3.5 shrink-0"
+                                        />
+                                        <span class="max-w-[10rem] truncate">
+                                            {{ attachment.name }}
+                                        </span>
+                                    </a>
+                                </div>
                                 <span
                                     v-else
-                                    class="flex items-center gap-1 text-[11px] text-rose-500"
+                                    class="flex items-center gap-1 text-[11px]"
+                                    :class="
+                                        activeLedger === 'out'
+                                            ? 'text-rose-500'
+                                            : 'text-slate-400'
+                                    "
                                 >
-                                    <TriangleAlert class="h-3.5 w-3.5" />
-                                    Belum ada
+                                    <TriangleAlert
+                                        v-if="activeLedger === 'out'"
+                                        class="h-3.5 w-3.5"
+                                    />
+                                    {{
+                                        activeLedger === 'out'
+                                            ? 'Belum ada'
+                                            : '—'
+                                    }}
                                 </span>
                             </td>
                             <td
@@ -1068,7 +1292,10 @@ function applyDate(date: string): void {
                                         <Pencil class="h-4 w-4" />
                                     </button>
                                     <button
-                                        v-if="capabilities.delete"
+                                        v-if="
+                                            capabilities.delete &&
+                                            cashEntryId(entry) !== null
+                                        "
                                         type="button"
                                         class="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
                                         :aria-label="`Hapus catatan ${entry.ref}`"
@@ -1100,7 +1327,7 @@ function applyDate(date: string): void {
 
     <ModalDialog
         :open="selectedTransactionEntry !== null"
-        title="Rekap Transaksi"
+        title="Detail Transaksi"
         :caption="selectedTransactionEntry?.ref"
         size="lg"
         @close="selectedTransactionEntry = null"
@@ -1158,9 +1385,14 @@ function applyDate(date: string): void {
                         Dicatat oleh
                     </dt>
                     <dd class="mt-1 text-xs font-medium text-slate-700">
-                        {{ selectedTransactionEntry.recordedBy }}
-                        <span v-if="selectedTransactionEntry.shift">
-                            · {{ selectedTransactionEntry.shift }}
+                        <span class="block">
+                            {{ selectedTransactionEntry.recordedBy }}
+                        </span>
+                        <span class="mt-0.5 block text-[11px] text-slate-500">
+                            Shift:
+                            {{
+                                selectedTransactionEntry.shift ?? 'Tanpa shift'
+                            }}
                         </span>
                     </dd>
                 </div>
@@ -1210,7 +1442,7 @@ function applyDate(date: string): void {
                     <span
                         class="block text-[10px] font-semibold tracking-wide text-cyan-700 uppercase"
                     >
-                        Order terkait · lihat rekap lengkap
+                        Order terkait · lihat detail lengkap
                     </span>
                     <span class="mt-1 block font-semibold text-slate-950">
                         {{ selectedTransactionEntry.orderNo }} ·
@@ -1234,6 +1466,19 @@ function applyDate(date: string): void {
 
         <template #footer>
             <button
+                v-if="
+                    selectedTransactionEntry &&
+                    capabilities.update &&
+                    isEditable(selectedTransactionEntry)
+                "
+                type="button"
+                class="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-cyan-300 hover:bg-cyan-50 hover:text-cyan-700"
+                @click="editSelectedTransaction"
+            >
+                <Pencil class="h-4 w-4" />
+                Ubah transaksi
+            </button>
+            <button
                 type="button"
                 class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                 @click="selectedTransactionEntry = null"
@@ -1245,7 +1490,7 @@ function applyDate(date: string): void {
 
     <ModalDialog
         :open="selectedOrder !== null"
-        title="Rekap Order"
+        title="Detail Order"
         :caption="
             selectedOrder
                 ? `${selectedOrder.orderNo} · ${selectedOrder.customer}`
@@ -1419,6 +1664,197 @@ function applyDate(date: string): void {
         </template>
     </ModalDialog>
 
+    <ModalDialog
+        :open="editingPosEntry !== null"
+        title="Ubah Transaksi"
+        :caption="editingPosEntry?.ref"
+        @close="closePosTransactionForm"
+    >
+        <div v-if="editingPosEntry" class="space-y-4">
+            <div>
+                <label
+                    class="text-xs font-medium text-slate-600"
+                    for="transaction-amount"
+                >
+                    Nominal transaksi (Rp)
+                </label>
+                <input
+                    id="transaction-amount"
+                    v-model.number="transactionForm.amount"
+                    type="number"
+                    min="1"
+                    step="1000"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
+                />
+                <InputError
+                    class="mt-1.5"
+                    :message="transactionForm.errors.amount"
+                />
+            </div>
+
+            <section
+                class="overflow-hidden rounded-2xl border border-slate-200"
+            >
+                <div
+                    class="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3"
+                >
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Kanal pembayaran
+                        </h3>
+                        <p class="mt-0.5 text-[11px] text-slate-500">
+                            Total kanal harus sama dengan nominal transaksi.
+                        </p>
+                    </div>
+                    <button
+                        v-if="
+                            transactionForm.channels.length <
+                            paymentMethods.length
+                        "
+                        type="button"
+                        class="flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-semibold text-cyan-700 transition hover:bg-cyan-100"
+                        @click="addTransactionChannel"
+                    >
+                        <Plus class="h-3.5 w-3.5" />
+                        Tambah
+                    </button>
+                </div>
+
+                <div class="divide-y divide-slate-100">
+                    <div
+                        v-for="(
+                            channel, channelIndex
+                        ) in transactionForm.channels"
+                        :key="channelIndex"
+                        class="space-y-3 p-4"
+                    >
+                        <div
+                            class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem_auto]"
+                        >
+                            <div>
+                                <label
+                                    class="text-[11px] font-medium text-slate-500"
+                                    :for="`transaction-channel-${channelIndex}`"
+                                >
+                                    Metode
+                                </label>
+                                <select
+                                    :id="`transaction-channel-${channelIndex}`"
+                                    v-model="channel.label"
+                                    class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                >
+                                    <option
+                                        v-if="
+                                            !paymentMethods.includes(
+                                                channel.label,
+                                            )
+                                        "
+                                        :value="channel.label"
+                                    >
+                                        {{ channel.label }}
+                                    </option>
+                                    <option
+                                        v-for="method in paymentMethods"
+                                        :key="method"
+                                        :value="method"
+                                        :disabled="
+                                            isTransactionMethodDisabled(
+                                                method,
+                                                channelIndex,
+                                            )
+                                        "
+                                    >
+                                        {{ method }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label
+                                    class="text-[11px] font-medium text-slate-500"
+                                    :for="`transaction-channel-amount-${channelIndex}`"
+                                >
+                                    Nominal (Rp)
+                                </label>
+                                <input
+                                    :id="`transaction-channel-amount-${channelIndex}`"
+                                    v-model.number="channel.amount"
+                                    type="number"
+                                    min="1"
+                                    step="1000"
+                                    class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
+                                />
+                            </div>
+                            <button
+                                type="button"
+                                class="mt-6 rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-30"
+                                :disabled="transactionForm.channels.length <= 1"
+                                :aria-label="`Hapus kanal ${channel.label}`"
+                                @click="removeTransactionChannel(channelIndex)"
+                            >
+                                <Trash2 class="h-4 w-4" />
+                            </button>
+                        </div>
+
+                        <div>
+                            <label
+                                class="text-[11px] font-medium text-slate-500"
+                                :for="`transaction-channel-reference-${channelIndex}`"
+                            >
+                                Referensi kanal (opsional)
+                            </label>
+                            <input
+                                :id="`transaction-channel-reference-${channelIndex}`"
+                                v-model="channel.reference"
+                                type="text"
+                                maxlength="60"
+                                placeholder="Nomor referensi EDC / transfer"
+                                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            />
+                        </div>
+                    </div>
+                </div>
+
+                <div
+                    class="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/70 px-4 py-3 text-xs"
+                >
+                    <span class="font-medium text-slate-500">Total kanal</span>
+                    <span
+                        class="font-semibold tabular-nums"
+                        :class="
+                            transactionChannelTotal === transactionForm.amount
+                                ? 'text-emerald-700'
+                                : 'text-rose-600'
+                        "
+                    >
+                        {{ formatCurrency(transactionChannelTotal) }}
+                    </span>
+                </div>
+            </section>
+            <InputError
+                class="mt-1.5"
+                :message="transactionForm.errors.channels"
+            />
+        </div>
+
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="closePosTransactionForm"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                :disabled="!canSavePosTransaction || transactionForm.processing"
+                @click="savePosTransaction"
+            >
+                {{ transactionForm.processing ? 'Menyimpan...' : 'Simpan' }}
+            </button>
+        </template>
+    </ModalDialog>
+
     <!-- Record entry -->
     <ModalDialog
         :open="isFormOpen"
@@ -1434,7 +1870,7 @@ function applyDate(date: string): void {
                 ? 'Pemasukan operasional harian'
                 : 'Pengeluaran wajib disertai bukti pendukung'
         "
-        @close="isFormOpen = false"
+        @close="closeEntryForm"
     >
         <div class="space-y-4">
             <div>
@@ -1524,18 +1960,101 @@ function applyDate(date: string): void {
                 </div>
             </div>
 
-            <!-- Attachment, required for expenses -->
-            <div v-if="activeLedger === 'out'">
+            <div>
                 <p class="text-xs font-medium text-slate-600">
                     Bukti pendukung
-                    <span v-if="requiresAttachment" class="text-rose-500">
+                    <span v-if="activeLedger === 'out'" class="text-rose-500">
                         *
                     </span>
                 </p>
+                <div
+                    v-if="attachmentCount > 0"
+                    class="mt-1.5 grid grid-cols-2 gap-2 sm:grid-cols-3"
+                >
+                    <div
+                        v-for="attachment in visibleStoredAttachments"
+                        :key="`stored-${attachment.id}`"
+                        class="relative overflow-hidden rounded-xl border border-slate-200 bg-white"
+                    >
+                        <a
+                            :href="attachment.url || undefined"
+                            :data-fancybox="
+                                attachment.isImage ? LIGHTBOX_GROUP : null
+                            "
+                            class="flex aspect-[4/3] items-center justify-center bg-slate-50"
+                        >
+                            <img
+                                v-if="attachment.isImage && attachment.url"
+                                :src="attachment.url"
+                                :alt="attachment.name"
+                                class="h-full w-full object-cover"
+                            />
+                            <Paperclip v-else class="h-7 w-7 text-slate-300" />
+                        </a>
+                        <div class="p-2.5 pr-9">
+                            <p
+                                class="truncate text-[11px] font-medium text-slate-700"
+                                :title="attachment.name"
+                            >
+                                {{ attachment.name }}
+                            </p>
+                            <p class="mt-0.5 text-[10px] text-slate-400">
+                                Tersimpan · {{ attachment.size }}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            class="absolute right-2 bottom-2 rounded-lg bg-rose-50 p-1.5 text-rose-500 transition hover:bg-rose-100 hover:text-rose-700"
+                            :aria-label="`Hapus ${attachment.name}`"
+                            @click="removeStoredAttachment(attachment.id)"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+
+                    <div
+                        v-for="attachment in pendingAttachments"
+                        :key="attachment.id"
+                        class="relative overflow-hidden rounded-xl border border-cyan-200 bg-cyan-50/40"
+                    >
+                        <div
+                            class="flex aspect-[4/3] items-center justify-center bg-cyan-50"
+                        >
+                            <img
+                                v-if="attachment.previewUrl"
+                                :src="attachment.previewUrl"
+                                :alt="attachment.file.name"
+                                class="h-full w-full object-cover"
+                            />
+                            <Paperclip v-else class="h-7 w-7 text-cyan-300" />
+                        </div>
+                        <div class="p-2.5 pr-9">
+                            <p
+                                class="truncate text-[11px] font-medium text-slate-700"
+                                :title="attachment.file.name"
+                            >
+                                {{ attachment.file.name }}
+                            </p>
+                            <p class="mt-0.5 text-[10px] text-cyan-600">
+                                Baru ·
+                                {{ formatAttachmentSize(attachment.file.size) }}
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            class="absolute right-2 bottom-2 rounded-lg bg-rose-50 p-1.5 text-rose-500 transition hover:bg-rose-100 hover:text-rose-700"
+                            :aria-label="`Hapus ${attachment.file.name}`"
+                            @click="removePendingAttachment(attachment.id)"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                    </div>
+                </div>
                 <label
+                    v-if="canAddAttachment"
                     class="mt-1.5 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed p-3 transition"
                     :class="
-                        draft.attachmentName
+                        attachmentCount > 0
                             ? 'border-cyan-300 bg-cyan-50/60'
                             : 'border-slate-300 hover:border-cyan-400 hover:bg-slate-50'
                     "
@@ -1543,40 +2062,39 @@ function applyDate(date: string): void {
                     <span
                         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-slate-400 ring-1 ring-slate-200"
                     >
-                        <Paperclip class="h-4 w-4" />
+                        <Plus class="h-4 w-4" />
                     </span>
                     <span class="min-w-0 flex-1">
                         <span
                             class="block truncate text-xs font-medium text-slate-800"
                         >
                             {{
-                                draft.attachmentName ||
-                                editingEntry?.attachment?.name ||
-                                'Pilih nota / struk / invoice'
+                                attachmentCount > 0
+                                    ? 'Tambah lampiran lain'
+                                    : 'Pilih nota / struk / invoice'
                             }}
                         </span>
                         <span class="block text-[11px] text-slate-500">
-                            JPG, PNG, atau PDF
+                            JPG, PNG, atau PDF · maks. 10 file, masing-masing 4
+                            MB
                         </span>
                     </span>
                     <input
                         type="file"
                         accept="image/*,.pdf"
+                        multiple
                         class="hidden"
                         @change="onFileSelected"
                     />
                 </label>
                 <p
-                    v-if="requiresAttachment && !draft.attachmentName"
+                    v-if="requiresAttachment"
                     class="mt-1.5 flex items-center gap-1 text-[11px] text-rose-600"
                 >
                     <TriangleAlert class="h-3.5 w-3.5" />
                     Pengeluaran wajib menyertakan bukti pendukung.
                 </p>
-                <InputError
-                    class="mt-1.5"
-                    :message="entryForm.errors.attachment"
-                />
+                <InputError class="mt-1.5" :message="attachmentError" />
             </div>
 
             <div class="rounded-2xl bg-slate-50 p-4">
@@ -1599,7 +2117,7 @@ function applyDate(date: string): void {
             <button
                 type="button"
                 class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="isFormOpen = false"
+                @click="closeEntryForm"
             >
                 Batal
             </button>

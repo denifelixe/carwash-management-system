@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Admin;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 
 test('profile page is displayed', function () {
@@ -34,7 +36,14 @@ test('settings pages use the shared admin layout instead of the starter layout',
         ->and($profile)
         ->toContain('<SettingsNav />')
         ->toContain('Profil admin')
-        ->toContain('Simpan perubahan');
+        ->toContain('Simpan perubahan')
+        ->toContain('Foto profil')
+        ->toContain('multipart/form-data')
+        ->toContain('@change="selectPhoto"')
+        ->toContain('forceFormData: true')
+        ->not->toContain('Akun aktif')
+        ->not->toContain('DeleteAdmin')
+        ->not->toContain('Hapus akun');
 });
 
 test('profile information can be updated', function () {
@@ -57,6 +66,75 @@ test('profile information can be updated', function () {
     expect($admin->name)->toBe('Test Admin');
     expect($admin->email)->toBe('test@example.com');
     expect($admin->email_verified_at)->toEqual($emailVerifiedAt);
+});
+
+test('admin can upload and replace their profile photo on the configured disk', function () {
+    $disk = (string) config('filesystems.default');
+    Storage::fake($disk);
+    $admin = Admin::factory()->create();
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.profile.update'), [
+            '_method' => 'patch',
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'photo' => UploadedFile::fake()->image('foto-lama.jpg'),
+        ])
+        ->assertRedirect(route('admin.profile.edit'))
+        ->assertSessionHasNoErrors();
+
+    $oldPath = $admin->refresh()->profile_photo_path;
+
+    expect($oldPath)->not->toBeNull();
+    Storage::disk($disk)->assertExists($oldPath);
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.profile.update'), [
+            '_method' => 'patch',
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'photo' => UploadedFile::fake()->image('foto-baru.png'),
+        ])
+        ->assertRedirect(route('admin.profile.edit'))
+        ->assertSessionHasNoErrors();
+
+    $newPath = $admin->refresh()->profile_photo_path;
+
+    expect($newPath)->not->toBe($oldPath);
+    expect($admin->profilePhotoUrl())->toContain(basename($newPath));
+    Storage::disk($disk)->assertExists($newPath);
+    Storage::disk($disk)->assertMissing($oldPath);
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.users.photo', $admin))
+        ->assertOk();
+});
+
+test('profile photo must be a supported image no larger than twenty megabytes', function () {
+    Storage::fake((string) config('filesystems.default'));
+    $admin = Admin::factory()->create();
+
+    $this->actingAs($admin, 'admin')
+        ->from(route('admin.profile.edit'))
+        ->post(route('admin.profile.update'), [
+            '_method' => 'patch',
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'photo' => UploadedFile::fake()->create('avatar.pdf', 100, 'application/pdf'),
+        ])
+        ->assertRedirect(route('admin.profile.edit'))
+        ->assertSessionHasErrors('photo');
+
+    $this->actingAs($admin, 'admin')
+        ->from(route('admin.profile.edit'))
+        ->post(route('admin.profile.update'), [
+            '_method' => 'patch',
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'photo' => UploadedFile::fake()->image('avatar.jpg')->size(20481),
+        ])
+        ->assertRedirect(route('admin.profile.edit'))
+        ->assertSessionHasErrors('photo');
 });
 
 test('legacy email verification timestamp is unchanged when the email address is unchanged', function () {

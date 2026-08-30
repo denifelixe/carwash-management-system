@@ -36,8 +36,12 @@ class StoreCashEntryRequest extends FormRequest
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
             'method' => ['required', Rule::in(OrderQueries::PAYMENT_METHODS)],
             /* Outgoing money must carry supporting documentation (BR-10). */
-            'attachment' => [
+            'attachments' => [
                 Rule::requiredIf(fn (): bool => $this->input('direction') === 'out'),
+                'array',
+                'max:10',
+            ],
+            'attachments.*' => [
                 'file',
                 'mimes:jpg,jpeg,png,pdf',
                 'max:4096',
@@ -51,7 +55,7 @@ class StoreCashEntryRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'attachment.required' => 'Pengeluaran wajib menyertakan bukti pendukung.',
+            'attachments.required' => 'Pengeluaran wajib menyertakan bukti pendukung.',
         ];
     }
 }

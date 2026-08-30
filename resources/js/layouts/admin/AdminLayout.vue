@@ -415,9 +415,15 @@ function closeSidebar(module: CarwashAdminModule): void {
                     "
                 >
                     <div
-                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-xs font-semibold text-white"
+                        class="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-gradient-to-br from-cyan-400 to-sky-600 text-xs font-semibold text-white"
                     >
-                        {{ persona.initials }}
+                        <img
+                            v-if="persona.avatar"
+                            :src="persona.avatar"
+                            :alt="persona.name"
+                            class="h-full w-full object-cover"
+                        />
+                        <template v-else>{{ persona.initials }}</template>
                     </div>
                     <div
                         class="min-w-0 flex-1 leading-tight"

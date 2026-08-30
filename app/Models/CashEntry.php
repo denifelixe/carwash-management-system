@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
@@ -22,9 +23,6 @@ use Illuminate\Support\Carbon;
  * @property string $method
  * @property int|null $recorded_by_admin_id
  * @property string|null $shift_name
- * @property string|null $attachment_path
- * @property string|null $attachment_name
- * @property int|null $attachment_size
  * @property Carbon $entry_date
  * @property Carbon $occurred_at
  * @property Carbon|null $created_at
@@ -39,9 +37,6 @@ use Illuminate\Support\Carbon;
     'method',
     'recorded_by_admin_id',
     'shift_name',
-    'attachment_path',
-    'attachment_name',
-    'attachment_size',
     'entry_date',
     'occurred_at',
 ])]
@@ -54,6 +49,12 @@ class CashEntry extends Model
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'recorded_by_admin_id');
+    }
+
+    /** @return HasMany<CashEntryAttachment, $this> */
+    public function attachments(): HasMany
+    {
+        return $this->hasMany(CashEntryAttachment::class)->oldest('id');
     }
 
     /** @return array<string, string> */

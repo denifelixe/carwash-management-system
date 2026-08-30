@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\ReplaceAdminProfilePhoto;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreAdminUserRequest;
 use App\Http\Requests\Admin\UpdateAdminUserRequest;
@@ -16,9 +17,11 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class AdminUserController extends Controller
 {
@@ -62,6 +65,7 @@ class AdminUserController extends Controller
                 'capabilities' => [
                     'create' => Gate::allows('admin.users_and_roles.create'),
                     'update' => Gate::allows('admin.users_and_roles.update'),
+                    'update_photo' => $authenticatedAdmin->is_owner,
                 ],
             ],
         ));
@@ -74,9 +78,15 @@ class AdminUserController extends Controller
         return to_route('admin.users.index')->with('success', 'User berhasil ditambahkan.');
     }
 
-    public function update(UpdateAdminUserRequest $request, Admin $adminUser): RedirectResponse
-    {
+    public function update(
+        UpdateAdminUserRequest $request,
+        Admin $adminUser,
+        ReplaceAdminProfilePhoto $replaceAdminProfilePhoto,
+    ): RedirectResponse {
         $data = $request->validated();
+        $photo = $request->file('photo');
+
+        unset($data['photo']);
 
         if (blank($data['password'] ?? null)) {
             unset($data['password']);
@@ -84,7 +94,24 @@ class AdminUserController extends Controller
 
         $adminUser->update($data);
 
+        if ($photo !== null) {
+            $replaceAdminProfilePhoto->handle($adminUser, $photo);
+        }
+
         return to_route('admin.users.index')->with('success', 'User berhasil diperbarui.');
+    }
+
+    public function photo(Admin $adminUser): StreamedResponse
+    {
+        abort_if(
+            $adminUser->profile_photo_path === null || ! Storage::exists($adminUser->profile_photo_path),
+            404,
+        );
+
+        return Storage::response(
+            $adminUser->profile_photo_path,
+            headers: ['Cache-Control' => 'private, no-store'],
+        );
     }
 
     public function updateShift(UpdateAdminUserShiftRequest $request, Admin $adminUser): RedirectResponse
@@ -114,7 +141,8 @@ class AdminUserController extends Controller
             'shift_name' => $workShift instanceof AdminWorkShift ? $workShift->name : 'Tidak ada Shift',
             'is_owner' => $admin->is_owner,
             'is_active' => $admin->is_active,
-            'last_active' => $admin->last_login_at?->diffForHumans() ?? 'Belum pernah login',
+            'last_active' => $admin->last_login_at?->locale('id')->diffForHumans() ?? 'Belum pernah login',
+            'avatar' => $admin->profilePhotoUrl(),
             'initials' => Str::of($admin->name)
                 ->squish()
                 ->explode(' ')

@@ -65,6 +65,7 @@ class AdminShell
                     ->map(fn (string $name): string => Str::upper(Str::substr($name, 0, 1)))
                     ->implode(''),
                 'shift' => $admin->workShift?->name ?? '',
+                'avatar' => $admin->profilePhotoUrl(),
             ],
             'profileHref' => route('admin.profile.edit', absolute: false),
             'headerAction' => null,

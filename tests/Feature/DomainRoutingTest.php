@@ -100,6 +100,8 @@ test('the main domain sends visitors to the member portal', function () {
 });
 
 test('the admin domain only serves admin authentication', function () {
+    config(['app.member_portal_enabled' => true]);
+
     $this->get('https://admin.carwash-management-system.test/')
         ->assertRedirect(route('admin.login'));
 
@@ -118,6 +120,8 @@ test('authenticated staff entering the admin domain are sent to their dashboard'
 });
 
 test('the member domain serves member authentication without exposing admin routes', function () {
+    config(['app.member_portal_enabled' => true]);
+
     $this->get('https://member.carwash-management-system.test/')
         ->assertRedirect(route('member.login'));
 

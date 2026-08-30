@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 
 /**
  * @property int $id
@@ -18,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string $email
  * @property string|null $phone
+ * @property string|null $profile_photo_path
  * @property Carbon|null $email_verified_at
  * @property string $password
  * @property bool $is_owner
@@ -28,7 +30,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  */
 #[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'work_shift_id', 'is_active'])]
-#[Hidden(['password', 'remember_token'])]
+#[Hidden(['password', 'remember_token', 'profile_photo_path'])]
 class Admin extends Authenticatable
 {
     /** @use HasFactory<AdminFactory> */
@@ -71,6 +73,16 @@ class Admin extends Authenticatable
             ->where('admin_modules.is_active', true)
             ->wherePivot("can_{$permission}", true)
             ->exists();
+    }
+
+    public function profilePhotoUrl(): ?string
+    {
+        return $this->profile_photo_path !== null
+            ? route('admin.users.photo', [
+                'adminUser' => $this,
+                'version' => Str::afterLast($this->profile_photo_path, '/'),
+            ], absolute: false)
+            : null;
     }
 
     /**

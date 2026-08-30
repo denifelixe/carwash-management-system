@@ -17,6 +17,9 @@ use Illuminate\Database\Eloquent\Collection;
  */
 class FinanceQueries
 {
+    /** The bucket for ledger rows that match no active shift, as Finance.vue and Pos.vue key it. */
+    public const UNASSIGNED_SHIFT_KEY = 'tanpa-shift';
+
     /**
      * One day of the ledger, ready to hand to a page. Both the finance module
      * and the dashboard read a day through here, so a figure shown on one
@@ -78,7 +81,7 @@ class FinanceQueries
     public static function cashEntriesForDate(string $date, string $direction): Collection
     {
         return CashEntry::query()
-            ->with('recordedBy:id,name')
+            ->with(['recordedBy:id,name', 'attachments'])
             ->whereDate('entry_date', $date)
             ->where('direction', $direction)
             ->orderByDesc('occurred_at')
@@ -107,23 +110,21 @@ class FinanceQueries
 
     /**
      * Shift performance for one day, read from the same payments and cash
-     * entries the ledger below shows.
+     * entries the ledger below shows. `$withUnassigned` appends the Tanpa
+     * Shift bucket so a caller showing every shift side by side still adds up
+     * to the day's ledger; Finance.vue leaves it off because its tab strip
+     * already carries a fixed one.
      *
      * @param  list<array<string, mixed>>  $moneyIn
      * @param  list<array<string, mixed>>  $moneyOut
      * @return list<array<string, mixed>>
      */
-    public static function shiftSummary(array $moneyIn, array $moneyOut, string $date): array
+    public static function shiftSummary(array $moneyIn, array $moneyOut, string $date, bool $withUnassigned = false): array
     {
         $now = CarbonImmutable::now();
+        $shifts = self::shifts();
 
-        return self::shifts()->map(function (AdminWorkShift $shift) use ($moneyIn, $moneyOut, $date, $now): array {
-            $shiftIncome = self::entriesOfShift($moneyIn, $shift);
-            $shiftExpenses = self::entriesOfShift($moneyOut, $shift);
-            $posIncome = array_values(array_filter(
-                $shiftIncome,
-                fn (array $entry): bool => $entry['source'] === 'pos',
-            ));
+        $summary = $shifts->map(function (AdminWorkShift $shift) use ($moneyIn, $moneyOut, $date, $now): array {
             $cashier = $shift->admins->first();
             /* A shift with no closing time never reads as finished. */
             $isRunning = $date === $now->toDateString()
@@ -137,17 +138,19 @@ class FinanceQueries
                     : null,
                 'cashier' => $cashier instanceof Admin ? $cashier->name : '',
                 'initials' => $cashier instanceof Admin ? OrderPresenter::initials($cashier->name) : '',
-                'revenue' => array_sum(array_column($posIncome, 'amount')),
-                'transactions' => count($posIncome),
-                'vehiclesServed' => count(array_unique(array_filter(
-                    array_column($posIncome, 'orderId'),
-                    fn (mixed $orderId): bool => $orderId !== null,
-                ))),
-                'moneyIn' => array_sum(array_column($shiftIncome, 'amount')),
-                'moneyOut' => array_sum(array_column($shiftExpenses, 'amount')),
+                ...self::shiftTotals(
+                    self::entriesOfShift($moneyIn, $shift->name),
+                    self::entriesOfShift($moneyOut, $shift->name),
+                ),
                 'status' => $isRunning ? 'berjalan' : 'selesai',
             ];
         })->all();
+
+        if ($withUnassigned) {
+            $summary[] = self::unassignedShiftSummary($moneyIn, $moneyOut, $shifts->pluck('name')->all());
+        }
+
+        return $summary;
     }
 
     /**
@@ -195,14 +198,76 @@ class FinanceQueries
     }
 
     /**
+     * Everything the day's ledger booked outside the active roster: rows written
+     * with no shift, and rows stamped with a shift since renamed or retired.
+     *
+     * @param  list<array<string, mixed>>  $moneyIn
+     * @param  list<array<string, mixed>>  $moneyOut
+     * @param  list<string>  $shiftNames
+     * @return array<string, mixed>
+     */
+    private static function unassignedShiftSummary(array $moneyIn, array $moneyOut, array $shiftNames): array
+    {
+        return [
+            'id' => self::UNASSIGNED_SHIFT_KEY,
+            'name' => 'Tanpa Shift',
+            'time' => null,
+            'cashier' => '',
+            'initials' => '',
+            ...self::shiftTotals(
+                self::entriesOutsideShifts($moneyIn, $shiftNames),
+                self::entriesOutsideShifts($moneyOut, $shiftNames),
+            ),
+            'status' => '',
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $income
+     * @param  list<array<string, mixed>>  $expenses
+     * @return array{revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int}
+     */
+    private static function shiftTotals(array $income, array $expenses): array
+    {
+        $posIncome = array_values(array_filter(
+            $income,
+            fn (array $entry): bool => $entry['source'] === 'pos',
+        ));
+
+        return [
+            'revenue' => (int) array_sum(array_column($posIncome, 'amount')),
+            'transactions' => count($posIncome),
+            'vehiclesServed' => count(array_unique(array_filter(
+                array_column($posIncome, 'orderId'),
+                fn (mixed $orderId): bool => $orderId !== null,
+            ))),
+            'moneyIn' => (int) array_sum(array_column($income, 'amount')),
+            'moneyOut' => (int) array_sum(array_column($expenses, 'amount')),
+        ];
+    }
+
+    /**
      * @param  list<array<string, mixed>>  $entries
      * @return list<array<string, mixed>>
      */
-    private static function entriesOfShift(array $entries, AdminWorkShift $shift): array
+    private static function entriesOfShift(array $entries, string $shiftName): array
     {
         return array_values(array_filter(
             $entries,
-            fn (array $entry): bool => $entry['shift'] === $shift->name,
+            fn (array $entry): bool => $entry['shift'] === $shiftName,
+        ));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $entries
+     * @param  list<string>  $shiftNames
+     * @return list<array<string, mixed>>
+     */
+    private static function entriesOutsideShifts(array $entries, array $shiftNames): array
+    {
+        return array_values(array_filter(
+            $entries,
+            fn (array $entry): bool => ! in_array($entry['shift'], $shiftNames, strict: true),
         ));
     }
 }

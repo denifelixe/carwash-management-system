@@ -2,6 +2,8 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\FinancePresenter;
+use App\Support\Admin\FinanceQueries;
 use App\Support\Admin\FinanceReference;
 
 /**
@@ -91,17 +93,17 @@ class Finance
     /**
      * Operational expenses. Attachments are mandatory for outgoing money (BR-10).
      *
-     * @return list<array{id: int, ref: string, date: string, time: string, category: string, description: string, amount: int, method: string, channelBreakdown: list<array{label: string, amount: int}>, recordedBy: string, shift: string|null, attachment: array{name: string, size: string}|null}>
+     * @return list<array{id: int, ref: string, date: string, time: string, category: string, description: string, amount: int, method: string, channelBreakdown: list<array{label: string, amount: int}>, recordedBy: string, shift: string|null, attachments: list<array{id: string, name: string, size: string, url: null, isImage: bool}>}>
      */
     public static function moneyOut(): array
     {
         return [
-            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 22), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachment' => ['name' => 'nota-supplier-0803.jpg', 'size' => '412 KB']],
-            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 21), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'QRIS', 'channelBreakdown' => [['label' => 'QRIS', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachment' => ['name' => 'struk-token-listrik.pdf', 'size' => '128 KB']],
-            ['id' => 3, 'ref' => self::transactionRef('Gaji & Upah', self::date(1), 20), 'date' => self::date(1), 'time' => '17.40', 'category' => 'Gaji & Upah', 'description' => 'Uang makan crew shift sore (5 orang)', 'amount' => 175000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 175000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'attachment' => ['name' => 'rekap-uang-makan.jpg', 'size' => '287 KB']],
-            ['id' => 4, 'ref' => self::transactionRef('Perawatan Alat', self::date(1), 19), 'date' => self::date(1), 'time' => '11.20', 'category' => 'Perawatan Alat', 'description' => 'Servis mesin high pressure Bay 2', 'amount' => 850000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 850000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachment' => ['name' => 'invoice-servis-mesin.pdf', 'size' => '96 KB']],
-            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 18), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachment' => ['name' => 'nota-microfiber.jpg', 'size' => '355 KB']],
-            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 17), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Debit', 'channelBreakdown' => [['label' => 'Debit', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachment' => ['name' => 'bukti-bayar-ads.png', 'size' => '204 KB']],
+            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 22), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-1', 'nota-supplier-0803.jpg', '412 KB')]],
+            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 21), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'QRIS', 'channelBreakdown' => [['label' => 'QRIS', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-2', 'struk-token-listrik.pdf', '128 KB')]],
+            ['id' => 3, 'ref' => self::transactionRef('Gaji & Upah', self::date(1), 20), 'date' => self::date(1), 'time' => '17.40', 'category' => 'Gaji & Upah', 'description' => 'Uang makan crew shift sore (5 orang)', 'amount' => 175000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 175000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'attachments' => [self::attachment('expense-3', 'rekap-uang-makan.jpg', '287 KB')]],
+            ['id' => 4, 'ref' => self::transactionRef('Perawatan Alat', self::date(1), 19), 'date' => self::date(1), 'time' => '11.20', 'category' => 'Perawatan Alat', 'description' => 'Servis mesin high pressure Bay 2', 'amount' => 850000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 850000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-4', 'invoice-servis-mesin.pdf', '96 KB')]],
+            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 18), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-5', 'nota-microfiber.jpg', '355 KB')]],
+            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 17), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Debit', 'channelBreakdown' => [['label' => 'Debit', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-6', 'bukti-bayar-ads.png', '204 KB')]],
         ];
     }
 
@@ -201,30 +203,84 @@ class Finance
 
     /**
      * Shift performance from the same POS payments and finance ledger entries
-     * used by their respective modules.
+     * used by their respective modules, closed by the Tanpa Shift bucket so the
+     * cards add up to the day's ledger — as FinanceQueries::shiftSummary does.
      *
-     * @return list<array{id: string, name: string, time: string, cashier: string, initials: string, revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int, status: string}>
+     * @return list<array{id: string, name: string, time: string|null, cashier: string, initials: string, revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int, status: string}>
      */
     public static function shiftSummary(string $date): array
     {
         $income = DateFilter::apply(self::moneyIn(), $date);
         $expenses = DateFilter::apply(self::moneyOut(), $date);
+        $shiftNames = array_column(Brand::shifts(), 'name');
 
-        return array_map(function (array $shift) use ($income, $expenses): array {
-            $shiftIncome = self::entriesOfShift($income, $shift['name']);
-            $shiftExpenses = self::entriesOfShift($expenses, $shift['name']);
-            $posIncome = array_values(array_filter(
-                $shiftIncome,
-                fn (array $entry): bool => $entry['source'] === 'pos',
-            ));
+        $summary = array_map(fn (array $shift): array => [
+            ...$shift,
+            ...self::shiftTotals(
+                self::entriesOfShift($income, $shift['name']),
+                self::entriesOfShift($expenses, $shift['name']),
+            ),
+        ], Brand::shifts());
 
-            return [
-                ...$shift,
-                'revenue' => array_sum(array_column($posIncome, 'amount')),
-                'vehiclesServed' => count(array_unique(array_column($posIncome, 'orderId'))),
-                'moneyIn' => array_sum(array_column($shiftIncome, 'amount')),
-                'moneyOut' => array_sum(array_column($shiftExpenses, 'amount')),
-            ];
-        }, Brand::shifts());
+        $summary[] = [
+            'id' => FinanceQueries::UNASSIGNED_SHIFT_KEY,
+            'name' => 'Tanpa Shift',
+            'time' => null,
+            'cashier' => '',
+            'initials' => '',
+            ...self::shiftTotals(
+                self::entriesOutsideShifts($income, $shiftNames),
+                self::entriesOutsideShifts($expenses, $shiftNames),
+            ),
+            'status' => '',
+        ];
+
+        return $summary;
+    }
+
+    /** @return array{id: string, name: string, size: string, url: null, isImage: bool} */
+    private static function attachment(string $id, string $name, string $size): array
+    {
+        return [
+            'id' => $id,
+            'name' => $name,
+            'size' => $size,
+            'url' => null,
+            'isImage' => FinancePresenter::isImage($name),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $income
+     * @param  list<array<string, mixed>>  $expenses
+     * @return array{revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int}
+     */
+    private static function shiftTotals(array $income, array $expenses): array
+    {
+        $posIncome = array_values(array_filter(
+            $income,
+            fn (array $entry): bool => $entry['source'] === 'pos',
+        ));
+
+        return [
+            'revenue' => (int) array_sum(array_column($posIncome, 'amount')),
+            'transactions' => count($posIncome),
+            'vehiclesServed' => count(array_unique(array_column($posIncome, 'orderId'))),
+            'moneyIn' => (int) array_sum(array_column($income, 'amount')),
+            'moneyOut' => (int) array_sum(array_column($expenses, 'amount')),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $entries
+     * @param  list<string>  $shiftNames
+     * @return list<array<string, mixed>>
+     */
+    private static function entriesOutsideShifts(array $entries, array $shiftNames): array
+    {
+        return array_values(array_filter(
+            $entries,
+            fn (array $entry): bool => ! in_array($entry['shift'], $shiftNames, strict: true),
+        ));
     }
 }

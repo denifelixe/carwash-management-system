@@ -1,8 +1,10 @@
 <?php
 
 use App\Http\Middleware\Demo\EnsureModule;
+use App\Http\Middleware\EnsureMemberPortalIsAvailable;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\UsePortalAuthentication;
+use Illuminate\Contracts\Auth\Middleware\AuthenticatesRequests;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -20,8 +22,19 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'demo.module' => EnsureModule::class,
+            'member.portal' => EnsureMemberPortalIsAvailable::class,
             'portal.auth' => UsePortalAuthentication::class,
         ]);
+
+        /*
+         * Authenticate sits in the framework's priority list, so without this
+         * it would outrank the portal gate and redirect member.dashboard to a
+         * login page that is itself closed.
+         */
+        $middleware->prependToPriorityList(
+            before: AuthenticatesRequests::class,
+            prepend: EnsureMemberPortalIsAvailable::class,
+        );
 
         $middleware->redirectGuestsTo(fn (Request $request): string => match ($request->getHost()) {
             config('domains.member') => route('member.login'),

@@ -40,9 +40,9 @@ function cloneMoneyEntry(entry: CarwashMoneyEntry): CarwashMoneyEntry {
         channelBreakdown: entry.channelBreakdown.map((channel) => ({
             ...channel,
         })),
-        attachment: entry.attachment
-            ? { ...entry.attachment }
-            : entry.attachment,
+        attachments: entry.attachments?.map((attachment) => ({
+            ...attachment,
+        })),
     };
 }
 

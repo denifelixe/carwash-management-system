@@ -214,6 +214,7 @@ export interface CarwashWorkShift {
 export interface CarwashTransactionChannel {
     label: string;
     amount: number;
+    reference?: string;
 }
 
 export interface CarwashOrder {
@@ -291,6 +292,8 @@ export interface CarwashCrewMember {
 
 export interface CarwashMoneyEntry {
     id: number | string;
+    /** Database key for a live POS payment that may be corrected in Finance. */
+    transactionId?: number | null;
     ref: string;
     date: string;
     time: string;
@@ -308,16 +311,17 @@ export interface CarwashMoneyEntry {
     customer?: string | null;
     vehicle?: string | null;
     plate?: string | null;
-    attachment?: CarwashAttachment | null;
-    /** Only the live ledger stores the document, so only it can serve it back. */
-    attachmentUrl?: string | null;
-    /** An image is shown in the lightbox; anything else is downloaded. */
-    attachmentIsImage?: boolean;
+    attachments?: CarwashAttachment[];
 }
 
 export interface CarwashAttachment {
+    id: number | string;
     name: string;
     size: string;
+    /** Demo files have no stored object to serve. */
+    url?: string | null;
+    /** Images open in the lightbox; other files are downloaded. */
+    isImage?: boolean;
 }
 
 export interface CarwashCashSummary {
@@ -395,6 +399,7 @@ export interface CarwashPersona {
     name: string;
     initials: string;
     shift: string;
+    avatar: string | null;
 }
 
 export interface CarwashStaff {

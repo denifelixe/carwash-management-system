@@ -4,7 +4,10 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminWorkShift;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 
 function rolePermissions(bool $read = true): array
@@ -102,6 +105,93 @@ test('an owner can update staff without replacing an unchanged password', functi
         ->phone->toBe('081200000001')
         ->is_active->toBeFalse()
         ->password->toBe($password);
+});
+
+test('an owner can update a staff profile photo', function () {
+    $disk = (string) config('filesystems.default');
+    Storage::fake($disk);
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'manager')->firstOrFail();
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.users.update', $admin), [
+            '_method' => 'patch',
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'phone' => $admin->phone,
+            'role_id' => $role->id,
+            'work_shift_id' => null,
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => true,
+            'photo' => UploadedFile::fake()->image('pegawai.png'),
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    $photoPath = $admin->refresh()->profile_photo_path;
+
+    expect($photoPath)->not->toBeNull();
+    Storage::disk($disk)->assertExists($photoPath);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('capabilities.update_photo', true)
+                ->where('staff', fn (Collection $staff): bool => $staff
+                    ->firstWhere('id', $admin->id)['avatar'] === $admin->profilePhotoUrl())
+        );
+});
+
+test('a non-owner cannot update another staff profile photo', function () {
+    Storage::fake((string) config('filesystems.default'));
+    $usersModule = AdminModule::query()->where('key', 'users_and_roles')->firstOrFail();
+    $managerRole = AdminRole::query()->create([
+        'key' => 'photo_manager',
+        'name' => 'Photo Manager',
+        'description' => 'May update staff details.',
+        'is_active' => true,
+    ]);
+    $managerRole->modules()->attach($usersModule, [
+        'can_read' => true,
+        'can_update' => true,
+    ]);
+    $cashierRole = AdminRole::query()->where('key', 'cashier')->firstOrFail();
+    $manager = Admin::factory()->create(['role_id' => $managerRole->id]);
+    $admin = Admin::factory()->create(['role_id' => $cashierRole->id]);
+
+    $this->actingAs($manager, 'admin')
+        ->from(route('admin.users.index'))
+        ->patch(route('admin.users.update', $admin), [
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'phone' => $admin->phone,
+            'role_id' => $cashierRole->id,
+            'work_shift_id' => null,
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => true,
+            'photo' => UploadedFile::fake()->image('pegawai.png'),
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasErrors('photo');
+
+    expect($admin->refresh()->profile_photo_path)->toBeNull();
+});
+
+test('last active time is displayed in Indonesian', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $admin = Admin::factory()->create(['last_login_at' => now()->subHours(2)]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('staff', fn (Collection $staff): bool => $staff
+                    ->firstWhere('id', $admin->id)['last_active'] === '2 jam yang lalu')
+        );
 });
 
 test('an owner can assign a shift directly to any user including their own account', function () {

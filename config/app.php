@@ -38,6 +38,8 @@ return [
 
     'generate_all_routes' => (bool) env('WAYFINDER_GENERATE_ALL_ROUTES', false),
 
+    'member_portal_enabled' => (bool) env('MEMBER_PORTAL_ENABLED', false),
+
     /*
     |--------------------------------------------------------------------------
     | Application Debug Mode

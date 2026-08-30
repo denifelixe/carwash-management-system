@@ -56,7 +56,8 @@ test('owner dashboard uses live member data and enables completed modules', func
                 ->where('stats.2.value', '2')
                 ->where('stats.2.caption', 'dari 3 member terdaftar')
                 ->where('stats.3.value', '0')
-                ->has('shifts', 2)
+                /* Two rostered shifts, closed by the Tanpa Shift bucket. */
+                ->has('shifts', 3)
                 ->has('notifications', 0)
                 ->has('modules', 11)
                 ->where('modules.0.key', 'dashboard')
@@ -93,6 +94,32 @@ test('the dashboard restates the finance ledger for the same day', function () {
         );
 
     expect($order->transactions()->count())->toBe(1);
+});
+
+/*
+ * A row is filed under the shift stamped on it. Rows carrying none, and rows
+ * carrying a shift that has since been retired, used to vanish from these cards;
+ * the Tanpa Shift bucket keeps the shift cards adding up to the day's ledger.
+ */
+test('the shift cards close with a Tanpa Shift bucket for rows on no active shift', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    CashEntry::factory()->create(['amount' => 90000, 'shift_name' => null]);
+    CashEntry::factory()->moneyOut()->create(['amount' => 40000, 'shift_name' => 'Shift Malam']);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.dashboard'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->has('shifts', 3)
+                ->where('shifts.2.id', 'tanpa-shift')
+                ->where('shifts.2.name', 'Tanpa Shift')
+                ->where('shifts.2.status', '')
+                ->where('shifts.2.moneyIn', 90000)
+                ->where('shifts.2.moneyOut', 40000)
+                ->where('shifts.0.moneyIn', 0)
+                ->where('shifts.0.moneyOut', 0),
+        );
 });
 
 test('the vehicle card counts served orders and leaves out cancelled ones', function () {

@@ -42,6 +42,9 @@ class UpdateAdminUserRequest extends FormRequest
             'work_shift_id' => ['nullable', Rule::exists(AdminWorkShift::class, 'id')->where('is_active', true)],
             'password' => ['nullable', 'confirmed', Password::defaults()],
             'is_active' => ['required', 'boolean'],
+            'photo' => $this->user('admin')?->is_owner
+                ? ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480']
+                : ['prohibited'],
         ];
     }
 }
