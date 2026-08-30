@@ -39,8 +39,16 @@
         <meta name="mobile-web-app-capable" content="yes">
 
         <link rel="icon" href="{{ $meta['favicon'] }}" sizes="any">
-        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-        <link rel="manifest" href="/site.webmanifest">
+        @if ($meta['favicon16'] !== null)
+            <link rel="icon" type="image/png" sizes="16x16" href="{{ $meta['favicon16'] }}">
+        @endif
+        @if ($meta['favicon32'] !== null)
+            <link rel="icon" type="image/png" sizes="32x32" href="{{ $meta['favicon32'] }}">
+        @endif
+        <link rel="apple-touch-icon" sizes="180x180" href="{{ $meta['appleTouchIcon'] }}">
+        <link rel="icon" type="image/png" sizes="192x192" href="{{ $meta['androidChrome192'] }}">
+        <link rel="icon" type="image/png" sizes="512x512" href="{{ $meta['androidChrome512'] }}">
+        <link rel="manifest" href="{{ $meta['siteWebmanifest'] }}">
 
         @fonts
 

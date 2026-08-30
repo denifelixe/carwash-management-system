@@ -27,6 +27,18 @@ class AppSettings
 
     public const FAVICON = 'favicon';
 
+    public const FAVICON_16 = 'favicon_16';
+
+    public const FAVICON_32 = 'favicon_32';
+
+    public const APPLE_TOUCH_ICON = 'apple_touch_icon';
+
+    public const ANDROID_CHROME_192 = 'android_chrome_192';
+
+    public const ANDROID_CHROME_512 = 'android_chrome_512';
+
+    public const SITE_WEBMANIFEST = 'site_webmanifest';
+
     public const WHATSAPP = 'whatsapp';
 
     public const INSTAGRAM = 'instagram';
@@ -60,6 +72,36 @@ class AppSettings
     public static function faviconUrl(): ?string
     {
         return self::publicUrl(self::FAVICON);
+    }
+
+    public static function favicon16Url(): ?string
+    {
+        return self::publicUrl(self::FAVICON_16);
+    }
+
+    public static function favicon32Url(): ?string
+    {
+        return self::publicUrl(self::FAVICON_32);
+    }
+
+    public static function appleTouchIconUrl(): ?string
+    {
+        return self::publicUrl(self::APPLE_TOUCH_ICON);
+    }
+
+    public static function androidChrome192Url(): ?string
+    {
+        return self::publicUrl(self::ANDROID_CHROME_192);
+    }
+
+    public static function androidChrome512Url(): ?string
+    {
+        return self::publicUrl(self::ANDROID_CHROME_512);
+    }
+
+    public static function siteWebmanifestUrl(): ?string
+    {
+        return self::publicUrl(self::SITE_WEBMANIFEST);
     }
 
     public static function whatsapp(): string

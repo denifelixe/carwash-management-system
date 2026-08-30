@@ -12,6 +12,12 @@ const props = defineProps<{
         appName: string;
         appPhotoUrl: string | null;
         faviconUrl: string | null;
+        favicon16Url: string | null;
+        favicon32Url: string | null;
+        appleTouchIconUrl: string | null;
+        androidChrome192Url: string | null;
+        androidChrome512Url: string | null;
+        siteWebmanifestUrl: string | null;
         whatsapp: string;
         instagram: string;
     };
@@ -24,12 +30,99 @@ const form = useForm({
     instagram: props.settings.instagram,
     app_photo: null as File | null,
     favicon: null as File | null,
+    favicon_16: null as File | null,
+    favicon_32: null as File | null,
+    apple_touch_icon: null as File | null,
+    android_chrome_192: null as File | null,
+    android_chrome_512: null as File | null,
+    site_webmanifest: null as File | null,
 });
 
 const appPhotoPreview = ref<string | null>(props.settings.appPhotoUrl);
-const faviconPreview = ref<string | null>(props.settings.faviconUrl);
 let appPhotoObjectUrl: string | null = null;
-let faviconObjectUrl: string | null = null;
+
+type FaviconField =
+    | 'favicon'
+    | 'favicon_16'
+    | 'favicon_32'
+    | 'apple_touch_icon'
+    | 'android_chrome_192'
+    | 'android_chrome_512'
+    | 'site_webmanifest';
+
+const faviconAssets: Array<{
+    field: FaviconField;
+    label: string;
+    description: string;
+    accept: string;
+    currentUrl: string | null;
+    required: boolean;
+    preview: boolean;
+}> = [
+    {
+        field: 'favicon',
+        label: 'favicon.ico',
+        description: 'Fallback utama browser. ICO, maksimal 512 KB.',
+        accept: '.ico,image/x-icon,image/vnd.microsoft.icon',
+        currentUrl: props.settings.faviconUrl,
+        required: true,
+        preview: true,
+    },
+    {
+        field: 'favicon_16',
+        label: 'favicon-16x16.png',
+        description: 'PNG tepat 16×16 piksel, maksimal 256 KB.',
+        accept: 'image/png',
+        currentUrl: props.settings.favicon16Url,
+        required: false,
+        preview: true,
+    },
+    {
+        field: 'favicon_32',
+        label: 'favicon-32x32.png',
+        description: 'PNG tepat 32×32 piksel, maksimal 256 KB.',
+        accept: 'image/png',
+        currentUrl: props.settings.favicon32Url,
+        required: false,
+        preview: true,
+    },
+    {
+        field: 'apple_touch_icon',
+        label: 'apple-touch-icon.png',
+        description: 'PNG tepat 180×180 piksel, maksimal 512 KB.',
+        accept: 'image/png',
+        currentUrl: props.settings.appleTouchIconUrl,
+        required: false,
+        preview: true,
+    },
+    {
+        field: 'android_chrome_192',
+        label: 'android-chrome-192x192.png',
+        description: 'PNG tepat 192×192 piksel, maksimal 1 MB.',
+        accept: 'image/png',
+        currentUrl: props.settings.androidChrome192Url,
+        required: false,
+        preview: true,
+    },
+    {
+        field: 'android_chrome_512',
+        label: 'android-chrome-512x512.png',
+        description: 'PNG tepat 512×512 piksel, maksimal 2 MB.',
+        accept: 'image/png',
+        currentUrl: props.settings.androidChrome512Url,
+        required: false,
+        preview: true,
+    },
+    {
+        field: 'site_webmanifest',
+        label: 'site.webmanifest',
+        description: 'Manifest JSON/webmanifest, maksimal 100 KB.',
+        accept: '.webmanifest,application/manifest+json,application/json',
+        currentUrl: props.settings.siteWebmanifestUrl,
+        required: false,
+        preview: false,
+    },
+];
 
 function selectedFile(event: Event): File | null {
     return (event.target as HTMLInputElement).files?.[0] ?? null;
@@ -49,16 +142,9 @@ function selectAppPhoto(event: Event): void {
     appPhotoPreview.value = appPhotoObjectUrl ?? props.settings.appPhotoUrl;
 }
 
-function selectFavicon(event: Event): void {
-    form.favicon = selectedFile(event);
-    form.clearErrors('favicon');
-
-    if (faviconObjectUrl !== null) {
-        URL.revokeObjectURL(faviconObjectUrl);
-    }
-
-    faviconObjectUrl = form.favicon ? URL.createObjectURL(form.favicon) : null;
-    faviconPreview.value = faviconObjectUrl ?? props.settings.faviconUrl;
+function selectFaviconAsset(field: FaviconField, event: Event): void {
+    form[field] = selectedFile(event);
+    form.clearErrors(field);
 }
 
 function submit(): void {
@@ -72,10 +158,6 @@ function submit(): void {
 onBeforeUnmount(() => {
     if (appPhotoObjectUrl !== null) {
         URL.revokeObjectURL(appPhotoObjectUrl);
-    }
-
-    if (faviconObjectUrl !== null) {
-        URL.revokeObjectURL(faviconObjectUrl);
     }
 });
 </script>
@@ -231,7 +313,7 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
 
-                <div class="grid gap-5 p-5 md:grid-cols-2">
+                <div class="space-y-5 p-5">
                     <div class="rounded-xl border border-slate-200 p-4">
                         <div class="flex items-center gap-3">
                             <div
@@ -284,54 +366,116 @@ onBeforeUnmount(() => {
                     </div>
 
                     <div class="rounded-xl border border-slate-200 p-4">
-                        <div class="flex items-center gap-3">
-                            <div
-                                class="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-slate-100 text-slate-400"
+                        <div>
+                            <h3 class="text-sm font-semibold text-slate-900">
+                                Paket favicon
+                            </h3>
+                            <p
+                                class="mt-1 text-xs leading-relaxed text-slate-500"
                             >
-                                <img
-                                    v-if="faviconPreview"
-                                    :src="faviconPreview"
-                                    alt="Pratinjau favicon"
-                                    class="size-12 object-contain"
-                                />
-                                <AppWindow v-else class="size-7" />
-                            </div>
-                            <div class="min-w-0">
-                                <p class="text-sm font-semibold text-slate-900">
-                                    Favicon
-                                </p>
-                                <p
-                                    class="mt-1 text-xs leading-relaxed text-slate-500"
-                                >
-                                    Gunakan gambar persegi. Maksimal 1 MB.
-                                </p>
-                            </div>
+                                Favicon ICO wajib sebagai fallback browser.
+                                Asset perangkat dan manifest lainnya opsional.
+                            </p>
                         </div>
 
-                        <label
-                            for="favicon"
-                            class="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
-                            :class="
-                                capabilities.update
-                                    ? 'cursor-pointer'
-                                    : 'cursor-not-allowed opacity-60'
-                            "
+                        <div
+                            class="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3"
                         >
-                            <Upload class="size-4" />
-                            {{ form.favicon?.name ?? 'Pilih favicon' }}
-                        </label>
-                        <input
-                            id="favicon"
-                            type="file"
-                            accept="image/png,image/jpeg,image/webp"
-                            :disabled="!capabilities.update"
-                            class="sr-only"
-                            @change="selectFavicon"
-                        />
-                        <InputError
-                            class="mt-2"
-                            :message="form.errors.favicon"
-                        />
+                            <div
+                                v-for="asset in faviconAssets"
+                                :key="asset.field"
+                                class="rounded-xl border border-slate-200 bg-slate-50/60 p-3"
+                            >
+                                <div class="flex items-start gap-3">
+                                    <div
+                                        class="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white text-slate-400 ring-1 ring-slate-200"
+                                    >
+                                        <img
+                                            v-if="
+                                                asset.preview &&
+                                                asset.currentUrl
+                                            "
+                                            :src="asset.currentUrl"
+                                            :alt="'Pratinjau ' + asset.label"
+                                            class="size-8 object-contain"
+                                        />
+                                        <AppWindow
+                                            v-else-if="asset.preview"
+                                            class="size-5"
+                                        />
+                                        <span
+                                            v-else
+                                            class="text-[10px] font-bold text-slate-500"
+                                        >
+                                            JSON
+                                        </span>
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div
+                                            class="flex flex-wrap items-center gap-1.5"
+                                        >
+                                            <p
+                                                class="truncate text-xs font-semibold text-slate-900"
+                                            >
+                                                {{ asset.label }}
+                                            </p>
+                                            <span
+                                                v-if="asset.required"
+                                                class="rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700"
+                                            >
+                                                Wajib
+                                            </span>
+                                            <span
+                                                v-else
+                                                class="rounded-full bg-slate-200 px-1.5 py-0.5 text-[10px] font-medium text-slate-600"
+                                            >
+                                                Opsional
+                                            </span>
+                                        </div>
+                                        <p
+                                            class="mt-1 text-[11px] leading-relaxed text-slate-500"
+                                        >
+                                            {{ asset.description }}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <label
+                                    :for="asset.field"
+                                    class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-slate-300 bg-white px-2.5 py-2 text-xs font-medium text-slate-600 transition hover:border-cyan-400 hover:bg-cyan-50/50 hover:text-cyan-700"
+                                    :class="
+                                        capabilities.update
+                                            ? 'cursor-pointer'
+                                            : 'cursor-not-allowed opacity-60'
+                                    "
+                                >
+                                    <Upload class="size-3.5" />
+                                    {{
+                                        form[asset.field]?.name ??
+                                        (asset.currentUrl
+                                            ? 'Ganti file'
+                                            : 'Pilih file')
+                                    }}
+                                </label>
+                                <input
+                                    :id="asset.field"
+                                    type="file"
+                                    :accept="asset.accept"
+                                    :required="
+                                        asset.required && !asset.currentUrl
+                                    "
+                                    :disabled="!capabilities.update"
+                                    class="sr-only"
+                                    @change="
+                                        selectFaviconAsset(asset.field, $event)
+                                    "
+                                />
+                                <InputError
+                                    class="mt-2"
+                                    :message="form.errors[asset.field]"
+                                />
+                            </div>
+                        </div>
                     </div>
                 </div>
 

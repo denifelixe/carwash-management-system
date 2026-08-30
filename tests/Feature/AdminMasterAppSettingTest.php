@@ -15,6 +15,14 @@ beforeEach(function () {
     config(['app.name' => 'ZenWash Auto Care']);
 });
 
+function fakeFavicon(): UploadedFile
+{
+    return UploadedFile::fake()->createWithContent(
+        'favicon.ico',
+        file_get_contents(public_path('favicon.ico')),
+    );
+}
+
 /**
  * @param  array<string, bool>  $abilities
  */
@@ -59,6 +67,12 @@ test('an owner sees app setting in the master sidebar', function () {
                 ->where('settings.instagram', 'zenwash.id')
                 ->where('settings.appPhotoUrl', null)
                 ->where('settings.faviconUrl', null)
+                ->where('settings.favicon16Url', null)
+                ->where('settings.favicon32Url', null)
+                ->where('settings.appleTouchIconUrl', null)
+                ->where('settings.androidChrome192Url', null)
+                ->where('settings.androidChrome512Url', null)
+                ->where('settings.siteWebmanifestUrl', null)
                 ->where('capabilities.update', true)
                 ->where('modules.10.key', 'master')
                 ->where('modules.10.active', true)
@@ -81,7 +95,16 @@ test('an owner can update the name photo and favicon', function () {
             'whatsapp' => '0812-3456-7890',
             'instagram' => '@Kilap.AutoSpa',
             'app_photo' => UploadedFile::fake()->image('app-photo.png', 400, 400),
-            'favicon' => UploadedFile::fake()->image('favicon.png', 64, 64),
+            'favicon' => fakeFavicon(),
+            'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 16, 16),
+            'favicon_32' => UploadedFile::fake()->image('favicon-32x32.png', 32, 32),
+            'apple_touch_icon' => UploadedFile::fake()->image('apple-touch-icon.png', 180, 180),
+            'android_chrome_192' => UploadedFile::fake()->image('android-chrome-192x192.png', 192, 192),
+            'android_chrome_512' => UploadedFile::fake()->image('android-chrome-512x512.png', 512, 512),
+            'site_webmanifest' => UploadedFile::fake()->createWithContent(
+                'site.webmanifest',
+                json_encode(['name' => 'Kilap Auto Spa'], JSON_THROW_ON_ERROR),
+            ),
         ])
         ->assertRedirect(route('admin.master.app-settings.index'))
         ->assertSessionHas('success');
@@ -93,6 +116,12 @@ test('an owner can update the name photo and favicon', function () {
             AppSettings::INSTAGRAM,
             AppSettings::APP_PHOTO,
             AppSettings::FAVICON,
+            AppSettings::FAVICON_16,
+            AppSettings::FAVICON_32,
+            AppSettings::APPLE_TOUCH_ICON,
+            AppSettings::ANDROID_CHROME_192,
+            AppSettings::ANDROID_CHROME_512,
+            AppSettings::SITE_WEBMANIFEST,
         ])
         ->pluck('value', 'key');
 
@@ -103,9 +132,21 @@ test('an owner can update the name photo and favicon', function () {
 
     Storage::disk('public')->assertExists($settings[AppSettings::APP_PHOTO]);
     Storage::disk('public')->assertExists($settings[AppSettings::FAVICON]);
+    Storage::disk('public')->assertExists($settings[AppSettings::FAVICON_16]);
+    Storage::disk('public')->assertExists($settings[AppSettings::FAVICON_32]);
+    Storage::disk('public')->assertExists($settings[AppSettings::APPLE_TOUCH_ICON]);
+    Storage::disk('public')->assertExists($settings[AppSettings::ANDROID_CHROME_192]);
+    Storage::disk('public')->assertExists($settings[AppSettings::ANDROID_CHROME_512]);
+    Storage::disk('public')->assertExists($settings[AppSettings::SITE_WEBMANIFEST]);
 
     $photoUrl = Storage::disk('public')->url($settings[AppSettings::APP_PHOTO]);
     $faviconUrl = Storage::disk('public')->url($settings[AppSettings::FAVICON]);
+    $favicon16Url = Storage::disk('public')->url($settings[AppSettings::FAVICON_16]);
+    $favicon32Url = Storage::disk('public')->url($settings[AppSettings::FAVICON_32]);
+    $appleTouchIconUrl = Storage::disk('public')->url($settings[AppSettings::APPLE_TOUCH_ICON]);
+    $androidChrome192Url = Storage::disk('public')->url($settings[AppSettings::ANDROID_CHROME_192]);
+    $androidChrome512Url = Storage::disk('public')->url($settings[AppSettings::ANDROID_CHROME_512]);
+    $siteWebmanifestUrl = Storage::disk('public')->url($settings[AppSettings::SITE_WEBMANIFEST]);
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.master.app-settings.index'))
@@ -118,7 +159,13 @@ test('an owner can update the name photo and favicon', function () {
         );
 
     $this->get(route('demo.home'))
-        ->assertSee('<link rel="icon" href="'.$faviconUrl.'" sizes="any">', false);
+        ->assertSee('<link rel="icon" href="'.$faviconUrl.'" sizes="any">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="16x16" href="'.$favicon16Url.'">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="32x32" href="'.$favicon32Url.'">', false)
+        ->assertSee('<link rel="apple-touch-icon" sizes="180x180" href="'.$appleTouchIconUrl.'">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="192x192" href="'.$androidChrome192Url.'">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="512x512" href="'.$androidChrome512Url.'">', false)
+        ->assertSee('<link rel="manifest" href="'.$siteWebmanifestUrl.'">', false);
 });
 
 test('replacing an app photo deletes the previous file', function () {
@@ -129,6 +176,7 @@ test('replacing an app photo deletes the previous file', function () {
         'app_name' => 'Kilap Auto Spa',
         'whatsapp' => '6281234567890',
         'instagram' => 'kilap.autospa',
+        'favicon' => fakeFavicon(),
         'app_photo' => UploadedFile::fake()->image('first.png'),
     ]);
 
@@ -145,6 +193,18 @@ test('replacing an app photo deletes the previous file', function () {
     Storage::disk('public')->assertExists(AppSettings::get(AppSettings::APP_PHOTO));
 });
 
+test('favicon ico is mandatory until one has been uploaded', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.app-settings.update'), [
+            'app_name' => 'Kilap Auto Spa',
+            'whatsapp' => '6281234567890',
+            'instagram' => 'kilap.autospa',
+        ])
+        ->assertSessionHasErrors('favicon');
+});
+
 test('app setting rejects invalid names and files', function () {
     Storage::fake('public');
     $owner = Admin::factory()->create(['is_owner' => true]);
@@ -157,9 +217,27 @@ test('app setting rejects invalid names and files', function () {
             'instagram' => 'instagram tidak valid',
             'app_photo' => UploadedFile::fake()->create('app.pdf', 10, 'application/pdf'),
             'favicon' => UploadedFile::fake()->create('favicon.svg', 10, 'image/svg+xml'),
+            'favicon_16' => UploadedFile::fake()->image('favicon-16x16.png', 32, 32),
+            'favicon_32' => UploadedFile::fake()->image('favicon-32x32.png', 16, 16),
+            'apple_touch_icon' => UploadedFile::fake()->image('apple-touch-icon.png', 100, 100),
+            'android_chrome_192' => UploadedFile::fake()->image('android-chrome-192x192.png', 200, 200),
+            'android_chrome_512' => UploadedFile::fake()->image('android-chrome-512x512.png', 500, 500),
+            'site_webmanifest' => UploadedFile::fake()->createWithContent('site.webmanifest', '{tidak-valid'),
         ])
         ->assertRedirect(route('admin.master.app-settings.index'))
-        ->assertSessionHasErrors(['app_name', 'whatsapp', 'instagram', 'app_photo', 'favicon']);
+        ->assertSessionHasErrors([
+            'app_name',
+            'whatsapp',
+            'instagram',
+            'app_photo',
+            'favicon',
+            'favicon_16',
+            'favicon_32',
+            'apple_touch_icon',
+            'android_chrome_192',
+            'android_chrome_512',
+            'site_webmanifest',
+        ]);
 });
 
 test('staff access follows app setting capabilities', function () {

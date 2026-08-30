@@ -20,6 +20,8 @@ dataset('admin modules', [
     'reports' => ['demo.admin.reports', 'demo/admin/Reports', ['stats', 'trend', 'filters', 'customerActivity', 'bookingSummary', 'inventorySummary']],
     'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'categories', 'capabilities']],
     'master work shifts' => ['demo.admin.master.work-shifts', 'admin/master/WorkShifts', ['workShifts', 'capabilities']],
+    'master timezone' => ['demo.admin.master.timezone', 'admin/master/Timezone', ['timezone', 'timezones', 'capabilities']],
+    'master app settings' => ['demo.admin.master.app-settings', 'admin/master/AppSettings', ['settings', 'capabilities']],
 ]);
 
 test('an owner can open every module with its expected props', function (string $routeName, string $component, array $props) {
@@ -50,8 +52,26 @@ test('the master module is nested under an expandable sidebar group', function (
                 ->where('modules.10.active', true)
                 ->where('modules.10.children.0.key', 'master_services')
                 ->where('modules.10.children.0.href', route('demo.admin.master.services', absolute: false))
+                ->where('modules.10.children.2.key', 'master_timezone')
+                ->where('modules.10.children.2.href', route('demo.admin.master.timezone', absolute: false))
+                ->where('modules.10.children.3.key', 'master_app_settings')
+                ->where('modules.10.children.3.href', route('demo.admin.master.app-settings', absolute: false))
         );
 });
+
+test('demo configuration pages are read only', function (string $routeName) {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route($routeName))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('mode', 'demo')
+                ->where('capabilities.update', false)
+        );
+})->with([
+    'timezone' => 'demo.admin.master.timezone',
+    'app settings' => 'demo.admin.master.app-settings',
+]);
 
 test('the sidebar only offers modules the active role may reach', function () {
     $this->withSession([RoleAccess::SESSION_KEY => 'cs'])
@@ -74,7 +94,7 @@ test('the entry screen exposes the roles and the full access matrix', function (
             fn (AssertableInertia $page) => $page
                 ->component('demo/auth/Entry')
                 ->has('roles', 5)
-                ->has('modules', 12)
+                ->has('modules', 14)
                 ->has('matrix')
         );
 });

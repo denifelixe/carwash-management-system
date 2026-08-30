@@ -32,7 +32,7 @@ class Brand
     /**
      * Document metadata shared by every page through the root template.
      *
-     * @return array{title: string, description: string, keywords: string, themeColor: string, locale: string, ogImage: string, favicon: string}
+     * @return array{title: string, description: string, keywords: string, themeColor: string, locale: string, ogImage: string, favicon: string, favicon16: string|null, favicon32: string|null, appleTouchIcon: string, androidChrome192: string, androidChrome512: string, siteWebmanifest: string}
      */
     public static function meta(): array
     {
@@ -46,6 +46,12 @@ class Brand
             'locale' => 'id_ID',
             'ogImage' => '/og-image.png',
             'favicon' => AppSettings::faviconUrl() ?? '/favicon.ico',
+            'favicon16' => AppSettings::favicon16Url(),
+            'favicon32' => AppSettings::favicon32Url(),
+            'appleTouchIcon' => AppSettings::appleTouchIconUrl() ?? '/apple-touch-icon.png',
+            'androidChrome192' => AppSettings::androidChrome192Url() ?? '/icon-192.png',
+            'androidChrome512' => AppSettings::androidChrome512Url() ?? '/icon-512.png',
+            'siteWebmanifest' => AppSettings::siteWebmanifestUrl() ?? '/site.webmanifest',
         ];
     }
 

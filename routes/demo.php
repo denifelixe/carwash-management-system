@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Demo\AdminRoleController;
+use App\Http\Controllers\Demo\AppSettingController;
 use App\Http\Controllers\Demo\BookingController;
 use App\Http\Controllers\Demo\CustomerController;
 use App\Http\Controllers\Demo\DashboardController;
@@ -13,6 +14,7 @@ use App\Http\Controllers\Demo\PosController;
 use App\Http\Controllers\Demo\ReportController;
 use App\Http\Controllers\Demo\RewardController;
 use App\Http\Controllers\Demo\ServiceController;
+use App\Http\Controllers\Demo\TimezoneController;
 use App\Http\Controllers\Demo\WorkShiftController;
 use Illuminate\Support\Facades\Route;
 
@@ -77,6 +79,14 @@ Route::name('demo.')->group(function () {
         Route::get('master/shift', [WorkShiftController::class, 'index'])
             ->middleware('demo.module:master_work_shifts')
             ->name('master.work-shifts');
+
+        Route::get('master/zona-waktu', [TimezoneController::class, 'index'])
+            ->middleware('demo.module:master_timezone')
+            ->name('master.timezone');
+
+        Route::get('master/app-setting', [AppSettingController::class, 'index'])
+            ->middleware('demo.module:master_app_settings')
+            ->name('master.app-settings');
     });
 
     /*

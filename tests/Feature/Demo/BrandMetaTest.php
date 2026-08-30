@@ -46,6 +46,8 @@ test('the root template links the whole favicon set', function () {
         ->assertOk()
         ->assertSee('<link rel="icon" href="/favicon.ico" sizes="any">', false)
         ->assertSee('<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">', false)
+        ->assertSee('<link rel="icon" type="image/png" sizes="512x512" href="/icon-512.png">', false)
         ->assertSee('<link rel="manifest" href="/site.webmanifest">', false);
 });
 

@@ -6,6 +6,9 @@ import laravel from 'laravel-vite-plugin';
 import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 
+// Every page is bundled, so Wayfinder must generate imports for both application types.
+process.env.WAYFINDER_GENERATE_ALL_ROUTES = 'true';
+
 export default defineConfig({
     plugins: [
         laravel({

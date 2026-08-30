@@ -2,9 +2,45 @@
 
 use App\Models\Admin;
 use App\Models\Member;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
+
+/**
+ * @return array<string, string>
+ */
+function environmentForApplicationType(string $applicationType): array
+{
+    $cacheSuffix = Str::lower($applicationType);
+
+    return [
+        'APP_CONFIG_CACHE' => base_path("bootstrap/cache/config-{$cacheSuffix}-test.php"),
+        'APP_ROUTES_CACHE' => base_path("bootstrap/cache/routes-{$cacheSuffix}-test.php"),
+        'APP_TYPE' => $applicationType,
+        'APP_URL' => 'https://carwash-demo.zenadigital.id',
+        'DEMO_DOMAIN' => 'ignored-demo.zenadigital.id',
+        'DEMO_URL' => 'https://ignored-demo.zenadigital.id',
+    ];
+}
+
+/**
+ * @return Collection<int, array<string, mixed>>
+ */
+function routesForApplicationType(string $applicationType): Collection
+{
+    $result = Process::path(base_path())
+        ->env(environmentForApplicationType($applicationType))
+        ->run([PHP_BINARY, 'artisan', 'route:list', '--json', '--except-vendor', '--no-interaction']);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+
+    return collect(json_decode($result->output(), true, flags: JSON_THROW_ON_ERROR));
+}
 
 test('application domains are derived from the configured application url', function () {
-    expect(config('domains.app'))->toBe('carwash-management-system.test')
+    expect(config('app.type'))->toBe('ALL')
+        ->and(config('app.generate_all_routes'))->toBeFalse()
+        ->and(config('domains.app'))->toBe('carwash-management-system.test')
         ->and(config('domains.admin'))->toBe('admin.carwash-management-system.test')
         ->and(config('domains.member'))->toBe('member.carwash-management-system.test')
         ->and(config('domains.demo'))->toBe('demo.carwash-management-system.test')
@@ -13,6 +49,49 @@ test('application domains are derived from the configured application url', func
         ->and(config('domains.demo_url'))->toBe('https://demo.carwash-management-system.test')
         ->and(config('fortify.portals.admin.guard'))->toBe('admin')
         ->and(config('fortify.portals.member.guard'))->toBe('member');
+});
+
+test('demo mode only registers demo routes on the application url', function () {
+    $routes = routesForApplicationType('DEMO');
+    $routeNames = $routes->pluck('name');
+    $demoUrl = Process::path(base_path())
+        ->env(environmentForApplicationType('DEMO'))
+        ->run([PHP_BINARY, 'artisan', 'config:show', 'domains.demo_url', '--no-interaction']);
+
+    expect($demoUrl->successful())->toBeTrue($demoUrl->errorOutput())
+        ->and($demoUrl->output())->toContain('https://carwash-demo.zenadigital.id')
+        ->not->toContain('ignored-demo.zenadigital.id')
+        ->and($routeNames)->toContain('demo.home')
+        ->not->toContain('home', 'admin.login', 'member.login')
+        ->and($routes->firstWhere('name', 'demo.home')['domain'])
+        ->toBe('carwash-demo.zenadigital.id');
+});
+
+test('live mode only registers live routes', function () {
+    $routeNames = routesForApplicationType('LIVE')->pluck('name');
+
+    expect($routeNames)->toContain('home', 'admin.login', 'member.login')
+        ->and($routeNames->filter(fn (?string $name): bool => Str::startsWith((string) $name, 'demo.')))
+        ->toBeEmpty();
+});
+
+test('all mode registers demo and live routes', function () {
+    $routeNames = routesForApplicationType('ALL')->pluck('name');
+
+    expect($routeNames)->toContain('demo.home', 'home', 'admin.login', 'member.login');
+});
+
+test('an invalid application type prevents the application from booting', function () {
+    $result = Process::path(base_path())
+        ->env([
+            'APP_CONFIG_CACHE' => base_path('bootstrap/cache/config-invalid-test.php'),
+            'APP_TYPE' => 'demo',
+        ])
+        ->run([PHP_BINARY, 'artisan', 'about', '--no-interaction']);
+
+    expect($result->failed())->toBeTrue()
+        ->and($result->output().$result->errorOutput())
+        ->toContain('APP_TYPE must be one of: DEMO, LIVE, ALL.');
 });
 
 test('the main domain sends visitors to the admin login', function () {

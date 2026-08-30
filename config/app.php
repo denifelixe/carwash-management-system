@@ -1,5 +1,11 @@
 <?php
 
+$applicationType = (string) env('APP_TYPE', 'ALL');
+
+if (! in_array($applicationType, ['DEMO', 'LIVE', 'ALL'], true)) {
+    throw new InvalidArgumentException('APP_TYPE must be one of: DEMO, LIVE, ALL.');
+}
+
 return [
 
     /*
@@ -27,6 +33,10 @@ return [
     */
 
     'env' => env('APP_ENV', 'production'),
+
+    'type' => $applicationType,
+
+    'generate_all_routes' => (bool) env('WAYFINDER_GENERATE_ALL_ROUTES', false),
 
     /*
     |--------------------------------------------------------------------------
