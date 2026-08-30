@@ -7,7 +7,7 @@ use Inertia\Testing\AssertableInertia;
 
 test('the booking board keeps only the two schedule counters', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -20,7 +20,7 @@ test('the booking board keeps only the two schedule counters', function () {
 
 test('the booking board stacks today, upcoming, and finished schedules', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -40,7 +40,7 @@ test('the booking board stacks today, upcoming, and finished schedules', functio
 
 test('the boards replace the booking history table', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -53,14 +53,14 @@ test('the boards replace the booking history table', function () {
 });
 
 test('booking board rows omit prices like the order list', function () {
-    expect(file_get_contents(resource_path('js/pages/demo/admin/Bookings.vue')))
+    expect(file_get_contents(resource_path('js/pages/admin/Bookings.vue')))
         ->not->toContain('formatCurrency(booking.estimate)')
         ->toContain('<StatusPill :status="bookingPill(booking)" />');
 });
 
 test('booking rows and details follow the order information hierarchy', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     $bookingRow = mb_substr(
@@ -123,7 +123,7 @@ test('booking rows and details follow the order information hierarchy', function
 
 test('booking details separate the booking date from execution without showing a price', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -146,7 +146,7 @@ test('booking details separate the booking date from execution without showing a
 
 test('only bookings that have not entered order processing can be edited', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -166,7 +166,7 @@ test('the slide-over footer lays out its actions at full width', function () {
 
 test('the booking module never sets a status of its own', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     // No status writing, and none of the buttons that used to do it.
@@ -182,7 +182,7 @@ test('the booking module never sets a status of its own', function () {
 });
 
 test('today and passed bookings show their order status while upcoming bookings show their schedule', function () {
-    expect(file_get_contents(resource_path('js/pages/demo/admin/Bookings.vue')))
+    expect(file_get_contents(resource_path('js/pages/admin/Bookings.vue')))
         ->toContain('if (daysAhead <= 0) {')
         ->toContain('return booking.orderStatus;')
         ->toContain("return 'mendatang';")
@@ -219,13 +219,13 @@ test('booking numbers reuse the order numbering with a BK marker', function () {
         expect($booking['code'])->toStartWith('ORD-BK-');
     }
 
-    expect(file_get_contents(resource_path('js/pages/demo/admin/Bookings.vue')))
+    expect(file_get_contents(resource_path('js/pages/admin/Bookings.vue')))
         ->toContain('code: `ORD-BK-${formatDateCode(draft.value.date)}${String(sequence).padStart(2,');
 });
 
 test('the booking module schedules a day, never an hour', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
@@ -239,9 +239,26 @@ test('the booking module schedules a day, never an hour', function () {
     }
 });
 
+test('the booking date acts as one calendar button instead of an editable field', function () {
+    $bookingsPage = file_get_contents(
+        resource_path('js/pages/admin/Bookings.vue'),
+    );
+
+    expect($bookingsPage)
+        ->toContain('ref="bookingDateInput"')
+        ->toContain('@click="openBookingDatePicker"')
+        ->toContain("typeof input.showPicker === 'function'")
+        ->toContain('aria-haspopup="dialog"')
+        ->toContain('cursor-pointer')
+        ->toContain('select-none')
+        ->toContain('pointer-events-none')
+        ->toContain('tabindex="-1"')
+        ->toContain('{{ displayBookingDate }}');
+});
+
 test('the booking form is the order form plus a date', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
@@ -280,13 +297,13 @@ test('the booking form starts at the actual current date', function () {
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->component('demo/admin/Bookings')
+                ->component('admin/Bookings')
                 ->where('today', '2026-08-19')
         );
 });
 
 test('a new booking is saved on the date that was picked', function () {
-    expect(file_get_contents(resource_path('js/pages/demo/admin/Bookings.vue')))
+    expect(file_get_contents(resource_path('js/pages/admin/Bookings.vue')))
         ->toContain('date: draft.value.date,')
         ->toContain('bookingDate: props.today,')
         ->toContain("orderStatus: 'booking',");

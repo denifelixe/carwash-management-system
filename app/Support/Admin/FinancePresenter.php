@@ -47,7 +47,7 @@ class FinancePresenter
             'method' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
             'channelBreakdown' => $transaction->channel_breakdown,
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : '—',
-            'shift' => $transaction->shift_name ?? FinanceQueries::shiftNameFor($time),
+            'shift' => $transaction->shift_name,
             'source' => 'pos',
             'orderId' => $order->id,
             'orderNo' => $order->number,

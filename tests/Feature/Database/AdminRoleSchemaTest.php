@@ -103,8 +103,8 @@ test('admin modules are prefilled from the demo navigation', function () {
         ->get(['key', 'name', 'description', 'sort_order']);
 
     /* The demo navigation, plus the master modules that only exist live. */
-    expect($modules)->toHaveCount(13);
-    expect($modules->last()->key)->toBe('master_timezone');
+    expect($modules)->toHaveCount(14);
+    expect($modules->last()->key)->toBe('master_app_settings');
 
     foreach (RoleAccess::modules() as $index => $demoModule) {
         $expectedKey = $demoModule['key'] === 'users'

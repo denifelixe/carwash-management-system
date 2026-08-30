@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\View\View as IlluminateView;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,6 +34,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         AppSettings::applyTimezone();
+        AppSettings::applyBranding();
 
         $this->configureDatabaseSessions();
         $this->configureDefaults();
@@ -41,7 +43,7 @@ class AppServiceProvider extends ServiceProvider
             ? true
             : null);
 
-        foreach (['users_and_roles', 'orders', 'pos', 'finance', 'members', 'master_services', 'master_work_shifts', 'master_timezone'] as $moduleKey) {
+        foreach (['users_and_roles', 'orders', 'pos', 'bookings', 'finance', 'members', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings'] as $moduleKey) {
             foreach (['create', 'read', 'update', 'delete'] as $permission) {
                 Gate::define(
                     "admin.{$moduleKey}.{$permission}",
@@ -50,7 +52,7 @@ class AppServiceProvider extends ServiceProvider
             }
         }
 
-        View::share('meta', Brand::meta());
+        View::composer('app', fn (IlluminateView $view): IlluminateView => $view->with('meta', Brand::meta()));
     }
 
     /**

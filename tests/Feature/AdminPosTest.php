@@ -384,3 +384,57 @@ test('demo and live cashier pages have one frontend source of truth', function (
         ->and(file_get_contents(app_path('Http/Controllers/Demo/PosController.php')))
         ->toContain("'admin/Pos'");
 });
+
+test('the recap tabs are built from the active shifts, in the order the day runs', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    AdminWorkShift::query()->create([
+        'key' => 'night',
+        'name' => 'Shift Malam',
+        'starts_at' => '23:00:00',
+        'ends_at' => '08:00:00',
+        'is_active' => true,
+    ]);
+    AdminWorkShift::query()->create([
+        'key' => 'retired',
+        'name' => 'Shift Lama',
+        'starts_at' => '05:00:00',
+        'ends_at' => '07:00:00',
+        'is_active' => false,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.pos.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/Pos')
+                ->has('shifts', 3)
+                ->where('shifts.0.key', 'morning')
+                ->where('shifts.0.name', 'Shift Pagi')
+                ->where('shifts.0.time', '08.00 - 16.00')
+                ->where('shifts.1.key', 'evening')
+                ->where('shifts.2.key', 'night')
+                /* Retired shifts keep no tab: their payments read as unassigned. */
+                ->where('shifts.2.name', 'Shift Malam'),
+        );
+});
+
+test('a payment taken by a cashier on no shift is stored without one', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 50000],
+            ],
+        ])
+        ->assertRedirect();
+
+    expect(OrderTransaction::query()->firstOrFail())
+        ->shift_name->toBeNull()
+        ->recorded_by_admin_id->toBe($cashier->id);
+});

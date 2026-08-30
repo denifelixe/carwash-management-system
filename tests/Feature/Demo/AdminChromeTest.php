@@ -59,8 +59,8 @@ test('the sidebar modules follow the operational menu order', function () {
         'members',
         'inventory',
         'rewards',
-        'users',
         'reports',
+        'users',
         'master_services',
         'master_work_shifts',
     ]);

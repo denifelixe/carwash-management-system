@@ -9,7 +9,6 @@ use App\Models\Order;
 use App\Models\OrderTransaction;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
-use Illuminate\Support\Str;
 
 /**
  * The reads behind the live finance ledger (BR-10). Money the cashier took is
@@ -134,7 +133,7 @@ class FinanceQueries
                 'id' => $shift->key,
                 'name' => $shift->name,
                 'time' => $shift->starts_at !== null && $shift->ends_at !== null
-                    ? self::clock($shift->starts_at).' - '.self::clock($shift->ends_at)
+                    ? OrderPresenter::clock($shift->starts_at).' - '.OrderPresenter::clock($shift->ends_at)
                     : null,
                 'cashier' => $cashier instanceof Admin ? $cashier->name : '',
                 'initials' => $cashier instanceof Admin ? OrderPresenter::initials($cashier->name) : '',
@@ -184,33 +183,6 @@ class FinanceQueries
     }
 
     /**
-     * The shift a payment fell in, for rows booked before the cashier's shift
-     * was recorded alongside them.
-     */
-    public static function shiftNameFor(string $time): ?string
-    {
-        $clock = str_replace('.', ':', $time).':00';
-
-        foreach (self::shifts() as $shift) {
-            /* A shift without both ends describes no window to fall inside. */
-            if ($shift->starts_at === null || $shift->ends_at === null) {
-                continue;
-            }
-
-            $isOvernight = $shift->ends_at <= $shift->starts_at;
-            $withinShift = $isOvernight
-                ? $clock >= $shift->starts_at || $clock < $shift->ends_at
-                : $clock >= $shift->starts_at && $clock < $shift->ends_at;
-
-            if ($withinShift) {
-                return $shift->name;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * @return Collection<int, AdminWorkShift>
      */
     private static function shifts(): Collection
@@ -232,11 +204,5 @@ class FinanceQueries
             $entries,
             fn (array $entry): bool => $entry['shift'] === $shift->name,
         ));
-    }
-
-    /** Shift windows are stored as times but read as 07.00 on the console. */
-    private static function clock(string $time): string
-    {
-        return Str::of($time)->substr(0, 5)->replace(':', '.')->value();
     }
 }

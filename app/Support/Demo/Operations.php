@@ -15,7 +15,7 @@ class Operations
      * `total` reflects the bill after cashier discounts; `reward` names what was
      * traded in at the cashier and is `'—'` when nothing was.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
      */
     public static function orders(): array
     {
@@ -47,7 +47,46 @@ class Operations
             ];
         }, self::recordedOrders());
 
-        return [...self::bookingOrders(), ...$orders];
+        return array_map(
+            self::withTransactionShifts(...),
+            [...self::bookingOrders(), ...$orders],
+        );
+    }
+
+    /**
+     * The demo fixtures predate shift tracking, so each payment is booked under
+     * the shift whose window its clock falls in. A payment outside every window
+     * stays unassigned, exactly as a live one taken by a cashier without a
+     * shift does.
+     *
+     * @param  array<string, mixed>  $order
+     * @return array<string, mixed>
+     */
+    private static function withTransactionShifts(array $order): array
+    {
+        return [
+            ...$order,
+            'transactions' => array_map(
+                fn (array $transaction): array => [
+                    ...$transaction,
+                    'shift' => self::shiftFor($transaction['time']),
+                ],
+                $order['transactions'],
+            ),
+        ];
+    }
+
+    private static function shiftFor(string $time): ?string
+    {
+        foreach (Brand::shifts() as $shift) {
+            [$startsAt, $endsAt] = explode(' - ', $shift['time']);
+
+            if ($time >= $startsAt && $time < $endsAt) {
+                return $shift['name'];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -204,7 +243,7 @@ class Operations
     /**
      * Orders handed to the cashier by the floor for final settlement.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
      */
     public static function settlementOrders(): array
     {
@@ -219,7 +258,7 @@ class Operations
      * today or later. Once a booking reaches settlement, the cashier handles it
      * exclusively in the settlement section.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
      */
     public static function partialPaymentBookingOrders(): array
     {
@@ -250,7 +289,7 @@ class Operations
      * Orders the cashier may settle: everything except the bookings still
      * waiting for their car to arrive and the orders that were cancelled.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
      */
     public static function billableOrders(): array
     {
@@ -263,7 +302,7 @@ class Operations
     /**
      * Orders whose vehicle has arrived and is being or has been served.
      *
-     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>}>}>
+     * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
      */
     public static function servedOrders(string $date): array
     {

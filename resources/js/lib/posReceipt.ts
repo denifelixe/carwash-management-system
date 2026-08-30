@@ -1,8 +1,5 @@
-import {
-    formatCurrency,
-    formatDate,
-    formatNumber,
-} from '@/composables/useCarwashFormat';
+import { formatCurrency, formatDate } from '@/composables/useCarwashFormat';
+import { brandContacts, escapeHtml, printedAt } from '@/lib/printDocument';
 import type { CarwashBrand } from '@/types/demo';
 
 /**
@@ -89,9 +86,6 @@ export interface PosReceipt {
     timezone: string;
     payment: string;
     paymentBreakdown: PosPaymentBreakdown[];
-    stampsEarned: number;
-    stampsSpent: number;
-    stampsAfter: number | null;
     /** Redeemed by the cashier, shown here so the customer sees it on the slip. */
     reward: string;
 }
@@ -100,36 +94,6 @@ export function paymentChannelLabel(payment: PosPaymentBreakdown): string {
     return payment.provider === ''
         ? payment.method
         : `${payment.method} · ${payment.provider}`;
-}
-
-function escapeHtml(value: string): string {
-    return value
-        .replaceAll('&', '&amp;')
-        .replaceAll('<', '&lt;')
-        .replaceAll('>', '&gt;')
-        .replaceAll('"', '&quot;');
-}
-
-/** "6281800090009" the way the slip prints it: "+62 818-0009-0009". */
-function formatWhatsapp(whatsapp: string): string {
-    const digits = whatsapp.replace(/\D/g, '');
-
-    if (!digits.startsWith('62')) {
-        return whatsapp;
-    }
-
-    const national = digits.slice(2);
-
-    return `+62 ${national.slice(0, 3)}-${national.slice(3, 7)}-${national.slice(7)}`;
-}
-
-/** Stamped on a copy so the desk can tell it from the original slip. */
-function reprintedAt(timeZone: string): string {
-    return new Intl.DateTimeFormat('id-ID', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-        timeZone,
-    }).format(new Date());
 }
 
 function metaRow(label: string, value: string): string {
@@ -199,12 +163,6 @@ function billBlock(receipt: PosReceipt): string {
         receipt.cashierDiscount > 0
             ? amountRow('Diskon kasir', receipt.cashierDiscount, 'negative')
             : '',
-        receipt.stampsSpent > 0
-            ? metaRow(
-                  'Stempel ditukar',
-                  `−${formatNumber(receipt.stampsSpent)} stempel`,
-              )
-            : '',
         amountRow('TOTAL', receipt.total, 'grand'),
     ].join('');
 }
@@ -267,20 +225,6 @@ function outstandingBlock(receipt: PosReceipt): string {
     return `<section class="block">${amountRow('Total sudah dibayar', receipt.paidTotal)}${amountRow('Sisa tagihan', receipt.dueAfter, 'strong')}</section>`;
 }
 
-function stampBlock(receipt: PosReceipt): string {
-    if (!receipt.isSettled || receipt.stampsAfter === null) {
-        return '';
-    }
-
-    const earned = metaRow(
-        'Stempel didapat',
-        `+${formatNumber(receipt.stampsEarned)}`,
-    );
-    const balance = metaRow('Saldo stempel', formatNumber(receipt.stampsAfter));
-
-    return `<section class="block">${earned}${balance}</section>`;
-}
-
 function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
     const title = receipt.isSettled
         ? 'STRUK PEMBAYARAN'
@@ -289,8 +233,7 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
     return `<header class="brand">
     <p class="logo">${escapeHtml(brand.logo)}</p>
     <p class="name">${escapeHtml(brand.name)}</p>
-    <p class="contact">WA ${escapeHtml(formatWhatsapp(brand.whatsapp))}</p>
-    <p class="contact">@${escapeHtml(brand.instagram)}</p>
+    ${brandContacts(brand.whatsapp, brand.instagram)}
 </header>
 <section class="block">
     <p class="title">${title}</p>
@@ -316,13 +259,11 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
 ${historyBlock(receipt)}
 <section class="block">${paymentBlock(receipt)}</section>
 ${outstandingBlock(receipt)}
-${stampBlock(receipt)}
 <footer class="footer">
     <p class="status">${receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'}</p>
     <p>Terima kasih atas kunjungan Anda.</p>
-    <p>Kumpulkan ${formatNumber(brand.stampTarget)} stempel untuk ${escapeHtml(brand.stampReward)}.</p>
     <p class="fineprint">Struk ini adalah bukti pembayaran yang sah.</p>
-    ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(reprintedAt(receipt.timezone))}.</p>` : ''}
+    ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(printedAt(receipt.timezone))}.</p>` : ''}
 </footer>`;
 }
 
@@ -365,7 +306,12 @@ body {
 .brand { text-align: center; }
 .logo { font-size: 20px; line-height: 1.2; }
 .name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
-.contact { color: #475569; font-size: 10px; }
+.contacts { align-items: center; display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+.contact { align-items: center; color: #475569; display: inline-flex; font-size: 10px; gap: 4px; }
+.contact-icon { display: inline-flex; height: 11px; width: 11px; }
+.contact-icon svg { height: 100%; width: 100%; }
+.contact-icon.whatsapp { color: #16a34a; }
+.contact-icon.instagram { color: #c026d3; }
 .block {
     border-top: 1px dashed #94a3b8;
     margin-top: 8px;

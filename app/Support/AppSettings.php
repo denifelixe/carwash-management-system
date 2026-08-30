@@ -5,6 +5,7 @@ namespace App\Support;
 use App\Models\AppSetting;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Throwable;
 
 /**
@@ -20,6 +21,16 @@ class AppSettings
 {
     public const TIMEZONE = 'timezone';
 
+    public const APP_NAME = 'app_name';
+
+    public const APP_PHOTO = 'app_photo';
+
+    public const FAVICON = 'favicon';
+
+    public const WHATSAPP = 'whatsapp';
+
+    public const INSTAGRAM = 'instagram';
+
     private const CACHE_KEY = 'app_settings';
 
     /**
@@ -34,6 +45,31 @@ class AppSettings
         return $timezone !== null && Timezones::has($timezone)
             ? $timezone
             : (string) config('app.timezone', Timezones::FALLBACK);
+    }
+
+    public static function appName(): string
+    {
+        return self::get(self::APP_NAME) ?? (string) config('app.name', 'Carwash');
+    }
+
+    public static function appPhotoUrl(): ?string
+    {
+        return self::publicUrl(self::APP_PHOTO);
+    }
+
+    public static function faviconUrl(): ?string
+    {
+        return self::publicUrl(self::FAVICON);
+    }
+
+    public static function whatsapp(): string
+    {
+        return self::get(self::WHATSAPP) ?? '6281800090009';
+    }
+
+    public static function instagram(): string
+    {
+        return self::get(self::INSTAGRAM) ?? 'zenwash.id';
     }
 
     public static function get(string $key): ?string
@@ -62,6 +98,18 @@ class AppSettings
 
         config(['app.timezone' => $timezone]);
         date_default_timezone_set($timezone);
+    }
+
+    public static function applyBranding(): void
+    {
+        config(['app.name' => self::appName()]);
+    }
+
+    private static function publicUrl(string $key): ?string
+    {
+        $path = self::get($key);
+
+        return $path !== null ? Storage::disk('public')->url($path) : null;
     }
 
     /**

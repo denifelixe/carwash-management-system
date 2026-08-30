@@ -15,11 +15,15 @@ class BookingController extends AdminController
 {
     public function index(Request $request): Response
     {
-        return $this->page($request, 'demo/admin/Bookings', [
+        return $this->page($request, 'admin/Bookings', [
             'bookings' => Operations::scheduledBookings(),
             'today' => now()->toDateString(),
             'services' => Catalog::services(),
             'customers' => Customers::all(),
+            'capabilities' => [
+                'create' => true,
+                'update' => true,
+            ],
         ]);
     }
 }

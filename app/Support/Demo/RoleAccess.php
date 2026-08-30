@@ -31,8 +31,8 @@ class RoleAccess
             ['key' => 'members', 'label' => 'Member', 'caption' => 'Database & stempel', 'icon' => 'members', 'route' => 'demo.admin.members'],
             ['key' => 'inventory', 'label' => 'Stock Inventory', 'caption' => 'Stok operasional', 'icon' => 'inventory', 'route' => 'demo.admin.inventory'],
             ['key' => 'rewards', 'label' => 'Reward', 'caption' => 'Katalog & syarat stempel', 'icon' => 'rewards', 'route' => 'demo.admin.rewards'],
-            ['key' => 'users', 'label' => 'User & Role', 'caption' => 'Hak akses pegawai', 'icon' => 'users', 'route' => 'demo.admin.users'],
             ['key' => 'reports', 'label' => 'Laporan', 'caption' => 'Monitoring & rekap', 'icon' => 'reports', 'route' => 'demo.admin.reports'],
+            ['key' => 'users', 'label' => 'User & Role', 'caption' => 'Hak akses pegawai', 'icon' => 'users', 'route' => 'demo.admin.users'],
             ['key' => 'master_services', 'label' => 'Layanan', 'caption' => 'Master data layanan', 'icon' => 'services', 'route' => 'demo.admin.master.services'],
             ['key' => 'master_work_shifts', 'label' => 'Shift', 'caption' => 'Master jadwal kerja', 'icon' => 'work-shifts', 'route' => 'demo.admin.master.work-shifts'],
         ];

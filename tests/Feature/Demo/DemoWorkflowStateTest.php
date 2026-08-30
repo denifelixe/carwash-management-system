@@ -47,8 +47,14 @@ test('payments are attributed to the active user and their configured shift', fu
         ->toContain('recordedBy: props.persona.name')
         ->toContain('shift: props.persona.shift')
         ->and($finance)
-        ->toContain(".toLocaleLowerCase('id-ID')")
-        ->toContain('.includes(activeShift.value)')
+        /* A row is filed under the shift it was stamped with, not its hour. */
+        ->toContain(
+            '!props.shifts.some((shift) => shift.name === entryShift)',
+        )
+        ->toContain(
+            'props.shifts.find((shift) => shift.id === activeShift.value)?.name ===',
+        )
+        ->not->toContain("entry.time < '15.00'")
         ->toContain('recordedBy: props.persona.name')
         ->toContain('shift: props.persona.shift')
         ->toContain('{{ entry.shift }}');

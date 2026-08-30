@@ -7,8 +7,10 @@ test('application domains are derived from the configured application url', func
     expect(config('domains.app'))->toBe('carwash-management-system.test')
         ->and(config('domains.admin'))->toBe('admin.carwash-management-system.test')
         ->and(config('domains.member'))->toBe('member.carwash-management-system.test')
+        ->and(config('domains.demo'))->toBe('demo.carwash-management-system.test')
         ->and(config('domains.admin_url'))->toBe('https://admin.carwash-management-system.test')
         ->and(config('domains.member_url'))->toBe('https://member.carwash-management-system.test')
+        ->and(config('domains.demo_url'))->toBe('https://demo.carwash-management-system.test')
         ->and(config('fortify.portals.admin.guard'))->toBe('admin')
         ->and(config('fortify.portals.member.guard'))->toBe('member');
 });

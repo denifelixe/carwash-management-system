@@ -25,6 +25,7 @@ import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
+import RecapPrintMenu from '@/components/demo/RecapPrintMenu.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import InputError from '@/components/InputError.vue';
 import {
@@ -33,6 +34,8 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { openRecapSheetWindow } from '@/lib/recapSheet';
+import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
 import admin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -66,11 +69,14 @@ const props = defineProps<{
 }>();
 
 type Ledger = 'in' | 'out';
-/** 'all', or the id of one of the shifts this console was given. */
+/** 'all', the id of one of the shifts this console was given, or the bucket below. */
 type Shift = string;
 
+const allShiftsKey = 'all';
+const unassignedShiftKey = 'tanpa-shift';
+
 const activeLedger = ref<Ledger>('in');
-const activeShift = ref<Shift>('all');
+const activeShift = ref<Shift>(allShiftsKey);
 const search = ref<string>('');
 const categoryFilter = ref<string>('Semua');
 const isFormOpen = ref<boolean>(false);
@@ -79,6 +85,8 @@ const deletingEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedOrder = ref<CarwashOrder | null>(null);
 const highlightedTransactionId = ref<string | null>(null);
+/** Set when the browser refuses the recap window so the desk can retry. */
+const isRecapWindowBlocked = ref<boolean>(false);
 
 const workflow = useCarwashWorkflow();
 
@@ -134,7 +142,11 @@ const activeCategories = computed<string[]>(() =>
 );
 
 const shiftTabs = computed(() => [
-    { id: 'all', label: 'Seluruh Shift', caption: 'Semua transaksi' },
+    {
+        id: allShiftsKey,
+        label: 'Seluruh Shift & Tanpa Shift',
+        caption: 'Semua transaksi',
+    },
     ...props.shifts.map((shift) => ({
         id: shift.id,
         label: shift.name,
@@ -144,29 +156,42 @@ const shiftTabs = computed(() => [
                 : shift.time
             : null,
     })),
+    {
+        id: unassignedShiftKey,
+        label: 'Tanpa Shift',
+        caption: 'Dicatat tanpa shift',
+    },
 ]);
 
+/**
+ * An entry belongs to the shift its recorder was rostered onto, stamped on it
+ * by name when it was written. The clock is never consulted: a row taken by
+ * someone on no shift has no shift, and saying otherwise put the same rupiah
+ * under a shift nobody was working.
+ */
 function isInActiveShift(entry: CarwashMoneyEntry): boolean {
-    if (activeShift.value === 'all') {
+    if (activeShift.value === allShiftsKey) {
         return true;
     }
 
-    if (entry.shift) {
-        /* An entry records the shift by name; a tab is keyed by its id, which
-         * only spells out the name on the demo console. */
-        const shiftName = props.shifts
-            .find((shift) => shift.id === activeShift.value)
-            ?.name.toLocaleLowerCase('id-ID');
-        const entryShift = entry.shift.toLocaleLowerCase('id-ID');
+    const entryShift = entry.shift ?? null;
 
+    /*
+     * Rows written without a shift land here, and so do rows stamped with a
+     * shift that has since been renamed or retired, so the tabs still add up.
+     */
+    if (activeShift.value === unassignedShiftKey) {
         return (
-            entryShift === shiftName || entryShift.includes(activeShift.value)
+            entryShift === null ||
+            !props.shifts.some((shift) => shift.name === entryShift)
         );
     }
 
-    const inferredShift = entry.time < '15.00' ? 'pagi' : 'sore';
-
-    return activeShift.value === inferredShift;
+    /* An entry records the shift by name; a tab is keyed by its id. */
+    return (
+        props.shifts.find((shift) => shift.id === activeShift.value)?.name ===
+        entryShift
+    );
 }
 
 const scopedIncome = computed<CarwashMoneyEntry[]>(() =>
@@ -253,6 +278,106 @@ const channelRows = computed(() =>
         };
     }),
 );
+
+/**
+ * What the shift being handed over comes to: the three figures on the cards and
+ * the channel table under them, and nothing else. The ledger rows behind them
+ * are deliberately left off — the sheet is a handover, not a statement.
+ *
+ * Everything is read off the same computeds the page renders, so the printout
+ * agrees with the screen, and the shift is whichever tab is open.
+ */
+function financeRecapSheet(): RecapSheet {
+    const tab = shiftTabs.value.find((shift) => shift.id === activeShift.value);
+    const channels = channelRows.value;
+
+    const totalRow = {
+        label: 'Total',
+        values: [
+            formatCurrency(totalIn.value),
+            formatCurrency(totalOut.value),
+            formatCurrency(remainingBalance.value),
+        ],
+        tones: [
+            'positive' as const,
+            'negative' as const,
+            remainingBalance.value < 0 ? ('negative' as const) : undefined,
+        ],
+    };
+
+    return {
+        title: 'Rekap Keuangan',
+        slug: 'rekap-keuangan',
+        periodLabel: formatDate(props.filters.date),
+        shiftLabel: tab?.label ?? 'Seluruh Shift & Tanpa Shift',
+        shiftCaption: tab?.caption ?? null,
+        meta: [{ label: 'Dicetak oleh', value: props.persona.name }],
+        summary: [
+            {
+                label: 'Uang masuk',
+                value: formatCurrency(totalIn.value),
+                caption: `${scopedIncome.value.length} transaksi tercatat`,
+                tone: 'positive',
+            },
+            {
+                label: 'Uang keluar',
+                value: formatCurrency(totalOut.value),
+                caption: `${scopedExpenses.value.length} pengeluaran`,
+                tone: 'negative',
+            },
+            {
+                label: 'Sisa saldo',
+                value: formatCurrency(remainingBalance.value),
+                caption: 'Uang masuk dikurangi uang keluar',
+                tone: remainingBalance.value < 0 ? 'negative' : 'default',
+            },
+        ],
+        tables: [
+            {
+                heading: 'Kanal Keuangan',
+                caption:
+                    'Ringkasan pemasukan, pengeluaran, dan saldo per kanal',
+                columns: [
+                    'Kanal Keuangan',
+                    'Pemasukan',
+                    'Pengeluaran',
+                    'Saldo Kanal',
+                ],
+                rows: channels.map((channel) => ({
+                    label: channel.label,
+                    values: [
+                        formatCurrency(channel.income),
+                        formatCurrency(channel.expense),
+                        formatCurrency(channel.balance),
+                    ],
+                    tones: [
+                        'positive' as const,
+                        'negative' as const,
+                        channel.balance < 0
+                            ? ('negative' as const)
+                            : ('default' as const),
+                    ],
+                })),
+                /*
+                 * The channels only add up to the day when every entry names
+                 * one, so the foot restates the cards rather than summing the
+                 * column and quietly disagreeing with them.
+                 */
+                total: {
+                    ...totalRow,
+                    tones: totalRow.tones.map((tone) => tone ?? 'default'),
+                },
+            },
+        ],
+        timezone: props.filters.timezone,
+    };
+}
+
+/** Hands the recap to its own window; a blocked window is flagged, not fatal. */
+function printRecap(paper: RecapPaper): void {
+    isRecapWindowBlocked.value =
+        openRecapSheetWindow(financeRecapSheet(), props.brand, paper) === null;
+}
 
 /**
  * Outgoing money must carry supporting documentation (BR-10), so the save
@@ -553,7 +678,7 @@ function applyDate(date: string): void {
             class="rounded-2xl border border-slate-200/80 bg-white p-2 shadow-sm"
         >
             <div
-                class="grid grid-cols-1 gap-1 sm:grid-cols-3"
+                class="flex flex-col gap-1 sm:flex-row sm:flex-wrap"
                 role="tablist"
                 aria-label="Filter shift"
             >
@@ -562,7 +687,7 @@ function applyDate(date: string): void {
                     :key="shift.id"
                     type="button"
                     role="tab"
-                    class="rounded-xl px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600"
+                    class="flex-1 rounded-xl px-4 py-3 text-left transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-600 sm:basis-40"
                     :class="
                         activeShift === shift.id
                             ? 'bg-cyan-50 text-cyan-700 shadow-sm ring-1 ring-cyan-200'
@@ -614,11 +739,22 @@ function applyDate(date: string): void {
             <article
                 class="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-sm"
             >
-                <div class="border-b border-slate-100 px-5 py-4">
-                    <h2 class="font-semibold text-slate-900">Kanal Keuangan</h2>
-                    <p class="mt-0.5 text-xs text-slate-500">
-                        Ringkasan pemasukan, pengeluaran, dan saldo per kanal
-                    </p>
+                <div
+                    class="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4"
+                >
+                    <div class="min-w-0">
+                        <h2 class="font-semibold text-slate-900">
+                            Kanal Keuangan
+                        </h2>
+                        <p class="mt-0.5 text-xs text-slate-500">
+                            Ringkasan pemasukan, pengeluaran, dan saldo per
+                            kanal
+                        </p>
+                    </div>
+                    <RecapPrintMenu
+                        :blocked="isRecapWindowBlocked"
+                        @print="printRecap"
+                    />
                 </div>
                 <div class="overflow-x-auto">
                     <table class="w-full min-w-[680px] text-sm">

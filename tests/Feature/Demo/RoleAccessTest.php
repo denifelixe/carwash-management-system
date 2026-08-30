@@ -133,7 +133,7 @@ test('the demo user module supplies the live page contract from dummy data', fun
                 ->has('roles.0.permissions', 12)
                 ->has('shifts', 2)
                 ->has('allModules', 12)
-                ->where('allModules.8.key', 'users_and_roles')
+                ->where('allModules.9.key', 'users_and_roles')
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
         );

@@ -45,6 +45,17 @@ test('picking a date narrows the module to that day', function (string $route) {
         );
 })->with('dated modules');
 
+test('a module accepts a date older than its available data', function (string $route) {
+    $this->withSession(['carwash_role' => 'owner'])
+        ->get(route($route, ['date' => '2000-01-01']))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('filters.date', '2000-01-01')
+                ->where('filters.label', '1 Jan 2000')
+        );
+})->with('dated modules');
+
 test('a date that cannot be read is dropped rather than rejected', function () {
     expect(DateFilter::resolve('kemarin'))->toBe('')
         ->and(DateFilter::resolve(null))->toBe('')
@@ -137,7 +148,7 @@ test('the dashboard order caption separates served vehicles from bookings that h
         );
 });
 
-test('the dashboard date filter is shown above the hero with a clear return action', function () {
+test('the dashboard date filter is calendar-only and accepts unlimited backdates', function () {
     $dashboardPage = file_get_contents(
         resource_path('js/pages/admin/Dashboard.vue'),
     );
@@ -149,12 +160,23 @@ test('the dashboard date filter is shown above the hero with a clear return acti
         ->toBeLessThan(strpos($dashboardPage, '<!-- Hero -->'))
         ->and($dateFilter)->toContain('Kembali ke Hari Ini')
         ->and($dateFilter)->not->toContain('Semua tanggal')
-        ->and($dateFilter)->not->toContain('allowAll');
+        ->and($dateFilter)->not->toContain('allowAll')
+        ->and($dateFilter)->not->toContain(':min="filters.earliest"')
+        ->and($dateFilter)->toContain(':max="latest"')
+        ->and($dateFilter)->toContain('aria-haspopup="dialog"')
+        ->and($dateFilter)->toContain('select-none')
+        ->and($dateFilter)->toContain('cursor-pointer')
+        ->and($dateFilter)->toContain('{{ displayDate }}')
+        ->and($dateFilter)->toContain('openDatePicker')
+        ->and($dateFilter)->toContain('ref="dateInput"')
+        ->and($dateFilter)->toContain('tabindex="-1"')
+        ->and($dateFilter)->toContain('pointer-events-none')
+        ->and($dateFilter)->not->toContain('@beforeinput.prevent');
 });
 
 test('booking order keeps its own boards instead of a date filter', function () {
     $bookingsPage = file_get_contents(
-        resource_path('js/pages/demo/admin/Bookings.vue'),
+        resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)->not->toContain('DateFilterBar');

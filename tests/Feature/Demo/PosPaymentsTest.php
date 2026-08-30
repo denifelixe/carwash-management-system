@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Demo\Brand;
 use App\Support\Demo\Catalog;
 use App\Support\Demo\DateFilter;
 use App\Support\Demo\Finance;
@@ -241,6 +242,37 @@ test('the cashier summary only shows settlement balance and received payments', 
         ->not->toContain('summaryCaption');
 });
 
+test('the demo POS ships the shift tabs and books every payment under one', function () {
+    $this->withSession([RoleAccess::SESSION_KEY => 'cashier'])
+        ->get(route('demo.admin.pos'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/Pos')
+                ->has('shifts', count(Brand::shifts()))
+                ->where('shifts.0.key', 'pagi')
+                ->where('shifts.0.name', 'Shift Pagi')
+                ->where('shifts.0.time', '07.00 - 15.00')
+                ->where('shifts.1.name', 'Shift Sore')
+        );
+
+    /*
+     * The recap buckets on the stamped name alone, so a fixture payment left
+     * without one would drop out of every shift tab and into 'Tanpa Shift'.
+     */
+    $transactions = array_merge(
+        ...array_column(Operations::orders(), 'transactions'),
+    );
+    $shiftNames = array_column(Brand::shifts(), 'name');
+
+    expect($transactions)->not->toBeEmpty();
+
+    foreach ($transactions as $transaction) {
+        expect($transaction)->toHaveKey('shift')
+            ->and($transaction['shift'])->toBeIn($shiftNames);
+    }
+});
+
 test('the received payment card opens a payment recap', function () {
     $posPage = file_get_contents(
         resource_path('js/pages/admin/Pos.vue'),
@@ -266,10 +298,12 @@ test('the received payment card opens a payment recap', function () {
         ->toContain('label: partialPaymentRecapLabel')
         ->toContain('label: finalPaymentRecapLabel')
         ->toContain('Kanal pembayaran')
-        ->toContain("type PaymentRecapShift = 'total' | 'pagi' | 'sore'")
-        ->toContain("{ key: 'total', label: 'Total', caption:")
-        ->toContain("{ key: 'pagi', label: 'Shift Pagi', caption:")
-        ->toContain("{ key: 'sore', label: 'Shift Sore', caption:")
+        ->toContain("const paymentRecapTotalKey = 'total'")
+        ->toContain("const paymentRecapUnassignedKey = 'tanpa-shift'")
+        ->toContain("const unassignedShiftLabel = 'Tanpa Shift'")
+        ->toContain('...props.shifts.map((shift) => ({')
+        ->toContain('key: paymentRecapUnassignedKey,')
+        ->toContain('label: unassignedShiftLabel,')
         ->toContain('{{ tab.count }} transaksi')
         ->toContain('role="tablist"')
         ->toContain(':aria-selected="activePaymentRecapShift === tab.key"')
@@ -282,7 +316,15 @@ test('the received payment card opens a payment recap', function () {
         ->toContain("block: 'start'")
         ->toContain('ref="paymentRecapDetailsElement"')
         ->toContain('movePaymentRecapShift(1)')
-        ->toContain('transactionMinutes < 15 * 60')
+        ->toContain(
+            '!props.shifts.some((option) => option.name === shiftName)',
+        )
+        ->toContain(
+            'props.shifts.find((option) => option.key === shift)?.name === shiftName',
+        )
+        /* The clock no longer stands in for a shift the payment never had. */
+        ->not->toContain('transactionMinutes')
+        ->not->toContain("transaction.time >= '15.00' ? 'Shift Sore'")
         ->toContain('activePaymentRecapTransactions')
         ->toContain('formatCurrency(activePaymentRecapTotal)')
         ->not->toContain('paymentRecapDiscountTotal')
@@ -572,7 +614,7 @@ test('waiting and in-progress orders remain unpaid without transactions', functi
         ->toContain("isFullyPaid && snapshot.intent === 'settlement'")
         ->toContain("type: completesOrder ? 'Pembayaran Lunas' : 'Pembayaran Sebagian'")
         ->toContain('isSettled: completesOrder')
-        ->toContain('stampsEarned: completesOrder ? order.stampsEarned : 0');
+        ->not->toContain('stampsEarned: completesOrder ? order.stampsEarned : 0');
 });
 
 test('the cashier opens the payment workflow in a modal', function () {

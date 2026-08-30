@@ -40,7 +40,7 @@ class CashEntryFactory extends Factory
             'category' => 'Pembelian Bahan',
             'description' => 'Snow foam 4 galon',
             'amount' => 1280000,
-            'attachment_path' => 'finance-attachments/2026/08/nota-supplier.jpg',
+            'attachment_path' => $attributes['reference'].'/nota-supplier.jpg',
             'attachment_name' => 'nota-supplier.jpg',
             'attachment_size' => 412000,
         ]);

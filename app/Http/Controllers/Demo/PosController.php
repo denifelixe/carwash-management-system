@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Demo;
 
+use App\Support\Demo\Brand;
 use App\Support\Demo\Catalog;
 use App\Support\Demo\Customers;
 use App\Support\Demo\DateFilter;
@@ -32,6 +33,14 @@ class PosController extends AdminController
             'dailyOrders' => DateFilter::apply(Operations::orders(), $date),
             'partialPaymentBookings' => Operations::partialPaymentBookingOrders(),
             'filters' => DateFilter::meta($date),
+            'shifts' => array_map(
+                fn (array $shift): array => [
+                    'key' => $shift['id'],
+                    'name' => $shift['name'],
+                    'time' => $shift['time'],
+                ],
+                Brand::shifts(),
+            ),
             'services' => Catalog::services(),
             'customers' => Customers::all(),
             'rewards' => Catalog::rewards(),

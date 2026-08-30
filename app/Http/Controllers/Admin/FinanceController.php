@@ -36,7 +36,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class FinanceController extends Controller
 {
-    private const ATTACHMENT_DISK = 'local';
+    private const ATTACHMENT_DISK = 's3';
 
     public function index(Request $request, AdminShell $adminShell): Response
     {
@@ -97,11 +97,13 @@ class FinanceController extends Controller
             'reference' => 'TRX-'.$occurredAt->format('YmdHisu'),
         ]);
 
-        $entry->fill($this->attachmentAttributes($request->file('attachment')))->save();
+        $entry->save();
 
-        $entry->update([
-            'reference' => FinanceReference::make($data['category'], $entryDate, $entry->id),
-        ]);
+        $entry->reference = FinanceReference::make($data['category'], $entryDate, $entry->id);
+        $entry->fill($this->attachmentAttributes(
+            $request->file('attachment'),
+            $entry->reference,
+        ))->save();
 
         return to_route('admin.finance.index', ['date' => $entryDate])
             ->with('success', 'Catatan keuangan berhasil disimpan.');
@@ -126,7 +128,10 @@ class FinanceController extends Controller
         ]);
 
         if ($attachment instanceof UploadedFile) {
-            $cashEntry->fill($this->attachmentAttributes($attachment));
+            $cashEntry->fill($this->attachmentAttributes(
+                $attachment,
+                $cashEntry->reference,
+            ));
         }
 
         $cashEntry->save();
@@ -177,7 +182,7 @@ class FinanceController extends Controller
     /**
      * @return array<string, mixed>
      */
-    private function attachmentAttributes(?UploadedFile $attachment): array
+    private function attachmentAttributes(?UploadedFile $attachment, string $reference): array
     {
         if (! $attachment instanceof UploadedFile) {
             return [];
@@ -185,7 +190,7 @@ class FinanceController extends Controller
 
         return [
             'attachment_path' => $attachment->store(
-                'finance-attachments/'.CarbonImmutable::now()->format('Y/m'),
+                $reference,
                 self::ATTACHMENT_DISK,
             ),
             'attachment_name' => $attachment->getClientOriginalName(),

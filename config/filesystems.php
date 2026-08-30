@@ -49,6 +49,7 @@ return [
 
         's3' => [
             'driver' => 's3',
+            'root' => trim((string) env('AWS_FOLDER', 'carwash-management-system'), '/').'/'.env('APP_ENV', 'production'),
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
             'region' => env('AWS_DEFAULT_REGION'),

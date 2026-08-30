@@ -2,22 +2,27 @@
 
 namespace App\Support\Demo;
 
+use App\Support\AppSettings;
+
 /**
  * Brand identity and shift definitions for the carwash prototype.
  */
 class Brand
 {
     /**
-     * @return array{name: string, system: string, logo: string, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string}
+     * @return array{name: string, system: string, logo: string, photo: string|null, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string}
      */
     public static function identity(): array
     {
+        $appName = AppSettings::appName();
+
         return [
-            'name' => 'ZenWash Auto Care',
-            'system' => 'ZenWash Auto Care Management System',
+            'name' => $appName,
+            'system' => $appName.' Management System',
             'logo' => '🚗',
-            'whatsapp' => '6281800090009',
-            'instagram' => 'zenwash.id',
+            'photo' => AppSettings::appPhotoUrl(),
+            'whatsapp' => AppSettings::whatsapp(),
+            'instagram' => AppSettings::instagram(),
             'stampTarget' => 10,
             'stampReward' => 'Gratis 1x Cuci Mobil Reguler',
             'today' => Reports::today()->locale('id')->isoFormat('dddd, D MMMM YYYY'),
@@ -27,7 +32,7 @@ class Brand
     /**
      * Document metadata shared by every page through the root template.
      *
-     * @return array{title: string, description: string, keywords: string, themeColor: string, locale: string, ogImage: string}
+     * @return array{title: string, description: string, keywords: string, themeColor: string, locale: string, ogImage: string, favicon: string}
      */
     public static function meta(): array
     {
@@ -40,6 +45,7 @@ class Brand
             'themeColor' => '#0284C7',
             'locale' => 'id_ID',
             'ogImage' => '/og-image.png',
+            'favicon' => AppSettings::faviconUrl() ?? '/favicon.ico',
         ];
     }
 

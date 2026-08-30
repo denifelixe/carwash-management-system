@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import {
     CalendarCheck,
     CalendarClock,
+    CalendarDays,
     CircleCheck,
     Clock,
     Phone,
@@ -11,9 +12,13 @@ import {
     Sparkles,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
+import {
+    store as storeBooking,
+    update as updateBooking,
+} from '@/actions/App/Http/Controllers/Admin/BookingController';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
@@ -33,12 +38,17 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     bookings: CarwashBooking[];
     /** The prototype's fixed "today", ISO formatted, anchoring every day label. */
     today: string;
     services: CarwashService[];
     customers: CarwashCustomer[];
+    capabilities: {
+        create: boolean;
+        update: boolean;
+    };
 }>();
 
 type CustomerMode = 'existing' | 'walk-in';
@@ -57,6 +67,15 @@ const customerTabs: { key: CustomerMode; label: string }[] = [
 
 const bookingList = ref<CarwashBooking[]>(
     props.bookings.map((booking) => ({ ...booking })),
+);
+
+watch(
+    () => props.bookings,
+    (bookings) => {
+        if (props.mode === 'live') {
+            bookingList.value = bookings.map((booking) => ({ ...booking }));
+        }
+    },
 );
 
 const customerList = ref<CarwashCustomer[]>(
@@ -80,6 +99,8 @@ const editingBookingId = ref<number | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
+const bookingDateInput = ref<HTMLInputElement | null>(null);
+const bookingForm = useForm({});
 
 const draft = ref({
     customerId: null as number | null,
@@ -187,7 +208,9 @@ const detailBooking = computed<CarwashBooking | null>(
 );
 
 const canEditDetailBooking = computed<boolean>(
-    () => detailBooking.value?.orderStatus === 'booking',
+    () =>
+        props.capabilities.update &&
+        detailBooking.value?.orderStatus === 'booking',
 );
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
@@ -245,8 +268,22 @@ const hasBookableDate = computed<boolean>(
     () => draft.value.date !== '' && draft.value.date >= props.today,
 );
 
+const displayBookingDate = computed<string>(() => {
+    const [year, month, day] = draft.value.date.split('-');
+
+    if (!year || !month || !day) {
+        return 'Pilih tanggal';
+    }
+
+    return `${day}/${month}/${year}`;
+});
+
 const canCreate = computed<boolean>(
     () =>
+        !bookingForm.processing &&
+        (editingBookingId.value === null
+            ? props.capabilities.create
+            : props.capabilities.update) &&
         draftServices.value.length > 0 &&
         draft.value.plate.trim() !== '' &&
         hasBookableDate.value &&
@@ -276,6 +313,32 @@ function dayLabelFor(date: string): string {
     return daysAhead > 0
         ? `${daysAhead} hari lagi`
         : `${Math.abs(daysAhead)} hari lalu`;
+}
+
+function openBookingDatePicker(): void {
+    const input = bookingDateInput.value;
+
+    if (!input) {
+        return;
+    }
+
+    if (typeof input.showPicker === 'function') {
+        try {
+            input.showPicker();
+
+            return;
+        } catch {
+            input.click();
+        }
+
+        return;
+    }
+
+    input.click();
+}
+
+function updateBookingDate(event: Event): void {
+    draft.value.date = (event.target as HTMLInputElement).value;
 }
 
 function pickCustomer(option: CustomerOption): void {
@@ -330,6 +393,7 @@ function resetDraft(): void {
     customerQuery.value = '';
     customerMode.value = 'existing';
     selectedCustomerOption.value = null;
+    bookingForm.clearErrors();
 }
 
 function openCreateBooking(): void {
@@ -377,6 +441,33 @@ function startEditingBooking(): void {
 
 function saveBooking(): void {
     if (!canCreate.value) {
+        return;
+    }
+
+    if (props.mode === 'live') {
+        const payload = {
+            customer_mode: customerMode.value,
+            member_id: draft.value.customerId,
+            member_vehicle_id: selectedCustomerOption.value?.vehicle.id ?? null,
+            customer_name: draft.value.walkInName,
+            customer_phone: draft.value.customerPhone,
+            vehicle_name: draft.value.vehicle,
+            vehicle_plate: draft.value.plate,
+            service_ids: [...draft.value.serviceIds],
+            service_date: draft.value.date,
+        };
+        const action =
+            editingBookingId.value === null
+                ? storeBooking()
+                : updateBooking(editingBookingId.value);
+
+        bookingForm
+            .transform(() => payload)
+            .submit(action, {
+                preserveScroll: true,
+                onSuccess: closeBookingForm,
+            });
+
         return;
     }
 
@@ -428,6 +519,7 @@ function saveBooking(): void {
     <div class="space-y-4">
         <div class="flex justify-end">
             <button
+                v-if="capabilities.create"
                 type="button"
                 class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
                 @click="openCreateBooking"
@@ -627,6 +719,12 @@ function saveBooking(): void {
         @close="closeBookingForm"
     >
         <div class="space-y-5">
+            <p
+                v-if="Object.keys(bookingForm.errors).length > 0"
+                class="rounded-xl bg-red-50 px-3 py-2 text-xs font-medium text-red-700"
+            >
+                {{ Object.values(bookingForm.errors)[0] }}
+            </p>
             <!-- Customer -->
             <div>
                 <label
@@ -924,19 +1022,40 @@ function saveBooking(): void {
 
             <!-- Booking date: the one field an order does not have -->
             <div>
-                <label
-                    for="booking-date"
+                <p
                     class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
                 >
                     Tanggal kedatangan
-                </label>
-                <input
-                    id="booking-date"
-                    v-model="draft.date"
-                    type="date"
-                    :min="today"
-                    class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                />
+                </p>
+                <div class="relative mt-2">
+                    <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        :aria-label="`Pilih tanggal kedatangan, ${displayBookingDate}`"
+                        class="flex w-full cursor-pointer items-center justify-between gap-3 rounded-xl border border-slate-200 px-3 py-2.5 text-sm text-slate-700 transition select-none hover:bg-slate-50 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-100 focus-visible:outline-none"
+                        @click="openBookingDatePicker"
+                    >
+                        <span class="tabular-nums">
+                            {{ displayBookingDate }}
+                        </span>
+                        <CalendarDays
+                            aria-hidden="true"
+                            class="h-4 w-4 shrink-0 text-slate-600"
+                        />
+                    </button>
+
+                    <input
+                        id="booking-date"
+                        ref="bookingDateInput"
+                        type="date"
+                        tabindex="-1"
+                        aria-hidden="true"
+                        :value="draft.date"
+                        :min="today"
+                        class="pointer-events-none absolute right-0 bottom-0 h-px w-px opacity-0"
+                        @change="updateBookingDate"
+                    />
+                </div>
                 <p
                     v-if="draft.date !== ''"
                     class="mt-1.5 text-[11px] text-slate-400"
@@ -999,9 +1118,11 @@ function saveBooking(): void {
                 @click="saveBooking"
             >
                 {{
-                    editingBookingId === null
-                        ? 'Simpan booking'
-                        : 'Simpan perubahan'
+                    bookingForm.processing
+                        ? 'Menyimpan...'
+                        : editingBookingId === null
+                          ? 'Simpan booking'
+                          : 'Simpan perubahan'
                 }}
             </button>
         </template>

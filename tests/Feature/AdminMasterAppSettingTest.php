@@ -1,0 +1,182 @@
+<?php
+
+use App\Models\Admin;
+use App\Models\AdminModule;
+use App\Models\AdminRole;
+use App\Models\AppSetting;
+use App\Support\AppSettings;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia;
+
+beforeEach(function () {
+    Cache::flush();
+    config(['app.name' => 'ZenWash Auto Care']);
+});
+
+/**
+ * @param  array<string, bool>  $abilities
+ */
+function appSettingStaff(array $abilities): Admin
+{
+    $role = AdminRole::query()->create([
+        'key' => 'app_setting_'.uniqid(),
+        'name' => 'App Setting Staff',
+        'description' => 'Role uji akses app setting.',
+        'is_active' => true,
+    ]);
+
+    $role->modules()->attach(
+        AdminModule::query()->where('key', 'master_app_settings')->firstOrFail(),
+        [
+            'can_create' => $abilities['create'] ?? false,
+            'can_read' => $abilities['read'] ?? false,
+            'can_update' => $abilities['update'] ?? false,
+            'can_delete' => $abilities['delete'] ?? false,
+        ],
+    );
+
+    return Admin::factory()->create(['role_id' => $role->id]);
+}
+
+test('guests cannot open app setting', function () {
+    $this->get(route('admin.master.app-settings.index'))
+        ->assertRedirect(route('admin.login'));
+});
+
+test('an owner sees app setting in the master sidebar', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->component('admin/master/AppSettings')
+                ->where('settings.appName', 'ZenWash Auto Care')
+                ->where('settings.whatsapp', '6281800090009')
+                ->where('settings.instagram', 'zenwash.id')
+                ->where('settings.appPhotoUrl', null)
+                ->where('settings.faviconUrl', null)
+                ->where('capabilities.update', true)
+                ->where('modules.10.key', 'master')
+                ->where('modules.10.active', true)
+                ->where('modules.10.children.3.key', 'master_app_settings')
+                ->where('modules.10.children.3.active', true)
+                ->where(
+                    'modules.10.children.3.href',
+                    route('admin.master.app-settings.index', absolute: false),
+                ),
+        );
+});
+
+test('an owner can update the name photo and favicon', function () {
+    Storage::fake('public');
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.app-settings.update'), [
+            'app_name' => 'Kilap Auto Spa',
+            'whatsapp' => '0812-3456-7890',
+            'instagram' => '@Kilap.AutoSpa',
+            'app_photo' => UploadedFile::fake()->image('app-photo.png', 400, 400),
+            'favicon' => UploadedFile::fake()->image('favicon.png', 64, 64),
+        ])
+        ->assertRedirect(route('admin.master.app-settings.index'))
+        ->assertSessionHas('success');
+
+    $settings = AppSetting::query()
+        ->whereIn('key', [
+            AppSettings::APP_NAME,
+            AppSettings::WHATSAPP,
+            AppSettings::INSTAGRAM,
+            AppSettings::APP_PHOTO,
+            AppSettings::FAVICON,
+        ])
+        ->pluck('value', 'key');
+
+    expect($settings[AppSettings::APP_NAME])->toBe('Kilap Auto Spa')
+        ->and($settings[AppSettings::WHATSAPP])->toBe('6281234567890')
+        ->and($settings[AppSettings::INSTAGRAM])->toBe('kilap.autospa')
+        ->and(config('app.name'))->toBe('Kilap Auto Spa');
+
+    Storage::disk('public')->assertExists($settings[AppSettings::APP_PHOTO]);
+    Storage::disk('public')->assertExists($settings[AppSettings::FAVICON]);
+
+    $photoUrl = Storage::disk('public')->url($settings[AppSettings::APP_PHOTO]);
+    $faviconUrl = Storage::disk('public')->url($settings[AppSettings::FAVICON]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('brand.name', 'Kilap Auto Spa')
+                ->where('brand.photo', $photoUrl)
+                ->where('brand.whatsapp', '6281234567890')
+                ->where('brand.instagram', 'kilap.autospa'),
+        );
+
+    $this->get(route('demo.home'))
+        ->assertSee('<link rel="icon" href="'.$faviconUrl.'" sizes="any">', false);
+});
+
+test('replacing an app photo deletes the previous file', function () {
+    Storage::fake('public');
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')->post(route('admin.master.app-settings.update'), [
+        'app_name' => 'Kilap Auto Spa',
+        'whatsapp' => '6281234567890',
+        'instagram' => 'kilap.autospa',
+        'app_photo' => UploadedFile::fake()->image('first.png'),
+    ]);
+
+    $oldPath = AppSettings::get(AppSettings::APP_PHOTO);
+
+    $this->actingAs($owner, 'admin')->post(route('admin.master.app-settings.update'), [
+        'app_name' => 'Kilap Auto Spa',
+        'whatsapp' => '6281234567890',
+        'instagram' => 'kilap.autospa',
+        'app_photo' => UploadedFile::fake()->image('second.png'),
+    ]);
+
+    Storage::disk('public')->assertMissing($oldPath);
+    Storage::disk('public')->assertExists(AppSettings::get(AppSettings::APP_PHOTO));
+});
+
+test('app setting rejects invalid names and files', function () {
+    Storage::fake('public');
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.master.app-settings.index'))
+        ->post(route('admin.master.app-settings.update'), [
+            'app_name' => '',
+            'whatsapp' => 'nomor-wa',
+            'instagram' => 'instagram tidak valid',
+            'app_photo' => UploadedFile::fake()->create('app.pdf', 10, 'application/pdf'),
+            'favicon' => UploadedFile::fake()->create('favicon.svg', 10, 'image/svg+xml'),
+        ])
+        ->assertRedirect(route('admin.master.app-settings.index'))
+        ->assertSessionHasErrors(['app_name', 'whatsapp', 'instagram', 'app_photo', 'favicon']);
+});
+
+test('staff access follows app setting capabilities', function () {
+    $this->actingAs(appSettingStaff(['read' => false]), 'admin')
+        ->get(route('admin.master.app-settings.index'))
+        ->assertForbidden();
+
+    $readOnlyStaff = appSettingStaff(['read' => true]);
+
+    $this->actingAs($readOnlyStaff, 'admin')
+        ->get(route('admin.master.app-settings.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page->where('capabilities.update', false),
+        );
+
+    $this->actingAs($readOnlyStaff, 'admin')
+        ->post(route('admin.master.app-settings.update'), ['app_name' => 'Tidak Boleh'])
+        ->assertForbidden();
+});

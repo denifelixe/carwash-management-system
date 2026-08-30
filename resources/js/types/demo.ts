@@ -6,6 +6,7 @@ export interface CarwashBrand {
     name: string;
     system: string;
     logo: string;
+    photo: string | null;
     whatsapp: string;
     instagram: string;
     stampTarget: number;
@@ -198,8 +199,16 @@ export interface CarwashTransaction {
     channels: string;
     channelBreakdown: CarwashTransactionChannel[];
     /** User and shift that accepted the payment in this browser session. */
-    recordedBy?: string;
-    shift?: string;
+    recordedBy?: string | null;
+    shift?: string | null;
+}
+
+export interface CarwashWorkShift {
+    /** How a tab addresses the shift; a payment is stamped with `name`. */
+    key: string;
+    name: string;
+    /** The window it covers, as '08.00 - 16.00'; null when it has no hours. */
+    time: string | null;
 }
 
 export interface CarwashTransactionChannel {
@@ -291,8 +300,8 @@ export interface CarwashMoneyEntry {
     method: string;
     channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
-    /** Shift copied from the active user's persona, when available. */
-    shift?: string;
+    /** The shift its recorder was rostered onto; absent when they had none. */
+    shift?: string | null;
     source?: string;
     orderId?: number | null;
     orderNo?: string | null;

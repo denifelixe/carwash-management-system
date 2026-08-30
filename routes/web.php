@@ -3,7 +3,7 @@
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
-Route::domain((string) config('demo.domain'))->group(function (): void {
+Route::domain((string) config('domains.demo'))->group(function (): void {
     require __DIR__.'/demo.php';
 });
 

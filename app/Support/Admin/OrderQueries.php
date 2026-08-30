@@ -2,6 +2,7 @@
 
 namespace App\Support\Admin;
 
+use App\Models\AdminWorkShift;
 use App\Models\Member;
 use App\Models\Order;
 use App\Models\Service;
@@ -53,6 +54,20 @@ class OrderQueries
     }
 
     /**
+     * Every scheduled order, including completed and cancelled history.
+     *
+     * @return Collection<int, Order>
+     */
+    public static function bookings(): Collection
+    {
+        return self::baseQuery()
+            ->where('source', 'booking')
+            ->orderByDesc('service_date')
+            ->latest('id')
+            ->get();
+    }
+
+    /**
      * The catalog behind an order list: everything sellable today plus the
      * services those orders were billed with, even once retired.
      *
@@ -89,6 +104,22 @@ class OrderQueries
             'served' => $statuses->reject(fn (string $status): bool => $status === 'booking')->count(),
             'awaitingBooking' => $statuses->filter(fn (string $status): bool => $status === 'booking')->count(),
         ];
+    }
+
+    /**
+     * The shifts a payment can be booked under, in the order the day runs. A
+     * retired shift is left out: its old payments read as unassigned rather
+     * than keeping a tab alive that nobody can be rostered onto.
+     *
+     * @return Collection<int, AdminWorkShift>
+     */
+    public static function workShifts(): Collection
+    {
+        return AdminWorkShift::query()
+            ->where('is_active', true)
+            ->orderBy('starts_at')
+            ->orderBy('id')
+            ->get();
     }
 
     /**

@@ -24,6 +24,7 @@ import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
+import RecapPrintMenu from '@/components/demo/RecapPrintMenu.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import {
@@ -39,6 +40,8 @@ import type {
     PosReceiptHistoryEntry,
     PosReceiptLine,
 } from '@/lib/posReceipt';
+import { openRecapSheetWindow } from '@/lib/recapSheet';
+import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
 import { normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
@@ -50,6 +53,7 @@ import type {
     CarwashReward,
     CarwashService,
     CarwashTransaction,
+    CarwashWorkShift,
 } from '@/types/demo';
 
 const props = defineProps<{
@@ -59,6 +63,7 @@ const props = defineProps<{
     dailyOrders: CarwashOrder[];
     partialPaymentBookings: CarwashOrder[];
     filters: CarwashDateFilter;
+    shifts: CarwashWorkShift[];
     services: CarwashService[];
     customers: CarwashCustomer[];
     rewards: CarwashReward[];
@@ -125,7 +130,12 @@ interface PaymentRecapOrderDetail {
     highlightedTransactionId: string | null;
 }
 
-type PaymentRecapShift = 'total' | 'pagi' | 'sore';
+/** A recap tab: 'total', a shift key from the master list, or the bucket below. */
+type PaymentRecapShift = string;
+
+const paymentRecapTotalKey = 'total';
+const paymentRecapUnassignedKey = 'tanpa-shift';
+const unassignedShiftLabel = 'Tanpa Shift';
 
 const bankPaymentMethods = ['Kredit', 'Debit', 'Transfer'];
 const bankOptions = [
@@ -152,7 +162,7 @@ const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
 const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
 const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
 const selectedPaymentRecapOrder = ref<PaymentRecapOrderDetail | null>(null);
-const activePaymentRecapShift = ref<PaymentRecapShift>('total');
+const activePaymentRecapShift = ref<PaymentRecapShift>(paymentRecapTotalKey);
 const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
 const selectedRewardId = ref<number | null>(null);
@@ -183,6 +193,8 @@ const receipt = ref<PosReceipt | null>(null);
 /** Set when the browser refuses the slip window so the cashier can retry. */
 const isReceiptWindowBlocked = ref<boolean>(false);
 const isPaymentRecapOpen = ref<boolean>(false);
+/** Set when the browser refuses the recap window so the cashier can retry. */
+const isRecapWindowBlocked = ref<boolean>(false);
 
 const partialPaymentBookingIds = new Set(
     props.partialPaymentBookings.map((order) => order.id),
@@ -262,9 +274,34 @@ const paymentRecapFinalTransactions = computed(() =>
     ),
 );
 
+/**
+ * One tab per shift on the master list, so renaming a shift or rostering a new
+ * one reaches the recap without a code change, bracketed by the day's total and
+ * the payments no shift claims.
+ */
+const paymentRecapShiftOptions = computed<
+    Array<{ key: PaymentRecapShift; label: string; caption: string }>
+>(() => [
+    {
+        key: paymentRecapTotalKey,
+        label: 'Total',
+        caption: 'Seluruh jam operasional',
+    },
+    ...props.shifts.map((shift) => ({
+        key: shift.key,
+        label: shift.name,
+        caption: shift.time ?? 'Tanpa jam kerja',
+    })),
+    {
+        key: paymentRecapUnassignedKey,
+        label: unassignedShiftLabel,
+        caption: 'Kasir tanpa shift',
+    },
+]);
+
 /** Each shift tab carries its own transaction count so the split reads before switching. */
 const paymentRecapShiftTabs = computed(() =>
-    paymentRecapShiftOptions.map((option) => ({
+    paymentRecapShiftOptions.value.map((option) => ({
         ...option,
         count: paymentRecapTransactions.value.filter((transaction) =>
             isTransactionInShift(transaction, option.key),
@@ -272,34 +309,37 @@ const paymentRecapShiftTabs = computed(() =>
     })),
 );
 
-const paymentRecapShiftOptions: Array<{
-    key: PaymentRecapShift;
-    label: string;
-    caption: string;
-}> = [
-    { key: 'total', label: 'Total', caption: 'Seluruh jam operasional' },
-    { key: 'pagi', label: 'Shift Pagi', caption: 'Transaksi sebelum 15.00' },
-    { key: 'sore', label: 'Shift Sore', caption: 'Transaksi mulai 15.00' },
-];
-
+/**
+ * A payment belongs to the shift of the cashier who took it, which is stamped
+ * on it by name when it is written. The clock is never consulted: guessing a
+ * shift from the hour disagreed with the shift windows the outlet actually
+ * keeps, and hid the fact that a cashier was rostered onto no shift at all.
+ */
 function isTransactionInShift(
     transaction: CarwashTransaction,
     shift: PaymentRecapShift,
 ): boolean {
-    if (shift === 'total') {
+    if (shift === paymentRecapTotalKey) {
         return true;
     }
 
-    if (transaction.shift) {
-        return transaction.shift.toLocaleLowerCase('id-ID').includes(shift);
+    const shiftName = transaction.shift ?? null;
+
+    /*
+     * Payments taken without a shift land here, and so do payments stamped with
+     * a shift that has since been renamed or retired — otherwise they would
+     * vanish from every tab but Total, and the tabs would not add up to it.
+     */
+    if (shift === paymentRecapUnassignedKey) {
+        return (
+            shiftName === null ||
+            !props.shifts.some((option) => option.name === shiftName)
+        );
     }
 
-    const [hours = 0, minutes = 0] = transaction.time.split(/[.:]/).map(Number);
-    const transactionMinutes = hours * 60 + minutes;
-
-    return shift === 'pagi'
-        ? transactionMinutes < 15 * 60
-        : transactionMinutes >= 15 * 60;
+    return (
+        props.shifts.find((option) => option.key === shift)?.name === shiftName
+    );
 }
 
 function isTransactionInActiveShift(transaction: CarwashTransaction): boolean {
@@ -426,6 +466,103 @@ const paymentRecapByChannel = computed<PaymentRecapRow[]>(() => {
     });
 });
 
+/**
+ * What the till hands over at the end of a shift: the money taken, split by the
+ * kind of payment and by the channel it arrived through. The drill-down list
+ * under those sections is deliberately left off — the sheet is a recap, and a
+ * cashier closing up does not need every transaction reprinted with it.
+ */
+function posRecapSheet(): RecapSheet {
+    const tab = paymentRecapShiftTabs.value.find(
+        (option) => option.key === activePaymentRecapShift.value,
+    );
+    const channels = paymentRecapByChannel.value;
+    const channelTotal = channels.reduce(
+        (total, channel) => total + channel.amount,
+        0,
+    );
+    const channelCount = channels.reduce(
+        (total, channel) => total + channel.count,
+        0,
+    );
+
+    return {
+        title: 'Rekap Pembayaran Diterima',
+        slug: 'rekap-kasir-pos',
+        periodLabel: formatDate(props.filters.date),
+        shiftLabel: tab?.label ?? 'Total',
+        shiftCaption: tab?.caption ?? null,
+        meta: [{ label: 'Dicetak oleh', value: props.persona.name }],
+        summary: [
+            {
+                label: 'Total pembayaran diterima',
+                value: formatCurrency(activePaymentRecapTotal.value),
+                caption: 'Termasuk pembayaran sebagian dan pembayaran lunas',
+                tone: 'positive',
+            },
+            {
+                label: 'Jumlah transaksi',
+                value: formatNumber(paymentRecapTransactionCount.value),
+            },
+            {
+                label: finalPaymentRecapLabel,
+                value: formatNumber(paymentRecapFinalOrderCount.value),
+            },
+        ],
+        tables: [
+            {
+                heading: 'Jenis transaksi',
+                columns: ['Jenis', 'Jumlah', 'Nominal'],
+                rows: paymentRecapByType.value.map((row) => ({
+                    label: row.label,
+                    values: [
+                        formatNumber(row.count),
+                        formatCurrency(row.amount),
+                    ],
+                })),
+                total: {
+                    label: 'Total',
+                    values: [
+                        formatNumber(paymentRecapTransactionCount.value),
+                        formatCurrency(activePaymentRecapTotal.value),
+                    ],
+                },
+            },
+            {
+                heading: 'Kanal pembayaran',
+                columns: ['Kanal', 'Jumlah', 'Nominal'],
+                rows: channels.map((row) => ({
+                    label: row.label,
+                    values: [
+                        formatNumber(row.count),
+                        formatCurrency(row.amount),
+                    ],
+                })),
+                /*
+                 * One payment can be split across channels, so the channel
+                 * count runs ahead of the transaction count and is footed on
+                 * its own rather than restating the card above.
+                 */
+                total: {
+                    label: 'Total',
+                    values: [
+                        formatNumber(channelCount),
+                        formatCurrency(channelTotal),
+                    ],
+                },
+                emptyMessage: 'Belum ada pembayaran pada periode ini.',
+            },
+        ],
+        timezone: props.filters.timezone,
+    };
+}
+
+/** Hands the recap to its own window; a blocked window is flagged, not fatal. */
+function printRecap(paper: RecapPaper): void {
+    isRecapWindowBlocked.value =
+        openRecapSheetWindow(posRecapSheet(), props.brand, paper) === null;
+}
+
 const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
     const selection = selectedPaymentRecap.value;
 
@@ -540,15 +677,24 @@ function selectPaymentRecapShift(shift: PaymentRecapShift): void {
     selectedPaymentRecapOrder.value = null;
 }
 
+/* A shift retired from the master takes its tab with it, so the recap falls
+ * back to the total rather than reading off a tab that is no longer there. */
+watch(paymentRecapShiftOptions, (options) => {
+    if (
+        !options.some((option) => option.key === activePaymentRecapShift.value)
+    ) {
+        selectPaymentRecapShift(paymentRecapTotalKey);
+    }
+});
+
 /** Arrow-key roving between shift tabs, as expected of a `role="tablist"`. */
 function movePaymentRecapShift(offset: number): void {
-    const currentIndex = paymentRecapShiftOptions.findIndex(
+    const options = paymentRecapShiftOptions.value;
+    const currentIndex = options.findIndex(
         (option) => option.key === activePaymentRecapShift.value,
     );
-    const nextIndex =
-        (currentIndex + offset + paymentRecapShiftOptions.length) %
-        paymentRecapShiftOptions.length;
-    const nextShift = paymentRecapShiftOptions[nextIndex];
+    const nextIndex = (currentIndex + offset + options.length) % options.length;
+    const nextShift = options[nextIndex];
 
     if (!nextShift) {
         return;
@@ -563,7 +709,8 @@ function closePaymentRecap(): void {
     selectedPaymentRecap.value = null;
     selectedPaymentRecapTransaction.value = null;
     selectedPaymentRecapOrder.value = null;
-    activePaymentRecapShift.value = 'total';
+    activePaymentRecapShift.value = paymentRecapTotalKey;
+    isRecapWindowBlocked.value = false;
 }
 
 function orderTypeLabel(order: CarwashOrder): string {
@@ -1046,12 +1193,9 @@ function paymentTransactionRecorder(transaction: CarwashTransaction): string {
     );
 }
 
-/** Seeded payments predate shift tracking, so the clock stands in for it. */
+/** A payment taken by a cashier who is on no shift says so on the slip. */
 function paymentTransactionShift(transaction: CarwashTransaction): string {
-    return (
-        transaction.shift ??
-        (transaction.time >= '15.00' ? 'Shift Sore' : 'Shift Pagi')
-    );
+    return transaction.shift ?? unassignedShiftLabel;
 }
 
 function paymentHistoryTypeLabel(transaction: CarwashTransaction): string {
@@ -1341,7 +1485,8 @@ function settledReceipt(
         date: transaction?.date ?? props.filters.today,
         time: transaction?.time ?? '—',
         cashier: transaction?.recordedBy ?? props.persona.name,
-        shift: transaction?.shift ?? props.persona.shift,
+        shift:
+            transaction?.shift || props.persona.shift || unassignedShiftLabel,
         customer: order.customer,
         vehicle: order.vehicle,
         plate: order.plate,
@@ -1363,10 +1508,6 @@ function settledReceipt(
         timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
-        stampsEarned: isSettled ? order.stampsEarned : 0,
-        stampsSpent: snapshot.reward?.requiredStamps ?? 0,
-        /* The live console has no stamp ledger yet, so none is printed. */
-        stampsAfter: null,
         reward: order.reward,
     };
 }
@@ -1485,7 +1626,7 @@ function applyDemoPayment(
         date: transaction.date,
         time: transaction.time,
         cashier: transaction.recordedBy ?? props.persona.name,
-        shift: transaction.shift ?? props.persona.shift,
+        shift: transaction.shift || props.persona.shift || unassignedShiftLabel,
         customer: order.customer,
         vehicle: order.vehicle,
         plate: order.plate,
@@ -1507,9 +1648,6 @@ function applyDemoPayment(
         timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
-        stampsEarned: completesOrder ? order.stampsEarned : 0,
-        stampsSpent: reward?.requiredStamps ?? 0,
-        stampsAfter: customer?.stamps ?? null,
         reward: order.reward,
     };
 }
@@ -1616,10 +1754,6 @@ function transactionReceipt(
                 provider: '',
                 reference: '',
             })) ?? [],
-        stampsEarned: order.stampsEarned,
-        stampsSpent: 0,
-        /* The balance printed then is not the balance now, so it is omitted. */
-        stampsAfter: null,
         reward: order.reward,
     };
 }
@@ -1702,7 +1836,7 @@ const memberForm = useForm({
         >
             <div class="space-y-5">
                 <div
-                    class="grid grid-cols-3 gap-1 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80 ring-inset"
+                    class="flex flex-wrap gap-1 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80 ring-inset"
                     role="tablist"
                     aria-label="Filter rekap pembayaran berdasarkan shift"
                     @keydown.left.prevent="movePaymentRecapShift(-1)"
@@ -1718,7 +1852,7 @@ const memberForm = useForm({
                         :aria-selected="activePaymentRecapShift === tab.key"
                         aria-controls="payment-recap-panel"
                         :tabindex="activePaymentRecapShift === tab.key ? 0 : -1"
-                        class="flex flex-col items-center justify-center rounded-xl px-3 py-2 leading-tight transition duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 focus-visible:outline-none"
+                        class="flex flex-1 basis-24 flex-col items-center justify-center rounded-xl px-3 py-2 leading-tight transition duration-200 focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-100 focus-visible:outline-none"
                         :class="
                             activePaymentRecapShift === tab.key
                                 ? 'bg-gradient-to-r from-cyan-500 to-sky-600 text-white shadow-md shadow-cyan-500/30'
@@ -2420,6 +2554,10 @@ const memberForm = useForm({
             </div>
 
             <template #footer>
+                <RecapPrintMenu
+                    :blocked="isRecapWindowBlocked"
+                    @print="printRecap"
+                />
                 <button
                     type="button"
                     class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
@@ -3870,14 +4008,6 @@ const memberForm = useForm({
                     </span>
                 </div>
                 <div
-                    v-if="receipt.stampsSpent > 0"
-                    class="flex justify-between rounded-xl bg-violet-50 p-3 text-xs font-medium text-violet-800 ring-1 ring-violet-100"
-                >
-                    <span>Stempel ditukar</span>
-                    <span>−{{ receipt.stampsSpent }} stempel</span>
-                </div>
-
-                <div
                     v-if="receipt.paymentBreakdown.length > 0"
                     class="space-y-1 border-t border-dashed border-slate-200 pt-3"
                 >
@@ -3938,28 +4068,6 @@ const memberForm = useForm({
                         <span>Sisa tagihan</span>
                         <span class="tabular-nums">
                             {{ formatCurrency(receipt.dueAfter) }}
-                        </span>
-                    </p>
-                </div>
-
-                <div
-                    v-else-if="receipt.stampsAfter !== null"
-                    class="rounded-xl bg-cyan-50 p-3 ring-1 ring-cyan-100"
-                >
-                    <p
-                        class="flex items-center justify-between text-xs text-cyan-900"
-                    >
-                        <span>Stempel didapat</span>
-                        <span class="font-semibold tabular-nums">
-                            +{{ receipt.stampsEarned }}
-                        </span>
-                    </p>
-                    <p
-                        class="mt-1 flex items-center justify-between border-t border-cyan-200/60 pt-1 text-xs font-medium text-cyan-900"
-                    >
-                        <span>Saldo stempel sekarang</span>
-                        <span class="tabular-nums">
-                            {{ formatNumber(receipt.stampsAfter) }}
                         </span>
                     </p>
                 </div>

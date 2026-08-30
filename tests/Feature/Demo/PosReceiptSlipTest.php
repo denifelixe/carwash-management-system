@@ -19,6 +19,11 @@ function posModule(): string
     return file_get_contents(resource_path('js/pages/admin/Pos.vue'));
 }
 
+function printDocumentModule(): string
+{
+    return file_get_contents(resource_path('js/lib/printDocument.ts'));
+}
+
 test('the slip is laid out at the printable width of the 80mm roll', function () {
     expect(posReceiptModule())
         // 78mm printable area, in a frame wide enough for the print prompt.
@@ -61,8 +66,22 @@ test('the slip carries everything the customer needs to reconcile the payment', 
         ->toContain("'STRUK PEMBAYARAN'")
         ->toContain("'BUKTI PEMBAYARAN SEBAGIAN'")
         // Every value on the slip comes from user input, so none of it is raw.
-        ->toContain('function escapeHtml(value: string): string')
-        ->toContain("replaceAll('<', '&lt;')");
+        ->toContain("from '@/lib/printDocument'")
+        ->toContain('escapeHtml(receipt.items)');
+
+    expect(printDocumentModule())
+        ->toContain('export function escapeHtml(value: string): string')
+        ->toContain("replaceAll('<', '&lt;')")
+        ->toContain('export function brandContacts(')
+        ->toContain('contact-icon whatsapp')
+        ->toContain('contact-icon instagram');
+
+    expect(posReceiptModule())
+        ->toContain('${brandContacts(brand.whatsapp, brand.instagram)}')
+        ->not->toContain('stampBlock')
+        ->not->toContain('Stempel didapat')
+        ->not->toContain('Saldo stempel')
+        ->not->toContain('Kumpulkan ${formatNumber(brand.stampTarget)} stempel');
 
     expect(posModule())
         ->toContain('reference: paymentTransactionReference(transaction, order)')
@@ -128,8 +147,6 @@ test('settled orders stay reachable so their slip can be reprinted', function ()
         ->toContain('Cetak ulang struk')
         // The last payment is the settlement; the rest is history.
         ->toContain('isReprint: true')
-        // Figures the order never kept are omitted, not invented.
-        ->toContain('stampsAfter: null')
         ->toContain('change: 0')
         // Seeded payments carry no shift, so the clock stands in.
         ->toContain('function paymentTransactionShift(transaction: CarwashTransaction): string')
@@ -138,7 +155,7 @@ test('settled orders stay reachable so their slip can be reprinted', function ()
     expect(posReceiptModule())
         ->toContain('isReprint: boolean;')
         ->toContain('SALINAN / CETAK ULANG')
-        ->toContain('Dicetak ulang ${escapeHtml(reprintedAt(receipt.timezone))}')
+        ->toContain('Dicetak ulang ${escapeHtml(printedAt(receipt.timezone))}')
         // A copy cannot tell which payment took the discount.
         ->toContain("receipt.isReprint ? 'Diskon' : 'Diskon sebelumnya'")
         ->toContain("receipt.isReprint ? 'Pembayaran ini' : 'Pembayaran saat ini'");

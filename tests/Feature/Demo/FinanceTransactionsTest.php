@@ -188,35 +188,35 @@ test('dashboard revenue matches finance money in for the selected day', function
         ]);
 });
 
-test('dashboard shift figures use served orders and the finance ledger for the selected day', function () {
+/*
+ * A row belongs to the shift whoever wrote it was rostered onto, stamped on it
+ * by name. The clock plays no part: the console would otherwise credit a shift
+ * with money taken by someone who was not working it.
+ */
+test('dashboard shift figures follow the shift each ledger row was booked under', function () {
     $today = Reports::todayDate();
     $shifts = collect(Finance::shiftSummary($today))->keyBy('id');
     $todayIncome = DateFilter::apply(Finance::moneyIn(), $today);
     $todayExpenses = DateFilter::apply(Finance::moneyOut(), $today);
-    $servedOrders = Operations::servedOrders($today);
 
-    foreach (['pagi', 'sore'] as $shiftId) {
-        $isMorning = $shiftId === 'pagi';
-        $income = collect($todayIncome)
-            ->filter(fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning);
-        $expenses = collect($todayExpenses)
-            ->filter(fn (array $entry): bool => ($entry['time'] < '15.00') === $isMorning);
+    foreach (['pagi' => 'Shift Pagi', 'sore' => 'Shift Sore'] as $shiftId => $shiftName) {
+        $income = collect($todayIncome)->where('shift', $shiftName);
+        $expenses = collect($todayExpenses)->where('shift', $shiftName);
         $posIncome = $income->where('source', 'pos');
-        $shiftOrders = collect($servedOrders)
-            ->filter(fn (array $order): bool => ($order['time'] < '15.00') === $isMorning);
 
         expect($shifts[$shiftId])
             ->toMatchArray([
                 'revenue' => $posIncome->sum('amount'),
-                'vehiclesServed' => $shiftOrders->count(),
+                /* One vehicle per order, however many instalments it took. */
+                'vehiclesServed' => $posIncome->pluck('orderId')->unique()->count(),
                 'moneyIn' => $income->sum('amount'),
                 'moneyOut' => $expenses->sum('amount'),
             ]);
     }
 
-    expect($shifts['pagi']['vehiclesServed'])->toBe(8)
+    expect($shifts['pagi']['vehiclesServed'])->toBe(6)
         ->and($shifts['sore']['vehiclesServed'])->toBe(0)
-        ->and($shifts->sum('vehiclesServed'))->toBe(8);
+        ->and($shifts->sum('vehiclesServed'))->toBe(6);
 });
 
 test('finance page exposes and displays related order details', function () {
@@ -273,7 +273,9 @@ test('finance overview shows shift tabs stacked summaries and financial channels
     );
 
     expect($financePage)
-        ->toContain("label: 'Seluruh Shift'")
+        ->toContain("label: 'Seluruh Shift & Tanpa Shift'")
+        ->toContain("const unassignedShiftKey = 'tanpa-shift'")
+        ->toContain("label: 'Tanpa Shift'")
         ->toContain('v-if="shift.caption"')
         ->toContain('label="Uang masuk"')
         ->toContain('label="Uang keluar"')
@@ -286,6 +288,19 @@ test('finance overview shows shift tabs stacked summaries and financial channels
         ->toContain("label: key === 'E-Money' ? 'Emoney' : key")
         ->toContain('xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]')
         ->not->toContain('formatShortCurrency(shift.moneyIn)');
+});
+
+test('every ledger row is booked under the shift of whoever wrote it', function () {
+    $entries = [...Finance::moneyIn(), ...Finance::moneyOut()];
+    $shiftByStaff = array_column(RoleAccess::staff(), 'shift', 'name');
+
+    expect($entries)->not->toBeEmpty();
+
+    foreach ($entries as $entry) {
+        expect($entry)->toHaveKey('shift')
+            /* Never inferred from the hour: it is whoever wrote the row. */
+            ->and($entry['shift'])->toBe($shiftByStaff[$entry['recordedBy']] ?? null);
+    }
 });
 
 test('every finance entry exposes an exact channel breakdown', function () {

@@ -2,8 +2,10 @@
 
 use App\Http\Controllers\Admin\AdminRoleController;
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\BookingController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FinanceController;
+use App\Http\Controllers\Admin\Master\AppSettingController;
 use App\Http\Controllers\Admin\Master\ServiceController;
 use App\Http\Controllers\Admin\Master\TimezoneController;
 use App\Http\Controllers\Admin\Master\WorkShiftController;
@@ -57,6 +59,9 @@ Route::domain((string) config('domains.admin'))
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
             Route::post('orders', [OrderController::class, 'store'])->name('orders.store');
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
+            Route::get('bookings', [BookingController::class, 'index'])->name('bookings.index');
+            Route::post('bookings', [BookingController::class, 'store'])->name('bookings.store');
+            Route::patch('bookings/{order}', [BookingController::class, 'update'])->name('bookings.update');
             Route::get('pos', [PosController::class, 'index'])->name('pos.index');
             Route::post('pos/{order}/payments', [PosController::class, 'store'])->name('pos.payments.store');
             Route::post('pos/{order}/member', [PosController::class, 'storeMember'])->name('pos.member.store');
@@ -85,6 +90,8 @@ Route::domain((string) config('domains.admin'))
             Route::delete('master/shift/{workShift}', [WorkShiftController::class, 'destroy'])->name('master.work-shifts.destroy');
             Route::get('master/zona-waktu', [TimezoneController::class, 'index'])->name('master.timezone.index');
             Route::patch('master/zona-waktu', [TimezoneController::class, 'update'])->name('master.timezone.update');
+            Route::get('master/app-setting', [AppSettingController::class, 'index'])->name('master.app-settings.index');
+            Route::post('master/app-setting', [AppSettingController::class, 'update'])->name('master.app-settings.update');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');

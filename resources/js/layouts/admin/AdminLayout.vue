@@ -4,6 +4,7 @@ import {
     Bell,
     Boxes,
     CalendarClock,
+    Car,
     Clock3,
     ChartColumn,
     ChevronDown,
@@ -11,6 +12,7 @@ import {
     Database,
     Gift,
     Globe,
+    ImageIcon,
     LayoutDashboard,
     LogOut,
     Menu,
@@ -18,7 +20,6 @@ import {
     PanelLeftOpen,
     ScanLine,
     ShieldCheck,
-    SprayCan,
     Users,
     Wallet,
     X,
@@ -53,9 +54,10 @@ const moduleIcons: Record<string, LucideIcon> = {
     users: ShieldCheck,
     reports: ChartColumn,
     master: Database,
-    services: SprayCan,
+    services: Car,
     'work-shifts': Clock3,
     timezone: Globe,
+    'app-settings': ImageIcon,
 };
 
 const fallbackModule: CarwashAdminModule = {
@@ -181,9 +183,15 @@ function closeSidebar(module: CarwashAdminModule): void {
                 :class="isSidebarCollapsed ? 'lg:justify-center lg:px-0' : ''"
             >
                 <div
-                    class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-xl shadow-lg shadow-cyan-500/30"
+                    class="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-cyan-400 to-sky-600 text-xl shadow-lg shadow-cyan-500/30"
                 >
-                    {{ brand.logo }}
+                    <img
+                        v-if="brand.photo"
+                        :src="brand.photo"
+                        :alt="brand.name"
+                        class="h-full w-full object-cover"
+                    />
+                    <template v-else>{{ brand.logo }}</template>
                 </div>
                 <div
                     class="min-w-0 flex-1 leading-tight"

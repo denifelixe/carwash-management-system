@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CalendarDays } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import type { CarwashDateFilter } from '@/types/demo';
 
 const props = withDefaults(
@@ -19,6 +19,40 @@ const emit = defineEmits<{
 const latest = computed<string>(() =>
     props.allowFuture ? props.filters.latest : props.filters.today,
 );
+
+const dateInput = ref<HTMLInputElement | null>(null);
+
+const displayDate = computed<string>(() => {
+    const [year, month, day] = props.filters.date.split('-');
+
+    if (!year || !month || !day) {
+        return 'Pilih tanggal';
+    }
+
+    return `${day}/${month}/${year}`;
+});
+
+function openDatePicker(): void {
+    const input = dateInput.value;
+
+    if (!input) {
+        return;
+    }
+
+    if (typeof input.showPicker === 'function') {
+        try {
+            input.showPicker();
+
+            return;
+        } catch {
+            input.click();
+        }
+
+        return;
+    }
+
+    input.click();
+}
 </script>
 
 <template>
@@ -40,18 +74,38 @@ const latest = computed<string>(() =>
                 Kembali ke Hari Ini
             </button>
 
-            <label class="sr-only" for="filter-date">Tanggal</label>
-            <input
-                id="filter-date"
-                type="date"
-                :value="filters.date"
-                :min="filters.earliest"
-                :max="latest"
-                class="rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-700 tabular-nums focus:border-cyan-400 focus:outline-none"
-                @change="
-                    emit('change', ($event.target as HTMLInputElement).value)
-                "
-            />
+            <div class="relative">
+                <button
+                    type="button"
+                    aria-haspopup="dialog"
+                    :aria-label="`Pilih tanggal, ${filters.label}`"
+                    class="flex cursor-pointer items-center gap-3 rounded-xl border border-slate-200 px-3 py-1.5 text-sm text-slate-700 transition select-none hover:bg-slate-50 focus-visible:border-cyan-400 focus-visible:ring-2 focus-visible:ring-cyan-100 focus-visible:outline-none"
+                    @click="openDatePicker"
+                >
+                    <span class="tabular-nums">{{ displayDate }}</span>
+                    <CalendarDays
+                        aria-hidden="true"
+                        class="h-4 w-4 text-slate-600"
+                    />
+                </button>
+
+                <input
+                    id="filter-date"
+                    ref="dateInput"
+                    type="date"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    :value="filters.date"
+                    :max="latest"
+                    class="pointer-events-none absolute right-0 bottom-0 h-px w-px opacity-0"
+                    @change="
+                        emit(
+                            'change',
+                            ($event.target as HTMLInputElement).value,
+                        )
+                    "
+                />
+            </div>
         </div>
     </section>
 </template>

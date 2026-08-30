@@ -17,6 +17,7 @@ class ModuleGroups
         'master_services' => 'master',
         'master_work_shifts' => 'master',
         'master_timezone' => 'master',
+        'master_app_settings' => 'master',
     ];
 
     /** @var array<string, array{label: string, caption: string, icon: string}> */

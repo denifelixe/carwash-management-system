@@ -139,7 +139,7 @@ test('an evening payment is filed on the day the outlet clock says', function ()
     $evening = CarbonImmutable::parse('2026-08-30 22:30', 'Asia/Jakarta');
     $order->transactions()->update([
         'paid_at' => $evening->format('Y-m-d H:i:s'),
-        /* Left unrecorded, so the shift is worked out from the clock instead. */
+        /* Taken by a cashier on no shift, which the ledger reports as such. */
         'shift_name' => null,
     ]);
 
@@ -151,7 +151,7 @@ test('an evening payment is filed on the day the outlet clock says', function ()
                 ->has('moneyIn', 1)
                 ->where('moneyIn.0.date', '2026-08-30')
                 ->where('moneyIn.0.time', '22.30')
-                ->where('moneyIn.0.shift', 'Shift Sore')
+                ->where('moneyIn.0.shift', null)
                 ->has('orders', 1),
         );
 
@@ -213,7 +213,7 @@ test('money out is refused without its supporting document', function () {
 });
 
 test('money out stores its supporting document', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
@@ -226,8 +226,11 @@ test('money out stores its supporting document', function () {
 
     $entry = CashEntry::query()->sole();
 
-    expect($entry->attachment_name)->toBe('nota-supplier.jpg');
-    Storage::disk('local')->assertExists($entry->attachment_path);
+    expect(config('filesystems.disks.s3.root'))->toBe('carwash-management-system/testing')
+        ->and($entry->attachment_name)->toBe('nota-supplier.jpg')
+        ->and($entry->attachment_path)->toStartWith($entry->reference.'/')
+        ->and($entry->attachment_path)->toEndWith('.jpg');
+    Storage::disk('s3')->assertExists($entry->attachment_path);
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.finance.attachment', $entry))
@@ -235,7 +238,7 @@ test('money out stores its supporting document', function () {
 });
 
 test('an image attachment is flagged and served inline for the lightbox', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
@@ -262,7 +265,7 @@ test('an image attachment is flagged and served inline for the lightbox', functi
 });
 
 test('a document attachment is not flagged and is still handed over', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
@@ -286,7 +289,7 @@ test('a document attachment is not flagged and is still handed over', function (
 });
 
 test('a video attachment is refused', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
 
     $this->actingAs($owner, 'admin')
@@ -301,7 +304,7 @@ test('a video attachment is refused', function () {
 });
 
 test('a staff member without read access cannot download an attachment', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $entry = CashEntry::factory()->moneyOut()->create();
 
     $this->actingAs(financeStaff(['read' => false]), 'admin')
@@ -310,10 +313,11 @@ test('a staff member without read access cannot download an attachment', functio
 });
 
 test('an owner can change a recorded entry and replace its document', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    Storage::disk('local')->put($entry->attachment_path, 'nota lama');
+    $previousPath = $entry->attachment_path;
+    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
@@ -329,16 +333,17 @@ test('an owner can change a recorded entry and replace its document', function (
 
     expect($entry->category)->toBe('Operasional')
         ->and($entry->amount)->toBe(500000)
-        ->and($entry->attachment_name)->toBe('struk-token.pdf');
-    Storage::disk('local')->assertMissing('finance-attachments/2026/08/nota-supplier.jpg');
-    Storage::disk('local')->assertExists($entry->attachment_path);
+        ->and($entry->attachment_name)->toBe('struk-token.pdf')
+        ->and($entry->attachment_path)->toStartWith($entry->reference.'/');
+    Storage::disk('s3')->assertMissing($previousPath);
+    Storage::disk('s3')->assertExists($entry->attachment_path);
 });
 
 test('an entry keeps the document already on file when none is uploaded', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    Storage::disk('local')->put($entry->attachment_path, 'nota lama');
+    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
@@ -350,21 +355,21 @@ test('an entry keeps the document already on file when none is uploaded', functi
         ->assertSessionHasNoErrors();
 
     expect($entry->refresh()->attachment_name)->toBe('nota-supplier.jpg');
-    Storage::disk('local')->assertExists($entry->attachment_path);
+    Storage::disk('s3')->assertExists($entry->attachment_path);
 });
 
 test('an owner can delete an entry along with its document', function () {
-    Storage::fake('local');
+    Storage::fake('s3');
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->create();
-    Storage::disk('local')->put($entry->attachment_path, 'nota lama');
+    Storage::disk('s3')->put($entry->attachment_path, 'nota lama');
 
     $this->actingAs($owner, 'admin')
         ->delete(route('admin.finance.destroy', $entry))
         ->assertSessionHasNoErrors();
 
     expect(CashEntry::query()->count())->toBe(0);
-    Storage::disk('local')->assertMissing('finance-attachments/2026/08/nota-supplier.jpg');
+    Storage::disk('s3')->assertMissing($entry->attachment_path);
 });
 
 test('a staff member without update or delete access cannot change an entry', function () {
@@ -429,4 +434,32 @@ test('a payment taken after midnight is filed on the day the outlet clock says',
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->has('moneyIn', 0)
             ->has('orders', 0));
+});
+
+/*
+ * The shift is whoever wrote the row was rostered onto, stamped on it at write
+ * time. A cash entry from an admin on no shift stays unattributed rather than
+ * being credited to whichever shift happened to cover the hour.
+ */
+test('a hand-written entry takes the shift of the admin who wrote it', function () {
+    $shift = AdminWorkShift::query()->where('key', 'evening')->firstOrFail();
+    $rostered = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => $shift->id]);
+    $unrostered = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
+
+    foreach ([$rostered, $unrostered] as $admin) {
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.finance.store'), [
+                'direction' => 'in',
+                'category' => 'Penjualan Produk',
+                'description' => 'Parfum mobil',
+                'amount' => 50000,
+                'method' => 'Tunai',
+            ])
+            ->assertRedirect();
+    }
+
+    expect(CashEntry::query()->where('recorded_by_admin_id', $rostered->id)->firstOrFail())
+        ->shift_name->toBe('Shift Sore')
+        ->and(CashEntry::query()->where('recorded_by_admin_id', $unrostered->id)->firstOrFail())
+        ->shift_name->toBeNull();
 });
