@@ -8,6 +8,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | {app/Http/Controllers/Admin/**,app/Http/Controllers/Demo/**,resources/js/pages/admin/**} | .ai/rules/admin.md |
 | app/Support/Admin/** | .ai/rules/app-support-admin.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue} | .ai/rules/demo-js-pages-admin.md |
+| {app/Support/AppSettings.php,app/Support/Demo/Brand.php,app/Http/Controllers/Demo/**} | .ai/rules/demo.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Support/Admin/OrderQueries.php,app/Support/Admin/OrderPresenter.php,resources/js/pages/admin/Pos.vue} | .ai/rules/js-pages-admin.md |
 | resources/js/lib/** | .ai/rules/lib.md |
 | {routes/member.php,app/Http/Middleware/EnsureMemberPortalIsAvailable.php,bootstrap/app.php} | .ai/rules/middleware.md |

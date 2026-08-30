@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { Construction } from '@lucide/vue';
-import AppLogoIcon from '@/components/AppLogoIcon.vue';
+import { computed } from 'vue';
 import type { CarwashBrand } from '@/types/demo';
 
 const props = defineProps<{
     brand: CarwashBrand;
 }>();
 
+/* Without an uploaded app photo the notice wears the shipped social image. */
+const logo = computed(() => props.brand.photo ?? '/og-image.png');
 const whatsappUrl = `https://wa.me/${props.brand.whatsapp}`;
 const instagramUrl = `https://instagram.com/${props.brand.instagram}`;
 </script>
@@ -20,12 +22,10 @@ const instagramUrl = `https://instagram.com/${props.brand.instagram}`;
     >
         <main class="w-full max-w-lg text-center">
             <img
-                v-if="brand.photo"
-                :src="brand.photo"
+                :src="logo"
                 :alt="brand.name"
                 class="h-auto w-full rounded-xl object-contain"
             />
-            <AppLogoIcon v-else class="mx-auto size-16 fill-current" />
 
             <div
                 class="mt-6 rounded-lg border bg-card p-8 text-card-foreground"

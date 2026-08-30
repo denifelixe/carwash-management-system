@@ -17,6 +17,25 @@ test('every member portal path answers with the under construction notice', func
             ->has('brand'));
 })->with(['/', '/login', '/dashboard', '/halaman-yang-tidak-ada']);
 
+/*
+ * Without an uploaded app photo the notice used to fall back to the framework's
+ * own logo, which says nothing about the outlet. It wears the shipped social
+ * image instead, and the app photo as soon as one is saved.
+ */
+test('the under construction notice falls back to the shipped social image, not the framework logo', function () {
+    $notice = file_get_contents(resource_path('js/pages/member/UnderConstruction.vue'));
+
+    expect($notice)
+        ->toContain("props.brand.photo ?? '/og-image.png'")
+        ->not->toContain('AppLogoIcon');
+
+    expect(public_path('og-image.png'))->toBeFile();
+
+    $this->get(memberUrl())
+        ->assertServiceUnavailable()
+        ->assertInertia(fn (Assert $page) => $page->where('brand.photo', null));
+});
+
 test('member login is closed while the portal is under construction', function () {
     $member = Member::factory()->create();
 

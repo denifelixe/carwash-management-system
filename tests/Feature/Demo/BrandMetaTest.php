@@ -1,6 +1,9 @@
 <?php
 
+use App\Support\AppSettings;
 use App\Support\Demo\Brand;
+use Illuminate\Support\Facades\Storage;
+use Inertia\Testing\AssertableInertia;
 
 /**
  * The root template must ship the brand's document metadata and the full
@@ -75,3 +78,51 @@ dataset('favicon assets', [
 test('every referenced brand asset exists', function (string $asset) {
     expect(public_path($asset))->toBeFile();
 })->with('favicon assets');
+
+/*
+ * The demo and the live console share one installation, so the outlet's saved
+ * branding would otherwise leak onto the demo through the settings table. The
+ * demo always wears the shipped brand; only the live domains follow the
+ * settings an owner saved in Master > App Settings.
+ */
+test('the demo keeps the shipped brand even after the live console saves its own', function () {
+    Storage::fake('public');
+
+    AppSettings::put(AppSettings::APP_NAME, 'Showtime Autocare');
+    AppSettings::put(AppSettings::APP_PHOTO, 'app-branding/app-photo.png');
+    AppSettings::put(AppSettings::FAVICON, 'app-branding/favicon.ico');
+    AppSettings::put(AppSettings::FAVICON_16, 'app-branding/favicon-16x16.png');
+    AppSettings::put(AppSettings::META_TITLE, 'Showtime Autocare');
+    AppSettings::put(AppSettings::META_IMAGE, 'app-branding/social.png');
+    AppSettings::put(AppSettings::WHATSAPP, '6289900001111');
+    AppSettings::put(AppSettings::INSTAGRAM, 'showtime.autocare');
+
+    $this->get(route('demo.home'))
+        ->assertOk()
+        ->assertSee('<meta name="title" content="ZenWash Auto Care Management System">', false)
+        ->assertSee('<link rel="icon" href="/favicon.ico" sizes="any">', false)
+        ->assertSee('<meta property="og:image" content="'.url('/og-image.png').'">', false)
+        ->assertDontSee('favicon-16x16.png')
+        ->assertDontSee('Showtime')
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('brand.name', 'ZenWash Auto Care')
+            ->where('brand.photo', null)
+            ->where('brand.whatsapp', '6281800090009')
+            ->where('brand.instagram', 'zenwash.id'));
+});
+
+test('the live domains still wear the branding the owner saved', function () {
+    Storage::fake('public');
+
+    AppSettings::put(AppSettings::APP_NAME, 'Showtime Autocare');
+    AppSettings::put(AppSettings::APP_PHOTO, 'app-branding/app-photo.png');
+    AppSettings::put(AppSettings::INSTAGRAM, 'showtime.autocare');
+
+    $this->get('https://'.config('domains.member').'/')
+        ->assertServiceUnavailable()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('member/UnderConstruction')
+            ->where('brand.name', 'Showtime Autocare')
+            ->where('brand.photo', Storage::disk('public')->url('app-branding/app-photo.png'))
+            ->where('brand.instagram', 'showtime.autocare'));
+});

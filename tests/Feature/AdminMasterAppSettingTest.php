@@ -184,7 +184,8 @@ test('an owner can update the name photo and favicon', function () {
                 ->where('brand.instagram', 'kilap.autospa'),
         );
 
-    $this->get(route('demo.home'))
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
         ->assertSee('<meta name="title" content="'.e(appMetadataPayload()['meta_title']).'">', false)
         ->assertSee('<meta name="description" content="'.e(appMetadataPayload()['meta_description']).'">', false)
         ->assertSee('<meta property="og:image" content="'.url($metaImageUrl).'">', false)
@@ -264,7 +265,8 @@ test('an owner can remove app and metadata photos to restore defaults', function
                 ->where('settings.hasMetaImage', false),
         );
 
-    $this->get(route('demo.home'))
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
         ->assertSee('<meta property="og:image" content="'.url('/og-image.png').'">', false)
         ->assertSee('<meta property="twitter:image" content="'.url('/og-image.png').'">', false);
 });
@@ -284,7 +286,8 @@ test('favicon is optional and uses the default when none has been uploaded', fun
 
     expect(AppSettings::get(AppSettings::FAVICON))->toBeNull();
 
-    $this->get(route('demo.home'))
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.app-settings.index'))
         ->assertSee('<link rel="icon" href="/favicon.ico" sizes="any">', false);
 });
 

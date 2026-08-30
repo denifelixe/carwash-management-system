@@ -67,7 +67,7 @@ class AppSettings
 
     public static function appName(): string
     {
-        return self::get(self::APP_NAME) ?? (string) config('app.name', 'Carwash');
+        return self::brand(self::APP_NAME) ?? (string) config('app.name', 'Carwash');
     }
 
     public static function appPhotoUrl(): ?string
@@ -112,12 +112,12 @@ class AppSettings
 
     public static function metaTitle(): string
     {
-        return self::get(self::META_TITLE) ?? self::appName().' Management System';
+        return self::brand(self::META_TITLE) ?? self::appName().' Management System';
     }
 
     public static function metaDescription(): string
     {
-        return self::get(self::META_DESCRIPTION)
+        return self::brand(self::META_DESCRIPTION)
             ?? 'Aplikasi manajemen carwash '.self::appName().': kasir POS, order & antrean, booking, stok, keuangan, serta kartu stempel digital untuk member.';
     }
 
@@ -128,12 +128,12 @@ class AppSettings
 
     public static function whatsapp(): string
     {
-        return self::get(self::WHATSAPP) ?? '6281800090009';
+        return self::brand(self::WHATSAPP) ?? '6281800090009';
     }
 
     public static function instagram(): string
     {
-        return self::get(self::INSTAGRAM) ?? 'zenwash.id';
+        return self::brand(self::INSTAGRAM) ?? 'zenwash.id';
     }
 
     public static function get(string $key): ?string
@@ -176,9 +176,30 @@ class AppSettings
         config(['app.name' => self::appName()]);
     }
 
+    /**
+     * Branding as the demo must read it.
+     *
+     * The demo runs on the same installation as the live console, so the
+     * outlet's own name, photo, favicons, handles and page metadata would leak
+     * onto it through the shared settings table. Every branding key is
+     * therefore answered as unset on the demo domain, dropping each getter back
+     * to the shipped defaults. The timezone is not branding and still reads
+     * straight from the settings.
+     */
+    private static function brand(string $key): ?string
+    {
+        return self::isDemoRequest() ? null : self::get($key);
+    }
+
+    private static function isDemoRequest(): bool
+    {
+        return (string) config('app.type') === 'DEMO'
+            || request()->getHost() === (string) config('domains.demo');
+    }
+
     private static function publicUrl(string $key): ?string
     {
-        $path = self::get($key);
+        $path = self::brand($key);
 
         return $path !== null ? Storage::disk('public')->url($path) : null;
     }
