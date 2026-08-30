@@ -3,7 +3,7 @@
 namespace App\Support\Admin;
 
 use App\Models\Admin;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Models\Order;
 use App\Models\OrderTransaction;
@@ -124,7 +124,7 @@ class FinanceQueries
         $now = CarbonImmutable::now();
         $shifts = self::shifts();
 
-        $summary = $shifts->map(function (AdminWorkShift $shift) use ($moneyIn, $moneyOut, $date, $now): array {
+        $summary = $shifts->map(function (AdminShift $shift) use ($moneyIn, $moneyOut, $date, $now): array {
             $cashier = $shift->admins->first();
             /* A shift with no closing time never reads as finished. */
             $isRunning = $date === $now->toDateString()
@@ -186,12 +186,15 @@ class FinanceQueries
     }
 
     /**
-     * @return Collection<int, AdminWorkShift>
+     * @return Collection<int, AdminShift>
      */
     private static function shifts(): Collection
     {
-        return AdminWorkShift::query()
-            ->with(['admins' => fn ($query) => $query->where('is_active', true)->orderBy('name')])
+        return AdminShift::query()
+            ->with(['admins' => fn ($query) => $query
+                ->visibleInOperations()
+                ->where('is_active', true)
+                ->orderBy('name')])
             ->where('is_active', true)
             ->orderBy('starts_at')
             ->get();

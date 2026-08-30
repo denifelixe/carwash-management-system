@@ -10,7 +10,7 @@ use App\Http\Requests\Admin\UpdateAdminUserShiftRequest;
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Support\Admin\AdminShell;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Pivot;
@@ -33,11 +33,12 @@ class AdminUserController extends Controller
         $authenticatedAdmin = $request->user('admin');
         $modules = AdminModule::query()->where('is_active', true)->orderBy('sort_order')->get();
         $roles = AdminRole::query()
-            ->withCount('admins')
+            ->withCount(['admins' => fn ($query) => $query->visibleInOperations()])
             ->with(['modules' => fn ($query) => $query->orderBy('sort_order')])
             ->orderBy('name')
             ->get();
         $admins = Admin::query()
+            ->visibleInOperations()
             ->with(['role:id,key,name', 'workShift:id,name'])
             ->orderByDesc('is_owner')
             ->latest('id')
@@ -48,7 +49,7 @@ class AdminUserController extends Controller
             [
                 'staff' => $admins->map(fn (Admin $admin): array => $this->staffData($admin))->all(),
                 'roles' => $roles->map(fn (AdminRole $role): array => $this->roleData($role, $modules))->all(),
-                'shifts' => AdminWorkShift::query()->where('is_active', true)->orderBy('starts_at')->get(['id', 'name']),
+                'shifts' => AdminShift::query()->where('is_active', true)->orderBy('starts_at')->get(['id', 'name']),
                 'allModules' => $modules->map(fn (AdminModule $module): array => [
                     'id' => $module->id,
                     'key' => $module->key,
@@ -137,8 +138,8 @@ class AdminUserController extends Controller
             'role_id' => $admin->role_id,
             'role_key' => $admin->is_owner ? 'owner' : ($role instanceof AdminRole ? $role->key : 'unassigned'),
             'role_name' => $admin->is_owner ? 'Owner' : ($role instanceof AdminRole ? $role->name : 'Belum ada role'),
-            'work_shift_id' => $admin->work_shift_id,
-            'shift_name' => $workShift instanceof AdminWorkShift ? $workShift->name : 'Tidak ada Shift',
+            'shift_id' => $admin->shift_id,
+            'shift_name' => $workShift instanceof AdminShift ? $workShift->name : 'Tidak ada Shift',
             'is_owner' => $admin->is_owner,
             'is_active' => $admin->is_active,
             'last_active' => $admin->last_login_at?->locale('id')->diffForHumans() ?? 'Belum pernah login',

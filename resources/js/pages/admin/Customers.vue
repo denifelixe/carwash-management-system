@@ -472,7 +472,6 @@ function stampToneClass(type: string): string {
             <StatCard
                 label="Target kartu"
                 :value="`${stampTarget} stempel`"
-                :caption="brand.stampReward"
                 :icon="Gift"
             />
         </section>

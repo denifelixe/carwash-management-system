@@ -3,7 +3,7 @@
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
 use App\Models\Order;
@@ -99,7 +99,7 @@ test('an owner sees the live finance ledger with every capability', function () 
 
 test('a finance shift without work hours has no time caption', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    AdminWorkShift::query()->create([
+    AdminShift::query()->create([
         'key' => 'flexible',
         'name' => 'Shift Fleksibel',
         'starts_at' => null,
@@ -137,6 +137,27 @@ test('a payment taken by the cashier is read back as money in', function () {
                 ->where('moneyIn.0.transactionId', $order->transactions()->sole()->id)
                 ->where('cashSummary.todayIn', 150000)
                 ->has('orders', 1),
+        );
+});
+
+test('hidden admins are absent from the roster but remain visible in transaction audit data', function () {
+    $viewer = Admin::factory()->create(['is_owner' => true]);
+    $morningShift = AdminShift::query()->where('key', 'morning')->firstOrFail();
+    $hiddenCashier = Admin::factory()->create([
+        'name' => 'Hidden Debug Cashier',
+        'shift_id' => $morningShift->id,
+        'is_hidden' => true,
+    ]);
+    paidOrder($hiddenCashier);
+
+    $this->actingAs($viewer, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('moneyIn.0.recordedBy', $hiddenCashier->name)
+                ->where('shifts.0.id', 'morning')
+                ->where('shifts.0.cashier', ''),
         );
 });
 
@@ -629,9 +650,9 @@ test('a payment taken after midnight is filed on the day the outlet clock says',
  * being credited to whichever shift happened to cover the hour.
  */
 test('a hand-written entry takes the shift of the admin who wrote it', function () {
-    $shift = AdminWorkShift::query()->where('key', 'evening')->firstOrFail();
-    $rostered = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => $shift->id]);
-    $unrostered = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
+    $shift = AdminShift::query()->where('key', 'evening')->firstOrFail();
+    $rostered = Admin::factory()->create(['is_owner' => true, 'shift_id' => $shift->id]);
+    $unrostered = Admin::factory()->create(['is_owner' => true, 'shift_id' => null]);
 
     foreach ([$rostered, $unrostered] as $admin) {
         $this->actingAs($admin, 'admin')

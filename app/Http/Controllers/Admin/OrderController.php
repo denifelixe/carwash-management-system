@@ -54,7 +54,7 @@ class OrderController extends Controller
             'serviceCategories' => $services->where('is_active', true)->pluck('category')->unique()->values()->all(),
             'customers' => OrderQueries::customers()
                 ->map(fn (Member $member): array => OrderPresenter::customer($member))->all(),
-            'crew' => Admin::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
+            'crew' => Admin::query()->visibleInOperations()->where('is_active', true)->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Admin $crew): array => [
                     'name' => $crew->name,
                     'role' => 'Crew',

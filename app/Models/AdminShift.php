@@ -18,7 +18,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $updated_at
  */
 #[Fillable(['key', 'name', 'starts_at', 'ends_at', 'is_active'])]
-class AdminWorkShift extends Model
+class AdminShift extends Model
 {
     /** @var array<string, mixed> */
     protected $attributes = [
@@ -28,7 +28,7 @@ class AdminWorkShift extends Model
     /** @return HasMany<Admin, $this> */
     public function admins(): HasMany
     {
-        return $this->hasMany(Admin::class, 'work_shift_id');
+        return $this->hasMany(Admin::class, 'shift_id');
     }
 
     /**

@@ -43,6 +43,17 @@ test('admins can authenticate using the admin login screen', function () {
     $response->assertRedirect(route('admin.dashboard', absolute: false));
 });
 
+test('hidden admins can authenticate using the admin login screen', function () {
+    $admin = Admin::factory()->create(['is_hidden' => true]);
+
+    $this->post(route('admin.login.store'), [
+        'email' => $admin->email,
+        'password' => 'password',
+    ])->assertRedirect(route('admin.dashboard', absolute: false));
+
+    $this->assertAuthenticatedAs($admin, 'admin');
+});
+
 test('admins can not authenticate with invalid password', function () {
     $admin = Admin::factory()->create();
 

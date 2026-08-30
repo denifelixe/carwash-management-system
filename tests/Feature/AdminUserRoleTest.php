@@ -3,7 +3,7 @@
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
@@ -51,10 +51,36 @@ test('an owner sees live staff roles shifts permissions and an enabled sidebar i
         );
 });
 
+test('hidden admins are absent from the staff directory and role counts', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $cashierRole = AdminRole::query()->where('key', 'cashier')->firstOrFail();
+    $visibleCashier = Admin::factory()->create(['role_id' => $cashierRole->id]);
+    $hiddenCashier = Admin::factory()->create([
+        'role_id' => $cashierRole->id,
+        'is_hidden' => true,
+    ]);
+    $hiddenOwner = Admin::factory()->create([
+        'is_owner' => true,
+        'is_hidden' => true,
+    ]);
+
+    $response = $this->actingAs($owner, 'admin')->get(route('admin.users.index'));
+    $staff = collect($response->inertiaProps('staff'));
+    $cashier = collect($response->inertiaProps('roles'))->firstWhere('id', $cashierRole->id);
+
+    $response->assertOk();
+
+    expect($staff->pluck('id'))
+        ->toContain($owner->id, $visibleCashier->id)
+        ->not->toContain($hiddenCashier->id, $hiddenOwner->id)
+        ->and($cashier['staff_count'])->toBe(1)
+        ->and($response->inertiaProps('ownerSummary.staff_count'))->toBe(2);
+});
+
 test('an owner can create a staff user with a role and shift', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $role = AdminRole::query()->where('key', 'cashier')->firstOrFail();
-    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+    $shift = AdminShift::query()->where('key', 'morning')->firstOrFail();
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.users.store'), [
@@ -62,10 +88,11 @@ test('an owner can create a staff user with a role and shift', function () {
             'email' => 'yuni@example.com',
             'phone' => '081399112233',
             'role_id' => $role->id,
-            'work_shift_id' => $shift->id,
+            'shift_id' => $shift->id,
             'password' => 'Secret123!',
             'password_confirmation' => 'Secret123!',
             'is_active' => true,
+            'is_hidden' => true,
         ])
         ->assertRedirect(route('admin.users.index'))
         ->assertSessionHasNoErrors();
@@ -74,9 +101,10 @@ test('an owner can create a staff user with a role and shift', function () {
 
     expect($admin)
         ->role_id->toBe($role->id)
-        ->work_shift_id->toBe($shift->id)
+        ->shift_id->toBe($shift->id)
         ->is_owner->toBeFalse()
         ->is_active->toBeTrue()
+        ->is_hidden->toBeFalse()
         ->and(Hash::check('Secret123!', $admin->password))->toBeTrue();
 });
 
@@ -92,7 +120,7 @@ test('an owner can update staff without replacing an unchanged password', functi
             'email' => $admin->email,
             'phone' => '081200000001',
             'role_id' => $role->id,
-            'work_shift_id' => null,
+            'shift_id' => null,
             'password' => '',
             'password_confirmation' => '',
             'is_active' => false,
@@ -121,7 +149,7 @@ test('an owner can update a staff profile photo', function () {
             'email' => $admin->email,
             'phone' => $admin->phone,
             'role_id' => $role->id,
-            'work_shift_id' => null,
+            'shift_id' => null,
             'password' => '',
             'password_confirmation' => '',
             'is_active' => true,
@@ -169,7 +197,7 @@ test('a non-owner cannot update another staff profile photo', function () {
             'email' => $admin->email,
             'phone' => $admin->phone,
             'role_id' => $cashierRole->id,
-            'work_shift_id' => null,
+            'shift_id' => null,
             'password' => '',
             'password_confirmation' => '',
             'is_active' => true,
@@ -195,8 +223,8 @@ test('last active time is displayed in Indonesian', function () {
 });
 
 test('an owner can assign a shift directly to any user including their own account', function () {
-    $owner = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
-    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+    $owner = Admin::factory()->create(['is_owner' => true, 'shift_id' => null]);
+    $shift = AdminShift::query()->where('key', 'morning')->firstOrFail();
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.users.index'))
@@ -207,12 +235,12 @@ test('an owner can assign a shift directly to any user including their own accou
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.users.shift.update', $owner), [
-            'work_shift_id' => $shift->id,
+            'shift_id' => $shift->id,
         ])
         ->assertRedirect(route('admin.users.index'))
         ->assertSessionHasNoErrors();
 
-    expect($owner->refresh()->work_shift_id)->toBe($shift->id);
+    expect($owner->refresh()->shift_id)->toBe($shift->id);
 });
 
 test('the owner account cannot be changed from the staff module', function () {
@@ -225,7 +253,7 @@ test('the owner account cannot be changed from the staff module', function () {
             'email' => $owner->email,
             'phone' => null,
             'role_id' => $role->id,
-            'work_shift_id' => null,
+            'shift_id' => null,
             'password' => '',
             'password_confirmation' => '',
             'is_active' => false,
@@ -296,7 +324,7 @@ test('read-only staff can view the module but cannot mutate users', function () 
         ->assertForbidden();
 
     $this->actingAs($admin, 'admin')
-        ->patch(route('admin.users.shift.update', $admin), ['work_shift_id' => null])
+        ->patch(route('admin.users.shift.update', $admin), ['shift_id' => null])
         ->assertForbidden();
 });
 

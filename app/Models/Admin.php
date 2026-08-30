@@ -5,6 +5,8 @@ namespace App\Models;
 use Database\Factories\AdminFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Attributes\Scope;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -15,7 +17,7 @@ use Illuminate\Support\Str;
 /**
  * @property int $id
  * @property int|null $role_id
- * @property int|null $work_shift_id
+ * @property int|null $shift_id
  * @property string $name
  * @property string $email
  * @property string|null $phone
@@ -24,17 +26,23 @@ use Illuminate\Support\Str;
  * @property string $password
  * @property bool $is_owner
  * @property bool $is_active
+ * @property bool $is_hidden
  * @property Carbon|null $last_login_at
  * @property string|null $remember_token
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'work_shift_id', 'is_active'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'shift_id', 'is_active'])]
 #[Hidden(['password', 'remember_token', 'profile_photo_path'])]
 class Admin extends Authenticatable
 {
     /** @use HasFactory<AdminFactory> */
     use HasFactory, Notifiable;
+
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'is_hidden' => false,
+    ];
 
     /**
      * @return BelongsTo<AdminRole, $this>
@@ -45,11 +53,11 @@ class Admin extends Authenticatable
     }
 
     /**
-     * @return BelongsTo<AdminWorkShift, $this>
+     * @return BelongsTo<AdminShift, $this>
      */
     public function workShift(): BelongsTo
     {
-        return $this->belongsTo(AdminWorkShift::class, 'work_shift_id');
+        return $this->belongsTo(AdminShift::class, 'shift_id');
     }
 
     public function hasModulePermission(string $moduleKey, string $permission): bool
@@ -85,6 +93,12 @@ class Admin extends Authenticatable
             : null;
     }
 
+    #[Scope]
+    protected function visibleInOperations(Builder $query): void
+    {
+        $query->where('is_hidden', false);
+    }
+
     /**
      * Get the attributes that should be cast.
      *
@@ -95,6 +109,7 @@ class Admin extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'is_hidden' => 'boolean',
             'is_owner' => 'boolean',
             'last_login_at' => 'datetime',
             'password' => 'hashed',

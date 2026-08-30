@@ -45,6 +45,7 @@ test('the customer module is named member throughout the console', function () {
         ->toContain('toggleAccountFilter')
         ->toContain('allFiltersSelected')
         ->toContain("detailCustomer.email || 'Tidak ada email'")
+        ->not->toContain(':caption="brand.stampReward"')
         ->not->toContain('title="Daftarkan customer"')
         ->not->toContain('Simpan customer');
 });

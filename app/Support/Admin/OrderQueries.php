@@ -2,7 +2,7 @@
 
 namespace App\Support\Admin;
 
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\Member;
 use App\Models\Order;
 use App\Models\Service;
@@ -111,11 +111,11 @@ class OrderQueries
      * retired shift is left out: its old payments read as unassigned rather
      * than keeping a tab alive that nobody can be rostered onto.
      *
-     * @return Collection<int, AdminWorkShift>
+     * @return Collection<int, AdminShift>
      */
     public static function workShifts(): Collection
     {
-        return AdminWorkShift::query()
+        return AdminShift::query()
             ->where('is_active', true)
             ->orderBy('starts_at')
             ->orderBy('id')

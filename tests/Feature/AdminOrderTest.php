@@ -41,6 +41,24 @@ test('the live order page uses the shared component and database records', funct
         );
 });
 
+test('hidden admins are absent from the order crew list', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $visibleCrew = Admin::factory()->create(['name' => 'Visible Crew']);
+    $hiddenCrew = Admin::factory()->create([
+        'name' => 'Hidden Crew',
+        'is_hidden' => true,
+    ]);
+
+    $response = $this->actingAs($owner, 'admin')->get(route('admin.orders.index'));
+    $crewNames = collect($response->inertiaProps('crew'))->pluck('name');
+
+    $response->assertOk();
+
+    expect($crewNames)
+        ->toContain($visibleCrew->name)
+        ->not->toContain($hiddenCrew->name);
+});
+
 test('an owner can create a member order with database priced services', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $member = Member::factory()->create();

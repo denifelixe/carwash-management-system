@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -25,9 +25,9 @@ class UpdateAdminUserShiftRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'work_shift_id' => [
+            'shift_id' => [
                 'nullable',
-                Rule::exists(AdminWorkShift::class, 'id')->where('is_active', true),
+                Rule::exists(AdminShift::class, 'id')->where('is_active', true),
             ],
         ];
     }

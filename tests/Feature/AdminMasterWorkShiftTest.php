@@ -3,7 +3,7 @@
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use Inertia\Testing\AssertableInertia;
 
 /**
@@ -79,7 +79,7 @@ test('an owner can create an overnight work shift', function () {
         ->assertRedirect(route('admin.master.work-shifts.index'))
         ->assertSessionHasNoErrors();
 
-    $workShift = AdminWorkShift::query()->where('key', 'night')->firstOrFail();
+    $workShift = AdminShift::query()->where('key', 'night')->firstOrFail();
 
     expect($workShift)
         ->name->toBe('Shift Malam')
@@ -101,7 +101,7 @@ test('an owner can create a work shift without work hours', function () {
         ->assertRedirect(route('admin.master.work-shifts.index'))
         ->assertSessionHasNoErrors();
 
-    $workShift = AdminWorkShift::query()->where('key', 'flexible')->firstOrFail();
+    $workShift = AdminShift::query()->where('key', 'flexible')->firstOrFail();
 
     expect($workShift)
         ->starts_at->toBeNull()
@@ -130,7 +130,7 @@ test('work shift hours must either both be filled or both be empty', function (s
 
 test('an owner can update and deactivate a work shift', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $workShift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+    $workShift = AdminShift::query()->where('key', 'morning')->firstOrFail();
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.master.work-shifts.update', $workShift), workShiftPayload([
@@ -162,25 +162,25 @@ test('work shift keys names and time ranges are validated', function () {
         ]))
         ->assertSessionHasErrors(['key', 'name', 'ends_at']);
 
-    expect(AdminWorkShift::query()->where('key', 'night')->exists())->toBeFalse();
+    expect(AdminShift::query()->where('key', 'night')->exists())->toBeFalse();
 });
 
 test('an owner can delete an unused work shift', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $workShift = AdminWorkShift::query()->create(workShiftPayload());
+    $workShift = AdminShift::query()->create(workShiftPayload());
 
     $this->actingAs($owner, 'admin')
         ->delete(route('admin.master.work-shifts.destroy', $workShift))
         ->assertRedirect(route('admin.master.work-shifts.index'))
         ->assertSessionHasNoErrors();
 
-    expect(AdminWorkShift::query()->find($workShift->id))->toBeNull();
+    expect(AdminShift::query()->find($workShift->id))->toBeNull();
 });
 
 test('a work shift assigned to an admin cannot be deleted', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $workShift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
-    Admin::factory()->create(['work_shift_id' => $workShift->id]);
+    $workShift = AdminShift::query()->where('key', 'morning')->firstOrFail();
+    Admin::factory()->create(['shift_id' => $workShift->id]);
 
     $this->actingAs($owner, 'admin')
         ->from(route('admin.master.work-shifts.index'))
@@ -188,13 +188,39 @@ test('a work shift assigned to an admin cannot be deleted', function () {
         ->assertRedirect(route('admin.master.work-shifts.index'))
         ->assertSessionHasErrors('work_shift');
 
-    expect(AdminWorkShift::query()->find($workShift->id))->not->toBeNull();
+    expect(AdminShift::query()->find($workShift->id))->not->toBeNull();
+});
+
+test('a hidden admin is not counted but still prevents deleting their work shift', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $workShift = AdminShift::query()->create(workShiftPayload([
+        'key' => 'hidden_staff',
+        'name' => 'Shift Hidden Staff',
+    ]));
+    Admin::factory()->create([
+        'shift_id' => $workShift->id,
+        'is_hidden' => true,
+    ]);
+
+    $response = $this->actingAs($owner, 'admin')->get(route('admin.master.work-shifts.index'));
+    $shift = collect($response->inertiaProps('workShifts'))->firstWhere('id', $workShift->id);
+
+    expect($shift['admin_count'])->toBe(0)
+        ->and($shift['is_deletable'])->toBeFalse();
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.master.work-shifts.index'))
+        ->delete(route('admin.master.work-shifts.destroy', $workShift))
+        ->assertRedirect(route('admin.master.work-shifts.index'))
+        ->assertSessionHasErrors('work_shift');
+
+    expect(AdminShift::query()->find($workShift->id))->not->toBeNull();
 });
 
 test('staff access follows master work shift capabilities', function () {
     $readOnlyStaff = workShiftStaff(['read' => true]);
     $blockedStaff = workShiftStaff(['read' => false]);
-    $workShift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
+    $workShift = AdminShift::query()->where('key', 'morning')->firstOrFail();
 
     $this->actingAs($blockedStaff, 'admin')
         ->get(route('admin.master.work-shifts.index'))

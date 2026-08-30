@@ -8,7 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreOrderMemberRequest;
 use App\Http\Requests\Admin\StoreOrderPaymentRequest;
 use App\Models\Admin;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\Member;
 use App\Models\Order;
 use App\Models\Service;
@@ -57,7 +57,7 @@ class PosController extends Controller
             'partialPaymentBookings' => $bookings->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'filters' => OrderQueries::filters($selectedDate, $today),
             'shifts' => OrderQueries::workShifts()
-                ->map(fn (AdminWorkShift $shift): array => OrderPresenter::workShift($shift))
+                ->map(fn (AdminShift $shift): array => OrderPresenter::workShift($shift))
                 ->all(),
             'services' => $services->map(fn (Service $service): array => OrderPresenter::service($service))->all(),
             'customers' => OrderQueries::customers()

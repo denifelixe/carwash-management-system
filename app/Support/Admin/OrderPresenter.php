@@ -3,7 +3,7 @@
 namespace App\Support\Admin;
 
 use App\Models\Admin;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -110,7 +110,7 @@ class OrderPresenter
      *
      * @return array{key: string, name: string, time: string|null}
      */
-    public static function workShift(AdminWorkShift $shift): array
+    public static function workShift(AdminShift $shift): array
     {
         return [
             'key' => $shift->key,

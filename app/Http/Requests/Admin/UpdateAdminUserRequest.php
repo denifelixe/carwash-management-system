@@ -4,7 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\Admin;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -39,7 +39,7 @@ class UpdateAdminUserRequest extends FormRequest
             'email' => ['required', 'email', 'max:255', Rule::unique('admins', 'email')->ignore($adminUser)],
             'phone' => ['nullable', 'string', 'max:30', Rule::unique('admins', 'phone')->ignore($adminUser)],
             'role_id' => ['required', Rule::exists(AdminRole::class, 'id')->where('is_active', true)],
-            'work_shift_id' => ['nullable', Rule::exists(AdminWorkShift::class, 'id')->where('is_active', true)],
+            'shift_id' => ['nullable', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
             'password' => ['nullable', 'confirmed', Password::defaults()],
             'is_active' => ['required', 'boolean'],
             'photo' => $this->user('admin')?->is_owner

@@ -27,7 +27,7 @@ type Staff = {
     role_id: number | null;
     role_key: string;
     role_name: string;
-    work_shift_id: number | null;
+    shift_id: number | null;
     shift_name: string;
     is_owner: boolean;
     is_active: boolean;
@@ -131,7 +131,7 @@ const userForm = useForm({
     email: '',
     phone: '',
     role_id: null as number | null,
-    work_shift_id: null as number | null,
+    shift_id: null as number | null,
     password: '',
     password_confirmation: '',
     is_active: true,
@@ -205,7 +205,7 @@ function openCreateUser(): void {
     userForm.clearErrors();
     userForm.role_id =
         roleList.value.find((role) => role.is_active)?.id ?? null;
-    userForm.work_shift_id = props.shifts[0]?.id ?? null;
+    userForm.shift_id = props.shifts[0]?.id ?? null;
     userForm.is_active = true;
     isUserFormOpen.value = true;
 }
@@ -222,7 +222,7 @@ function openEditUser(person: Staff): void {
         email: person.email,
         phone: person.phone,
         role_id: person.role_id,
-        work_shift_id: person.work_shift_id,
+        shift_id: person.shift_id,
         password: '',
         password_confirmation: '',
         is_active: person.is_active,
@@ -263,12 +263,12 @@ function submitUser(): void {
 
 function changeShift(person: Staff, event: Event): void {
     const selectedValue = (event.target as HTMLSelectElement).value;
-    const workShiftId = selectedValue === '' ? null : Number(selectedValue);
-    const previousShiftId = person.work_shift_id;
+    const shiftId = selectedValue === '' ? null : Number(selectedValue);
+    const previousShiftId = person.shift_id;
     const previousShiftName = person.shift_name;
-    const shift = props.shifts.find((item) => item.id === workShiftId);
+    const shift = props.shifts.find((item) => item.id === shiftId);
 
-    person.work_shift_id = workShiftId;
+    person.shift_id = shiftId;
     person.shift_name = shift?.name ?? 'Tidak ada Shift';
 
     if (props.mode === 'demo') {
@@ -282,12 +282,12 @@ function changeShift(person: Staff, event: Event): void {
     savingShiftIds.value.push(person.id);
 
     router.visit(updateUserShift(person.id), {
-        data: { work_shift_id: workShiftId },
+        data: { shift_id: shiftId },
         preserveScroll: true,
         preserveState: true,
         only: ['staff', 'persona'],
         onError: () => {
-            person.work_shift_id = previousShiftId;
+            person.shift_id = previousShiftId;
             person.shift_name = previousShiftName;
         },
         onFinish: () => {
@@ -319,7 +319,7 @@ function saveDemoUser(): void {
 
     const role = roleList.value.find((item) => item.id === userForm.role_id);
     const shift = props.shifts.find(
-        (item) => item.id === userForm.work_shift_id,
+        (item) => item.id === userForm.shift_id,
     );
     const values = {
         name: userForm.name,
@@ -328,7 +328,7 @@ function saveDemoUser(): void {
         role_id: userForm.role_id,
         role_key: role?.key ?? 'unassigned',
         role_name: role?.name ?? 'Belum ada role',
-        work_shift_id: userForm.work_shift_id,
+        shift_id: userForm.shift_id,
         shift_name: shift?.name ?? 'Tidak ada Shift',
         is_active: userForm.is_active,
         initials: initialsOf(userForm.name),
@@ -706,7 +706,7 @@ function saveDemoRole(): void {
                             </td>
                             <td class="px-5 py-3.5">
                                 <select
-                                    :value="person.work_shift_id ?? ''"
+                                    :value="person.shift_id ?? ''"
                                     class="w-full min-w-32 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 transition outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-100 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                                     :disabled="
                                         !capabilities.update ||
@@ -960,7 +960,7 @@ function saveDemoRole(): void {
                     >
                     <select
                         id="user-shift"
-                        v-model="userForm.work_shift_id"
+                        v-model="userForm.shift_id"
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
                     >
                         <option :value="null">Tanpa shift</option>
@@ -974,7 +974,7 @@ function saveDemoRole(): void {
                     </select>
                     <InputError
                         class="mt-1"
-                        :message="userForm.errors.work_shift_id"
+                        :message="userForm.errors.shift_id"
                     />
                 </div>
             </div>

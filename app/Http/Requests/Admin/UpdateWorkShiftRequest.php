@@ -2,7 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -24,12 +24,12 @@ class UpdateWorkShiftRequest extends FormRequest
      */
     public function rules(): array
     {
-        /** @var AdminWorkShift $workShift */
+        /** @var AdminShift $workShift */
         $workShift = $this->route('workShift');
 
         return [
-            'key' => ['required', 'string', 'alpha_dash:ascii', 'max:50', Rule::unique('admin_work_shifts', 'key')->ignore($workShift)],
-            'name' => ['required', 'string', 'max:100', Rule::unique('admin_work_shifts', 'name')->ignore($workShift)],
+            'key' => ['required', 'string', 'alpha_dash:ascii', 'max:50', Rule::unique('admin_shifts', 'key')->ignore($workShift)],
+            'name' => ['required', 'string', 'max:100', Rule::unique('admin_shifts', 'name')->ignore($workShift)],
             'starts_at' => ['nullable', 'required_with:ends_at', 'date_format:H:i', 'different:ends_at'],
             'ends_at' => ['nullable', 'required_with:starts_at', 'date_format:H:i', 'different:starts_at'],
             'is_active' => ['required', 'boolean'],

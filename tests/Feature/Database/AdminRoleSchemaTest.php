@@ -9,7 +9,8 @@ use Illuminate\Support\Facades\Schema;
 
 test('admin and role schema contains the required tables columns and indexes', function () {
     expect(Schema::hasTable('admin_roles'))->toBeTrue()
-        ->and(Schema::hasTable('admin_work_shifts'))->toBeTrue()
+        ->and(Schema::hasTable('admin_shifts'))->toBeTrue()
+        ->and(Schema::hasTable('admin_work_shifts'))->toBeFalse()
         ->and(Schema::hasTable('admin_modules'))->toBeTrue()
         ->and(Schema::hasTable('admin_role_module'))->toBeTrue()
         ->and(Schema::hasTable('members'))->toBeTrue()
@@ -19,6 +20,7 @@ test('admin and role schema contains the required tables columns and indexes', f
         ->and(Schema::hasColumn('admins', 'two_factor_secret'))->toBeFalse()
         ->and(Schema::hasColumn('admins', 'two_factor_recovery_codes'))->toBeFalse()
         ->and(Schema::hasColumn('admins', 'two_factor_confirmed_at'))->toBeFalse()
+        ->and(Schema::hasColumn('admins', 'work_shift_id'))->toBeFalse()
         ->and(Schema::hasColumns('admin_roles', [
             'id',
             'key',
@@ -28,7 +30,7 @@ test('admin and role schema contains the required tables columns and indexes', f
             'created_at',
             'updated_at',
         ]))->toBeTrue()
-        ->and(Schema::hasColumns('admin_work_shifts', [
+        ->and(Schema::hasColumns('admin_shifts', [
             'id',
             'key',
             'name',
@@ -59,6 +61,7 @@ test('admin and role schema contains the required tables columns and indexes', f
         ->and(Schema::hasColumns('admins', [
             'id',
             'role_id',
+            'shift_id',
             'name',
             'email',
             'phone',
@@ -66,6 +69,7 @@ test('admin and role schema contains the required tables columns and indexes', f
             'password',
             'is_owner',
             'is_active',
+            'is_hidden',
             'last_login_at',
             'remember_token',
             'created_at',
@@ -88,8 +92,12 @@ test('admin and role schema contains the required tables columns and indexes', f
     $hasUniqueIndex = fn (string $table, array $columns): bool => collect(Schema::getIndexes($table))
         ->contains(fn (array $index): bool => $index['unique'] && $index['columns'] === $columns);
 
+    $shiftIndexNames = collect(Schema::getIndexes('admin_shifts'))->pluck('name');
+
     expect($hasUniqueIndex('admin_roles', ['key']))->toBeTrue()
-        ->and($hasUniqueIndex('admin_work_shifts', ['key']))->toBeTrue()
+        ->and($hasUniqueIndex('admin_shifts', ['key']))->toBeTrue()
+        ->and($shiftIndexNames)->toContain('admin_shifts_key_unique', 'admin_shifts_is_active_index')
+        ->not->toContain('admin_work_shifts_key_unique', 'admin_work_shifts_is_active_index')
         ->and($hasUniqueIndex('admin_modules', ['key']))->toBeTrue()
         ->and($hasUniqueIndex('admin_role_module', ['admin_role_id', 'admin_module_id']))->toBeTrue()
         ->and($hasUniqueIndex('admins', ['phone']))->toBeTrue()
@@ -138,6 +146,7 @@ test('the initial owner admin is created without a known password', function () 
         ->name->toBe('Deni Victoria')
         ->is_owner->toBeTrue()
         ->is_active->toBeTrue()
+        ->is_hidden->toBeFalse()
         ->role_id->toBeNull()
         ->and($owner->password)->not->toBeEmpty();
 });
@@ -150,7 +159,7 @@ test('staff roles shifts modules and access assignments can be persisted', funct
         'created_at' => $now,
         'updated_at' => $now,
     ]);
-    $shiftId = DB::table('admin_work_shifts')->insertGetId([
+    $shiftId = DB::table('admin_shifts')->insertGetId([
         'key' => 'test_morning',
         'name' => 'Shift Pagi',
         'starts_at' => '08:00:00',
@@ -195,7 +204,7 @@ test('staff roles shifts modules and access assignments can be persisted', funct
         ->phone->toBe('081234567890')
         ->is_owner->toBe(1)
         ->is_active->toBe(1)
-        ->and(DB::table('admin_work_shifts')->find($shiftId))->not->toBeNull()
+        ->and(DB::table('admin_shifts')->find($shiftId))->not->toBeNull()
         ->and($access)->not->toBeNull()
         ->and($access->can_create)->toBe(1)
         ->and($access->can_read)->toBe(1)

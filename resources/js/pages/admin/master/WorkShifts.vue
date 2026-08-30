@@ -23,6 +23,7 @@ type WorkShift = {
     ends_at: string | null;
     is_active: boolean;
     admin_count: number;
+    is_deletable: boolean;
 };
 
 const props = defineProps<{
@@ -235,6 +236,7 @@ function saveDemoWorkShift(): void {
                 ) + 1,
             ...values,
             admin_count: 0,
+            is_deletable: true,
         });
     } else {
         const workShift = workShiftList.value.find(
@@ -254,7 +256,7 @@ function saveDemoWorkShift(): void {
 }
 
 function openDeleteWorkShift(workShift: WorkShift): void {
-    if (!props.capabilities.delete || workShift.admin_count > 0) {
+    if (!props.capabilities.delete || !workShift.is_deletable) {
         return;
     }
 
@@ -454,9 +456,9 @@ function durationLabel(workShift: WorkShift): string {
                                         v-if="capabilities.delete"
                                         type="button"
                                         class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-                                        :disabled="workShift.admin_count > 0"
+                                        :disabled="!workShift.is_deletable"
                                         :title="
-                                            workShift.admin_count > 0
+                                            !workShift.is_deletable
                                                 ? 'Masih dipakai admin, nonaktifkan saja'
                                                 : 'Hapus shift'
                                         "

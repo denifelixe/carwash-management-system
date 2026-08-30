@@ -3,7 +3,7 @@
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
-use App\Models\AdminWorkShift;
+use App\Models\AdminShift;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -73,8 +73,8 @@ test('the cashier only settles orders the floor handed over, and keeps upcoming 
 });
 
 test('a partial payment leaves the order open and records its channels', function () {
-    $shift = AdminWorkShift::query()->where('key', 'morning')->firstOrFail();
-    $cashier = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => $shift->id]);
+    $shift = AdminShift::query()->where('key', 'morning')->firstOrFail();
+    $cashier = Admin::factory()->create(['is_owner' => true, 'shift_id' => $shift->id]);
     $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 100000]);
 
     $this->actingAs($cashier, 'admin')
@@ -387,14 +387,14 @@ test('demo and live cashier pages have one frontend source of truth', function (
 
 test('the recap tabs are built from the active shifts, in the order the day runs', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    AdminWorkShift::query()->create([
+    AdminShift::query()->create([
         'key' => 'night',
         'name' => 'Shift Malam',
         'starts_at' => '23:00:00',
         'ends_at' => '08:00:00',
         'is_active' => true,
     ]);
-    AdminWorkShift::query()->create([
+    AdminShift::query()->create([
         'key' => 'retired',
         'name' => 'Shift Lama',
         'starts_at' => '05:00:00',
@@ -420,7 +420,7 @@ test('the recap tabs are built from the active shifts, in the order the day runs
 });
 
 test('a payment taken by a cashier on no shift is stored without one', function () {
-    $cashier = Admin::factory()->create(['is_owner' => true, 'work_shift_id' => null]);
+    $cashier = Admin::factory()->create(['is_owner' => true, 'shift_id' => null]);
     $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
 
     $this->actingAs($cashier, 'admin')

@@ -203,7 +203,7 @@ class RoleAccess
                 'role_id' => $staff['role'] === 'owner' ? null : $roleIds[$staff['role']],
                 'role_key' => $staff['role'],
                 'role_name' => self::role($staff['role'])['name'],
-                'work_shift_id' => $shiftIds[$staff['shift']] + 1,
+                'shift_id' => $shiftIds[$staff['shift']] + 1,
                 'shift_name' => $staff['shift'],
                 'is_owner' => $staff['role'] === 'owner',
                 'is_active' => $staff['status'] === 'aktif',
