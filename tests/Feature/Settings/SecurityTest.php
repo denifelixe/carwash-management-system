@@ -12,7 +12,7 @@ test('security page is displayed', function () {
         ->get(route('admin.security.edit'))
         ->assertInertia(fn (Assert $page) => $page
             ->component('settings/Security')
-            ->has('passwordRules')
+            ->missing('passwordRules')
             ->where('mode', 'live')
             ->where('pageTitle', 'Keamanan akun')
             ->where('profileHref', route('admin.profile.edit', absolute: false))
@@ -37,15 +37,15 @@ test('password can be updated', function () {
         ->from(route('admin.security.edit'))
         ->put(route('admin.user-password.update'), [
             'current_password' => 'password',
-            'password' => 'new-password',
-            'password_confirmation' => 'new-password',
+            'password' => '#',
+            'password_confirmation' => '#',
         ]);
 
     $response
         ->assertSessionHasNoErrors()
         ->assertRedirect(route('admin.security.edit'));
 
-    expect(Hash::check('new-password', $admin->refresh()->password))->toBeTrue();
+    expect(Hash::check('#', $admin->refresh()->password))->toBeTrue();
 });
 
 test('correct password must be provided to update password', function () {

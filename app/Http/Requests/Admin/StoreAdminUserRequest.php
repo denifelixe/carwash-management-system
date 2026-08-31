@@ -7,7 +7,6 @@ use App\Models\AdminShift;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 class StoreAdminUserRequest extends FormRequest
 {
@@ -32,7 +31,7 @@ class StoreAdminUserRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30', Rule::unique('admins', 'phone')],
             'role_id' => ['required', Rule::exists(AdminRole::class, 'id')->where('is_active', true)],
             'shift_id' => ['nullable', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
-            'password' => ['required', 'confirmed', Password::defaults()],
+            'password' => ['required', 'string', 'confirmed'],
             'is_active' => ['required', 'boolean'],
         ];
     }

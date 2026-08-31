@@ -89,8 +89,8 @@ test('an owner can create a staff user with a role and shift', function () {
             'phone' => '081399112233',
             'role_id' => $role->id,
             'shift_id' => $shift->id,
-            'password' => 'Secret123!',
-            'password_confirmation' => 'Secret123!',
+            'password' => '!',
+            'password_confirmation' => '!',
             'is_active' => true,
             'is_hidden' => true,
         ])
@@ -105,7 +105,29 @@ test('an owner can create a staff user with a role and shift', function () {
         ->is_owner->toBeFalse()
         ->is_active->toBeTrue()
         ->is_hidden->toBeFalse()
-        ->and(Hash::check('Secret123!', $admin->password))->toBeTrue();
+        ->and(Hash::check('!', $admin->password))->toBeTrue();
+});
+
+test('an owner can replace a staff password with one unrestricted character', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'manager')->firstOrFail();
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.update', $admin), [
+            'name' => $admin->name,
+            'email' => $admin->email,
+            'phone' => $admin->phone,
+            'role_id' => $role->id,
+            'shift_id' => null,
+            'password' => '*',
+            'password_confirmation' => '*',
+            'is_active' => true,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect(Hash::check('*', $admin->refresh()->password))->toBeTrue();
 });
 
 test('an owner can update staff without replacing an unchanged password', function () {

@@ -6,10 +6,6 @@ import SettingsNav from '@/components/admin/SettingsNav.vue';
 import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import { Label } from '@/components/ui/label';
-
-defineProps<{
-    passwordRules: string;
-}>();
 </script>
 
 <template>
@@ -87,7 +83,6 @@ defineProps<{
                             class="h-11"
                             autocomplete="new-password"
                             placeholder="Kata sandi baru"
-                            :passwordrules="passwordRules"
                         />
                         <InputError :message="errors.password" />
                     </div>
@@ -105,7 +100,6 @@ defineProps<{
                             class="h-11"
                             autocomplete="new-password"
                             placeholder="Ulangi kata sandi baru"
-                            :passwordrules="passwordRules"
                         />
                         <InputError :message="errors.password_confirmation" />
                     </div>

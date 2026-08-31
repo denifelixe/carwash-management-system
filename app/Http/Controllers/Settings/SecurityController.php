@@ -8,7 +8,6 @@ use App\Models\Admin;
 use App\Support\Admin\AdminShell;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,7 +24,6 @@ class SecurityController extends Controller
 
         return Inertia::render('settings/Security', [
             ...$adminShell->props($admin, 'Keamanan akun'),
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
         ]);
     }
 

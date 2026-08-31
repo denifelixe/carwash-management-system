@@ -8,7 +8,6 @@ use App\Models\AdminShift;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 
 class UpdateAdminUserRequest extends FormRequest
 {
@@ -40,7 +39,7 @@ class UpdateAdminUserRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30', Rule::unique('admins', 'phone')->ignore($adminUser)],
             'role_id' => ['required', Rule::exists(AdminRole::class, 'id')->where('is_active', true)],
             'shift_id' => ['nullable', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
-            'password' => ['nullable', 'confirmed', Password::defaults()],
+            'password' => ['nullable', 'string', 'confirmed'],
             'is_active' => ['required', 'boolean'],
             'photo' => $this->user('admin')?->is_owner
                 ? ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:20480']
