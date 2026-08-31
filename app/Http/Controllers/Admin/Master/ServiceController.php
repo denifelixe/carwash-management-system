@@ -8,6 +8,7 @@ use App\Http\Requests\Admin\StoreServiceRequest;
 use App\Http\Requests\Admin\UpdateServiceRequest;
 use App\Models\Admin;
 use App\Models\Service;
+use App\Models\ServiceGroup;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\ServiceIcons;
 use Illuminate\Http\RedirectResponse;
@@ -26,6 +27,7 @@ class ServiceController extends Controller
         /** @var Admin $authenticatedAdmin */
         $authenticatedAdmin = $request->user('admin');
         $services = Service::query()
+            ->with('serviceGroup:id,name')
             ->withCount('orders')
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -34,6 +36,7 @@ class ServiceController extends Controller
         return Inertia::render('admin/master/Services', [
             ...$adminShell->props($authenticatedAdmin, 'Layanan', 'master_services'),
             'services' => $services->map(fn (Service $service): array => $this->serviceData($service))->all(),
+            'serviceGroups' => ServiceGroup::query()->orderBy('name')->get(['id', 'name'])->all(),
             'categories' => $services->pluck('category')->unique()->sort()->values()->all(),
             'icons' => ServiceIcons::options(),
             'capabilities' => [
@@ -103,6 +106,7 @@ class ServiceController extends Controller
     {
         return [
             'id' => $service->id,
+            'service_group_id' => $service->service_group_id,
             'name' => $service->name,
             'category' => $service->category,
             'price' => (int) $service->price,

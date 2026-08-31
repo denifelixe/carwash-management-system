@@ -126,3 +126,35 @@ ON DUPLICATE KEY UPDATE
     `is_popular` = VALUES(`is_popular`),
     `is_active` = VALUES(`is_active`),
     `updated_at` = NOW();
+
+INSERT INTO `service_groups` (`name`, `created_at`, `updated_at`)
+VALUES
+    ('Coating Lite', NOW(), NOW()),
+    ('Coating Mobil', NOW(), NOW()),
+    ('Supreme Wash', NOW(), NOW()),
+    ('Interior Detailing', NOW(), NOW()),
+    ('Exterior Detailing', NOW(), NOW()),
+    ('Complete Detailing', NOW(), NOW()),
+    ('Express Polish', NOW(), NOW()),
+    ('Seat Remove Interior Detailing', NOW(), NOW()),
+    ('Coating Motor', NOW(), NOW()),
+    ('Complete Detailing Motor', NOW(), NOW())
+ON DUPLICATE KEY UPDATE `updated_at` = VALUES(`updated_at`);
+
+UPDATE `services` AS `service`
+INNER JOIN `service_groups` AS `service_group`
+    ON `service_group`.`name` = SUBSTRING_INDEX(`service`.`name`, ' - ', 1)
+SET `service`.`service_group_id` = `service_group`.`id`
+WHERE `service_group`.`name` IN (
+    'Coating Lite',
+    'Coating Mobil',
+    'Supreme Wash',
+    'Interior Detailing',
+    'Exterior Detailing',
+    'Complete Detailing',
+    'Express Polish',
+    'Seat Remove Interior Detailing',
+    'Coating Motor',
+    'Complete Detailing Motor'
+)
+AND `service`.`name` REGEXP ' - (Small|Medium|Large|Extra Large)$';

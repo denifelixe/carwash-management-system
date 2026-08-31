@@ -137,6 +137,10 @@ class OrderPresenter
             'description' => $service->description ?? '',
             'popular' => $service->is_popular,
             'isActive' => $service->is_active,
+            'serviceGroup' => $service->serviceGroup === null ? null : [
+                'id' => $service->serviceGroup->id,
+                'name' => $service->serviceGroup->name,
+            ],
         ];
     }
 

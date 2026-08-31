@@ -18,7 +18,7 @@ dataset('admin modules', [
     'rewards' => ['demo.admin.rewards', 'demo/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
     'users' => ['demo.admin.users', 'admin/Users', ['staff', 'roles', 'shifts', 'ownerSummary', 'capabilities', 'allModules']],
     'reports' => ['demo.admin.reports', 'demo/admin/Reports', ['stats', 'trend', 'filters', 'customerActivity', 'bookingSummary', 'inventorySummary']],
-    'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'categories', 'capabilities']],
+    'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'serviceGroups', 'categories', 'capabilities']],
     'master work shifts' => ['demo.admin.master.work-shifts', 'admin/master/WorkShifts', ['workShifts', 'capabilities']],
     'master timezone' => ['demo.admin.master.timezone', 'admin/master/Timezone', ['timezone', 'timezones', 'capabilities']],
     'master app settings' => ['demo.admin.master.app-settings', 'admin/master/AppSettings', ['settings', 'capabilities']],

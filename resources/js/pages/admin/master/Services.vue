@@ -3,7 +3,9 @@ import { Head, useForm, usePage } from '@inertiajs/vue3';
 import {
     ArrowUpDown,
     ChevronDown,
+    ChevronRight,
     ChevronUp,
+    FolderPlus,
     GripVertical,
     Pencil,
     Plus,
@@ -21,6 +23,11 @@ import {
     update as updateService,
     updateOrder as updateServiceOrder,
 } from '@/actions/App/Http/Controllers/Admin/Master/ServiceController';
+import {
+    destroy as destroyServiceGroup,
+    store as storeServiceGroup,
+    update as updateServiceGroup,
+} from '@/actions/App/Http/Controllers/Admin/Master/ServiceGroupController';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
@@ -37,6 +44,7 @@ type ServiceIcon = {
 
 type Service = {
     id: number;
+    service_group_id: number | null;
     name: string;
     category: string;
     price: number;
@@ -49,10 +57,22 @@ type Service = {
     order_count: number;
 };
 
+type ServiceGroup = {
+    id: number;
+    name: string;
+};
+
+type CatalogEntry = {
+    key: string;
+    group: ServiceGroup | null;
+    services: Service[];
+};
+
 const props = defineProps<{
     mode: 'demo' | 'live';
     brand: CarwashBrand;
     services: Service[];
+    serviceGroups: ServiceGroup[];
     categories: string[];
     icons: ServiceIcon[];
     capabilities: {
@@ -63,11 +83,18 @@ const props = defineProps<{
 }>();
 
 const serviceList = ref(props.services.map((service) => ({ ...service })));
+const serviceGroupList = ref(
+    props.serviceGroups.map((serviceGroup) => ({ ...serviceGroup })),
+);
 const search = ref('');
 const categoryFilter = ref('Semua');
 const editingServiceId = ref<number | null>(null);
 const isServiceFormOpen = ref(false);
 const deletingService = ref<Service | null>(null);
+const editingServiceGroupId = ref<number | null>(null);
+const isServiceGroupFormOpen = ref(false);
+const deletingServiceGroup = ref<ServiceGroup | null>(null);
+const expandedServiceGroupIds = ref<number[]>([]);
 const isReorderMode = ref(false);
 const orderSnapshot = ref<number[]>([]);
 const draggingIndex = ref<number | null>(null);
@@ -95,9 +122,21 @@ watch(
     },
 );
 
+watch(
+    () => props.serviceGroups,
+    (serviceGroups) => {
+        if (props.mode === 'live') {
+            serviceGroupList.value = serviceGroups.map((serviceGroup) => ({
+                ...serviceGroup,
+            }));
+        }
+    },
+);
+
 const defaultIcon = props.icons[0]?.value ?? '';
 
 const serviceForm = useForm({
+    service_group_id: null as number | null,
     name: '',
     category: '',
     price: 0,
@@ -108,6 +147,9 @@ const serviceForm = useForm({
     is_active: true,
 });
 
+const serviceGroupForm = useForm({ name: '' });
+const serviceGroupDeleteForm = useForm({});
+
 const deleteForm = useForm({});
 const page = usePage<{ errors: Record<string, string> }>();
 
@@ -116,27 +158,95 @@ const deleteError = computed(() => page.props.errors.service ?? '');
 
 const filterOptions = computed(() => ['Semua', ...props.categories]);
 
+function serviceMatchesFilters(service: Service, query: string): boolean {
+    const serviceGroupName = serviceGroupList.value.find(
+        (serviceGroup) => serviceGroup.id === service.service_group_id,
+    )?.name;
+    const matchesCategory =
+        categoryFilter.value === 'Semua' ||
+        service.category === categoryFilter.value;
+    const haystack =
+        `${service.name} ${service.category} ${service.description} ${serviceGroupName ?? ''}`.toLowerCase();
+
+    return matchesCategory && (query === '' || haystack.includes(query));
+}
+
 const filteredServices = computed(() => {
     const query = search.value.trim().toLowerCase();
 
-    return serviceList.value.filter((service) => {
-        const matchesCategory =
-            categoryFilter.value === 'Semua' ||
-            service.category === categoryFilter.value;
-        const matchesQuery =
-            query === '' ||
-            service.name.toLowerCase().includes(query) ||
-            service.category.toLowerCase().includes(query) ||
-            service.description.toLowerCase().includes(query);
-
-        return matchesCategory && matchesQuery;
-    });
+    return serviceList.value.filter((service) =>
+        serviceMatchesFilters(service, query),
+    );
 });
 
-/** Dragging a filtered subset would reorder rows the operator cannot see. */
-const visibleServices = computed(() =>
-    isReorderMode.value ? serviceList.value : filteredServices.value,
-);
+const visibleCatalogEntries = computed<CatalogEntry[]>(() => {
+    if (isReorderMode.value) {
+        return serviceList.value.map((service) => ({
+            key: `service-${service.id}`,
+            group: null,
+            services: [service],
+        }));
+    }
+
+    const query = search.value.trim().toLowerCase();
+    const entries: CatalogEntry[] = serviceGroupList.value.flatMap(
+        (serviceGroup) => {
+            const allServices = serviceList.value.filter(
+                (service) => service.service_group_id === serviceGroup.id,
+            );
+            const categoryServices = allServices.filter(
+                (service) =>
+                    categoryFilter.value === 'Semua' ||
+                    service.category === categoryFilter.value,
+            );
+            const groupMatches = serviceGroup.name
+                .toLowerCase()
+                .includes(query);
+            const services = groupMatches
+                ? categoryServices
+                : categoryServices.filter((service) =>
+                      serviceMatchesFilters(service, query),
+                  );
+            const emptyGroupMatches =
+                allServices.length === 0 &&
+                categoryFilter.value === 'Semua' &&
+                (query === '' || groupMatches);
+
+            return services.length > 0 || emptyGroupMatches
+                ? [
+                      {
+                          key: `group-${serviceGroup.id}`,
+                          group: serviceGroup,
+                          services,
+                      },
+                  ]
+                : [];
+        },
+    );
+
+    entries.push(
+        ...filteredServices.value
+            .filter((service) => service.service_group_id === null)
+            .map((service) => ({
+                key: `service-${service.id}`,
+                group: null,
+                services: [service],
+            })),
+    );
+
+    return entries.sort((left, right) => {
+        const leftOrder = Math.min(
+            ...left.services.map((service) => service.sort_order),
+            Number.MAX_SAFE_INTEGER,
+        );
+        const rightOrder = Math.min(
+            ...right.services.map((service) => service.sort_order),
+            Number.MAX_SAFE_INTEGER,
+        );
+
+        return leftOrder - rightOrder || left.key.localeCompare(right.key);
+    });
+});
 
 const isOrderDirty = computed(() =>
     serviceList.value.some(
@@ -314,6 +424,7 @@ function openCreateService(): void {
     editingServiceId.value = null;
     serviceForm.clearErrors();
     serviceForm.defaults({
+        service_group_id: null,
         name: '',
         category: props.categories[0] ?? '',
         price: 0,
@@ -335,6 +446,7 @@ function openEditService(service: Service): void {
     editingServiceId.value = service.id;
     serviceForm.clearErrors();
     serviceForm.defaults({
+        service_group_id: service.service_group_id,
         name: service.name,
         category: service.category,
         price: service.price,
@@ -401,6 +513,7 @@ function saveDemoService(): void {
     }
 
     const values = {
+        service_group_id: serviceForm.service_group_id,
         name: serviceForm.name.trim(),
         category: serviceForm.category.trim(),
         price: serviceForm.price,
@@ -436,6 +549,175 @@ function saveDemoService(): void {
 
     isServiceFormOpen.value = false;
     serviceForm.reset();
+}
+
+function serviceIndex(serviceId: number): number {
+    return serviceList.value.findIndex((service) => service.id === serviceId);
+}
+
+function isServiceGroupExpanded(serviceGroupId: number): boolean {
+    return (
+        search.value.trim() !== '' ||
+        expandedServiceGroupIds.value.includes(serviceGroupId)
+    );
+}
+
+function toggleServiceGroup(serviceGroupId: number): void {
+    expandedServiceGroupIds.value = expandedServiceGroupIds.value.includes(
+        serviceGroupId,
+    )
+        ? expandedServiceGroupIds.value.filter((id) => id !== serviceGroupId)
+        : [...expandedServiceGroupIds.value, serviceGroupId];
+}
+
+function serviceGroupCategories(services: Service[]): string {
+    const categories = [
+        ...new Set(services.map((service) => service.category)),
+    ];
+
+    return categories.length > 0 ? categories.join(', ') : 'Belum ada layanan';
+}
+
+function serviceGroupPrice(services: Service[]): string {
+    if (services.length === 0) {
+        return '—';
+    }
+
+    const prices = services.map((service) => service.price);
+    const minimum = Math.min(...prices);
+    const maximum = Math.max(...prices);
+
+    return minimum === maximum
+        ? formatCurrency(minimum)
+        : `${formatCurrency(minimum)}–${formatCurrency(maximum)}`;
+}
+
+function serviceGroupActiveCount(services: Service[]): number {
+    return services.filter((service) => service.is_active).length;
+}
+
+function serviceGroupOrderCount(services: Service[]): number {
+    return services.reduce((total, service) => total + service.order_count, 0);
+}
+
+function openCreateServiceGroup(): void {
+    editingServiceGroupId.value = null;
+    serviceGroupForm.clearErrors();
+    serviceGroupForm.defaults({ name: '' });
+    serviceGroupForm.reset();
+    isServiceGroupFormOpen.value = true;
+}
+
+function openEditServiceGroup(serviceGroup: ServiceGroup): void {
+    if (!props.capabilities.update) {
+        return;
+    }
+
+    editingServiceGroupId.value = serviceGroup.id;
+    serviceGroupForm.clearErrors();
+    serviceGroupForm.defaults({ name: serviceGroup.name });
+    serviceGroupForm.reset();
+    isServiceGroupFormOpen.value = true;
+}
+
+function submitServiceGroup(): void {
+    if (props.mode === 'demo') {
+        saveDemoServiceGroup();
+
+        return;
+    }
+
+    const action =
+        editingServiceGroupId.value === null
+            ? storeServiceGroup()
+            : updateServiceGroup(editingServiceGroupId.value);
+
+    serviceGroupForm.submit(action, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isServiceGroupFormOpen.value = false;
+            serviceGroupForm.reset();
+        },
+    });
+}
+
+function saveDemoServiceGroup(): void {
+    serviceGroupForm.clearErrors();
+    const name = serviceGroupForm.name.trim();
+
+    if (name === '') {
+        serviceGroupForm.setError('name', 'Nama group wajib diisi.');
+    }
+
+    if (
+        serviceGroupList.value.some(
+            (serviceGroup) =>
+                serviceGroup.id !== editingServiceGroupId.value &&
+                serviceGroup.name.toLowerCase() === name.toLowerCase(),
+        )
+    ) {
+        serviceGroupForm.setError('name', 'Nama group sudah dipakai.');
+    }
+
+    if (serviceGroupForm.hasErrors) {
+        return;
+    }
+
+    if (editingServiceGroupId.value === null) {
+        serviceGroupList.value.push({
+            id:
+                Math.max(
+                    0,
+                    ...serviceGroupList.value.map(
+                        (serviceGroup) => serviceGroup.id,
+                    ),
+                ) + 1,
+            name,
+        });
+    } else {
+        const serviceGroup = serviceGroupList.value.find(
+            (item) => item.id === editingServiceGroupId.value,
+        );
+
+        if (serviceGroup) {
+            serviceGroup.name = name;
+        }
+    }
+
+    isServiceGroupFormOpen.value = false;
+    serviceGroupForm.reset();
+}
+
+function confirmDeleteServiceGroup(): void {
+    if (deletingServiceGroup.value === null) {
+        return;
+    }
+
+    if (props.mode === 'demo') {
+        const serviceGroupId = deletingServiceGroup.value.id;
+
+        serviceList.value.forEach((service) => {
+            if (service.service_group_id === serviceGroupId) {
+                service.service_group_id = null;
+            }
+        });
+        serviceGroupList.value = serviceGroupList.value.filter(
+            (serviceGroup) => serviceGroup.id !== serviceGroupId,
+        );
+        deletingServiceGroup.value = null;
+
+        return;
+    }
+
+    serviceGroupDeleteForm.submit(
+        destroyServiceGroup(deletingServiceGroup.value.id),
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                deletingServiceGroup.value = null;
+            },
+        },
+    );
 }
 
 function openDeleteService(service: Service): void {
@@ -544,6 +826,14 @@ function confirmDeleteService(): void {
                         <Plus class="h-4 w-4" /> Tambah Layanan
                     </button>
                     <button
+                        v-if="capabilities.create"
+                        type="button"
+                        class="flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100"
+                        @click="openCreateServiceGroup"
+                    >
+                        <FolderPlus class="h-4 w-4" /> Tambah Group
+                    </button>
+                    <button
                         v-if="capabilities.update && serviceList.length > 1"
                         type="button"
                         class="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
@@ -554,7 +844,7 @@ function confirmDeleteService(): void {
                 </div>
             </div>
 
-            <div v-if="visibleServices.length" class="overflow-x-auto">
+            <div v-if="visibleCatalogEntries.length" class="overflow-x-auto">
                 <table class="w-full min-w-[860px] text-sm">
                     <thead>
                         <tr
@@ -573,157 +863,309 @@ function confirmDeleteService(): void {
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
-                        <tr
-                            v-for="(service, index) in visibleServices"
-                            :key="service.id"
-                            class="transition"
-                            :class="[
-                                isReorderMode
-                                    ? 'select-none'
-                                    : 'hover:bg-slate-50/70',
-                                draggingIndex === index ? 'opacity-40' : '',
-                                isReorderMode &&
-                                dropIndex === index &&
-                                draggingIndex !== index
-                                    ? 'bg-cyan-50/60 ring-2 ring-cyan-300 ring-inset'
-                                    : '',
-                            ]"
-                            :draggable="isReorderMode"
-                            @dragstart="onRowDragStart(index, $event)"
-                            @dragover="onRowDragOver(index, $event)"
-                            @drop.prevent="onRowDrop(index)"
-                            @dragend="resetDrag"
+                        <template
+                            v-for="entry in visibleCatalogEntries"
+                            :key="entry.key"
                         >
-                            <td v-if="isReorderMode" class="px-5 py-3.5">
-                                <div class="flex items-center gap-1">
-                                    <GripVertical
-                                        class="h-4 w-4 shrink-0 cursor-grab text-slate-400 active:cursor-grabbing"
-                                        aria-hidden="true"
-                                    />
-                                    <div class="flex flex-col">
-                                        <button
-                                            type="button"
-                                            class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                                            :disabled="index === 0"
-                                            aria-label="Naikkan urutan"
-                                            @click="
-                                                moveService(index, index - 1)
-                                            "
-                                        >
-                                            <ChevronUp class="h-3.5 w-3.5" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                                            :disabled="
-                                                index ===
-                                                visibleServices.length - 1
-                                            "
-                                            aria-label="Turunkan urutan"
-                                            @click="
-                                                moveService(index, index + 1)
-                                            "
-                                        >
-                                            <ChevronDown class="h-3.5 w-3.5" />
-                                        </button>
-                                    </div>
-                                    <span
-                                        class="text-xs font-medium text-slate-400 tabular-nums"
+                            <tr
+                                v-if="entry.group"
+                                class="bg-slate-50/80 transition hover:bg-slate-100/80"
+                            >
+                                <td class="px-5 py-3.5">
+                                    <button
+                                        type="button"
+                                        class="flex items-center gap-3 text-left"
+                                        :aria-expanded="
+                                            isServiceGroupExpanded(
+                                                entry.group.id,
+                                            )
+                                        "
+                                        @click="
+                                            toggleServiceGroup(entry.group.id)
+                                        "
                                     >
-                                        {{ index + 1 }}
-                                    </span>
-                                </div>
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div class="flex items-center gap-3">
-                                    <div
-                                        class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-sky-100 text-lg"
-                                    >
-                                        {{ service.icon }}
-                                    </div>
-                                    <div class="min-w-0">
-                                        <p
-                                            class="flex items-center gap-2 font-medium text-slate-900"
+                                        <span
+                                            class="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-700"
                                         >
-                                            {{ service.name }}
+                                            <ChevronDown
+                                                v-if="
+                                                    isServiceGroupExpanded(
+                                                        entry.group.id,
+                                                    )
+                                                "
+                                                class="h-4 w-4"
+                                            />
+                                            <ChevronRight
+                                                v-else
+                                                class="h-4 w-4"
+                                            />
+                                        </span>
+                                        <span>
                                             <span
-                                                v-if="service.is_popular"
-                                                class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                                                class="block font-semibold text-slate-900"
                                             >
-                                                Populer
+                                                {{ entry.group.name }}
                                             </span>
-                                        </p>
-                                        <p
-                                            v-if="service.description"
-                                            class="max-w-md truncate text-[11px] text-slate-500"
-                                        >
-                                            {{ service.description }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </td>
-                            <td
-                                class="px-5 py-3.5 text-xs font-medium text-slate-600"
-                            >
-                                {{ service.category }}
-                            </td>
-                            <td
-                                class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
-                            >
-                                {{ formatCurrency(service.price) }}
-                            </td>
-                            <td
-                                class="px-5 py-3.5 text-xs font-medium text-emerald-600 tabular-nums"
-                            >
-                                +{{ service.stamps }}
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <StatusPill
-                                    :status="
-                                        service.is_active ? 'aktif' : 'nonaktif'
-                                    "
-                                />
-                            </td>
-                            <td class="px-5 py-3.5 text-[11px] text-slate-500">
-                                {{ service.order_count }} order
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div
-                                    class="flex items-center justify-end gap-1"
+                                            <span
+                                                class="text-[11px] text-slate-500"
+                                            >
+                                                {{ entry.services.length }}
+                                                layanan
+                                            </span>
+                                        </span>
+                                    </button>
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-xs font-medium text-slate-600"
                                 >
-                                    <button
-                                        v-if="
-                                            capabilities.update &&
-                                            !isReorderMode
-                                        "
-                                        type="button"
-                                        class="rounded-lg p-2 text-cyan-700 transition hover:bg-cyan-50"
-                                        aria-label="Edit layanan"
-                                        @click="openEditService(service)"
+                                    {{ serviceGroupCategories(entry.services) }}
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
+                                >
+                                    {{ serviceGroupPrice(entry.services) }}
+                                </td>
+                                <td class="px-5 py-3.5 text-slate-400">—</td>
+                                <td
+                                    class="px-5 py-3.5 text-xs font-medium text-emerald-700"
+                                >
+                                    {{
+                                        serviceGroupActiveCount(entry.services)
+                                    }}/{{ entry.services.length }} aktif
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-[11px] text-slate-500"
+                                >
+                                    {{ serviceGroupOrderCount(entry.services) }}
+                                    order
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <div
+                                        class="flex items-center justify-end gap-1"
                                     >
-                                        <Pencil class="h-4 w-4" />
-                                    </button>
-                                    <button
-                                        v-if="
-                                            capabilities.delete &&
-                                            !isReorderMode
+                                        <button
+                                            v-if="capabilities.update"
+                                            type="button"
+                                            class="rounded-lg p-2 text-cyan-700 transition hover:bg-cyan-50"
+                                            aria-label="Edit group layanan"
+                                            @click="
+                                                openEditServiceGroup(
+                                                    entry.group,
+                                                )
+                                            "
+                                        >
+                                            <Pencil class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="capabilities.delete"
+                                            type="button"
+                                            class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
+                                            aria-label="Hapus group layanan"
+                                            @click="
+                                                deletingServiceGroup =
+                                                    entry.group
+                                            "
+                                        >
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr
+                                v-for="service in entry.services"
+                                v-show="
+                                    entry.group === null ||
+                                    isServiceGroupExpanded(entry.group.id)
+                                "
+                                :key="service.id"
+                                class="transition"
+                                :class="[
+                                    isReorderMode
+                                        ? 'select-none'
+                                        : 'hover:bg-slate-50/70',
+                                    draggingIndex === serviceIndex(service.id)
+                                        ? 'opacity-40'
+                                        : '',
+                                    isReorderMode &&
+                                    dropIndex === serviceIndex(service.id) &&
+                                    draggingIndex !== serviceIndex(service.id)
+                                        ? 'bg-cyan-50/60 ring-2 ring-cyan-300 ring-inset'
+                                        : '',
+                                ]"
+                                :draggable="isReorderMode"
+                                @dragstart="
+                                    onRowDragStart(
+                                        serviceIndex(service.id),
+                                        $event,
+                                    )
+                                "
+                                @dragover="
+                                    onRowDragOver(
+                                        serviceIndex(service.id),
+                                        $event,
+                                    )
+                                "
+                                @drop.prevent="
+                                    onRowDrop(serviceIndex(service.id))
+                                "
+                                @dragend="resetDrag"
+                            >
+                                <td v-if="isReorderMode" class="px-5 py-3.5">
+                                    <div class="flex items-center gap-1">
+                                        <GripVertical
+                                            class="h-4 w-4 shrink-0 cursor-grab text-slate-400 active:cursor-grabbing"
+                                            aria-hidden="true"
+                                        />
+                                        <div class="flex flex-col">
+                                            <button
+                                                type="button"
+                                                class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                                                :disabled="
+                                                    serviceIndex(service.id) ===
+                                                    0
+                                                "
+                                                aria-label="Naikkan urutan"
+                                                @click="
+                                                    moveService(
+                                                        serviceIndex(
+                                                            service.id,
+                                                        ),
+                                                        serviceIndex(
+                                                            service.id,
+                                                        ) - 1,
+                                                    )
+                                                "
+                                            >
+                                                <ChevronUp
+                                                    class="h-3.5 w-3.5"
+                                                />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
+                                                :disabled="
+                                                    serviceIndex(service.id) ===
+                                                    serviceList.length - 1
+                                                "
+                                                aria-label="Turunkan urutan"
+                                                @click="
+                                                    moveService(
+                                                        serviceIndex(
+                                                            service.id,
+                                                        ),
+                                                        serviceIndex(
+                                                            service.id,
+                                                        ) + 1,
+                                                    )
+                                                "
+                                            >
+                                                <ChevronDown
+                                                    class="h-3.5 w-3.5"
+                                                />
+                                            </button>
+                                        </div>
+                                        <span
+                                            class="text-xs font-medium text-slate-400 tabular-nums"
+                                        >
+                                            {{ serviceIndex(service.id) + 1 }}
+                                        </span>
+                                    </div>
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <div class="flex items-center gap-3">
+                                        <div
+                                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-sky-100 text-lg"
+                                        >
+                                            {{ service.icon }}
+                                        </div>
+                                        <div class="min-w-0">
+                                            <p
+                                                class="flex items-center gap-2 font-medium text-slate-900"
+                                            >
+                                                {{ service.name }}
+                                                <span
+                                                    v-if="service.is_popular"
+                                                    class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
+                                                >
+                                                    Populer
+                                                </span>
+                                            </p>
+                                            <p
+                                                v-if="service.description"
+                                                class="max-w-md truncate text-[11px] text-slate-500"
+                                            >
+                                                {{ service.description }}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-xs font-medium text-slate-600"
+                                >
+                                    {{ service.category }}
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
+                                >
+                                    {{ formatCurrency(service.price) }}
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-xs font-medium text-emerald-600 tabular-nums"
+                                >
+                                    +{{ service.stamps }}
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <StatusPill
+                                        :status="
+                                            service.is_active
+                                                ? 'aktif'
+                                                : 'nonaktif'
                                         "
-                                        type="button"
-                                        class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-                                        :disabled="service.order_count > 0"
-                                        :title="
-                                            service.order_count > 0
-                                                ? 'Sudah dipakai order, nonaktifkan saja'
-                                                : 'Hapus layanan'
-                                        "
-                                        aria-label="Hapus layanan"
-                                        @click="openDeleteService(service)"
+                                    />
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-[11px] text-slate-500"
+                                >
+                                    {{ service.order_count }} order
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <div
+                                        class="flex items-center justify-end gap-1"
                                     >
-                                        <Trash2 class="h-4 w-4" />
-                                    </button>
-                                </div>
-                            </td>
-                        </tr>
+                                        <button
+                                            v-if="
+                                                capabilities.update &&
+                                                !isReorderMode
+                                            "
+                                            type="button"
+                                            class="rounded-lg p-2 text-cyan-700 transition hover:bg-cyan-50"
+                                            aria-label="Edit layanan"
+                                            @click="openEditService(service)"
+                                        >
+                                            <Pencil class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="
+                                                capabilities.delete &&
+                                                !isReorderMode
+                                            "
+                                            type="button"
+                                            class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+                                            :disabled="service.order_count > 0"
+                                            :title="
+                                                service.order_count > 0
+                                                    ? 'Sudah dipakai order, nonaktifkan saja'
+                                                    : 'Hapus layanan'
+                                            "
+                                            aria-label="Hapus layanan"
+                                            @click="openDeleteService(service)"
+                                        >
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                        </template>
                     </tbody>
                 </table>
             </div>
@@ -791,6 +1233,32 @@ function confirmDeleteService(): void {
             class="space-y-4"
             @submit.prevent="submitService"
         >
+            <div>
+                <label
+                    for="service-group"
+                    class="text-xs font-medium text-slate-600"
+                >
+                    Group layanan (opsional)
+                </label>
+                <select
+                    id="service-group"
+                    v-model="serviceForm.service_group_id"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                >
+                    <option :value="null">Tanpa group</option>
+                    <option
+                        v-for="serviceGroup in serviceGroupList"
+                        :key="serviceGroup.id"
+                        :value="serviceGroup.id"
+                    >
+                        {{ serviceGroup.name }}
+                    </option>
+                </select>
+                <InputError
+                    class="mt-1"
+                    :message="serviceForm.errors.service_group_id"
+                />
+            </div>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_15rem]">
                 <div>
                     <label
@@ -976,6 +1444,92 @@ function confirmDeleteService(): void {
                 :disabled="serviceForm.processing"
             >
                 {{ serviceForm.processing ? 'Menyimpan...' : 'Simpan layanan' }}
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="isServiceGroupFormOpen"
+        :title="
+            editingServiceGroupId === null
+                ? 'Tambah group layanan'
+                : 'Edit group layanan'
+        "
+        caption="Group merangkum beberapa pilihan layanan dalam satu card."
+        size="sm"
+        @close="isServiceGroupFormOpen = false"
+    >
+        <form id="service-group-form" @submit.prevent="submitServiceGroup">
+            <label
+                for="service-group-name"
+                class="text-xs font-medium text-slate-600"
+            >
+                Nama group
+            </label>
+            <input
+                id="service-group-name"
+                v-model="serviceGroupForm.name"
+                type="text"
+                class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+            />
+            <InputError class="mt-1" :message="serviceGroupForm.errors.name" />
+        </form>
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                @click="isServiceGroupFormOpen = false"
+            >
+                Batal
+            </button>
+            <button
+                form="service-group-form"
+                type="submit"
+                class="flex-1 rounded-xl bg-cyan-600 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="serviceGroupForm.processing"
+            >
+                {{
+                    serviceGroupForm.processing
+                        ? 'Menyimpan...'
+                        : 'Simpan group'
+                }}
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="deletingServiceGroup !== null"
+        title="Hapus group layanan"
+        caption="Layanan di dalamnya tetap tersimpan tanpa group."
+        size="sm"
+        @close="deletingServiceGroup = null"
+    >
+        <p v-if="deletingServiceGroup" class="text-sm text-slate-600">
+            Yakin ingin menghapus group
+            <span class="font-semibold text-slate-900">
+                {{ deletingServiceGroup.name }}
+            </span>
+            ?
+        </p>
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                @click="deletingServiceGroup = null"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
+                :disabled="serviceGroupDeleteForm.processing"
+                @click="confirmDeleteServiceGroup"
+            >
+                {{
+                    serviceGroupDeleteForm.processing
+                        ? 'Menghapus...'
+                        : 'Hapus group'
+                }}
             </button>
         </template>
     </ModalDialog>

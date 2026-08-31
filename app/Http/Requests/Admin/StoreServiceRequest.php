@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\ServiceGroup;
 use App\Support\Admin\ServiceIcons;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -25,6 +26,7 @@ class StoreServiceRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'service_group_id' => ['nullable', 'integer', Rule::exists(ServiceGroup::class, 'id')],
             'name' => ['required', 'string', 'max:255', Rule::unique('services', 'name')],
             'category' => ['required', 'string', 'max:100'],
             'price' => ['required', 'integer', 'min:0', 'max:999999999'],

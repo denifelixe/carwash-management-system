@@ -19,6 +19,7 @@ class ServiceFactory extends Factory
     public function definition(): array
     {
         return [
+            'service_group_id' => null,
             'name' => fake()->unique()->words(3, true),
             'category' => fake()->randomElement(['Cuci Mobil', 'Cuci Motor', 'Detailing', 'Interior', 'Add-on']),
             'price' => fake()->numberBetween(2, 150) * 5000,

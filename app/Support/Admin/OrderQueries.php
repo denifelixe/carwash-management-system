@@ -77,6 +77,7 @@ class OrderQueries
     public static function servicesFor(Collection $orders): Collection
     {
         return Service::query()
+            ->with('serviceGroup:id,name')
             ->where(fn ($query) => $query
                 ->where('is_active', true)
                 ->orWhereHas('orders', fn ($orderQuery) => $orderQuery->whereKey($orders->modelKeys())))

@@ -5,6 +5,7 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\Order;
 use App\Models\Service;
+use App\Models\ServiceGroup;
 use Inertia\Testing\AssertableInertia;
 
 /**
@@ -38,6 +39,7 @@ function serviceStaff(array $abilities): Admin
 function servicePayload(array $overrides = []): array
 {
     return array_merge([
+        'service_group_id' => null,
         'name' => 'Cuci Kilat',
         'category' => 'Cuci Mobil',
         'price' => 55000,
@@ -56,7 +58,8 @@ test('guests cannot open the master service module', function () {
 
 test('an owner sees the service list and an expandable master sidebar group', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    Service::factory()->count(3)->create();
+    $serviceGroup = ServiceGroup::factory()->create();
+    Service::factory()->count(3)->for($serviceGroup)->create();
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.master.services.index'))
@@ -66,6 +69,8 @@ test('an owner sees the service list and an expandable master sidebar group', fu
                 ->component('admin/master/Services')
                 ->where('mode', 'live')
                 ->has('services', 3)
+                ->where('services.0.service_group_id', $serviceGroup->id)
+                ->has('serviceGroups')
                 ->has('services.0.sort_order')
                 ->has('categories')
                 ->where('capabilities.create', true)
@@ -92,12 +97,100 @@ test('an owner can create a service', function () {
     $service = Service::query()->where('name', 'Cuci Kilat')->firstOrFail();
 
     expect($service)
+        ->service_group_id->toBeNull()
         ->category->toBe('Cuci Mobil')
         ->price->toBe(55000)
         ->stamps->toBe(1)
         ->icon->toBe('🚿')
         ->is_popular->toBeFalse()
         ->is_active->toBeTrue();
+});
+
+test('an owner can create and assign a service group', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.service-groups.store'), ['name' => 'Wash Premium'])
+        ->assertRedirect(route('admin.master.services.index'))
+        ->assertSessionHasNoErrors();
+
+    $serviceGroup = ServiceGroup::query()->where('name', 'Wash Premium')->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.services.store'), servicePayload([
+            'service_group_id' => $serviceGroup->id,
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect(Service::query()->where('name', 'Cuci Kilat')->firstOrFail())
+        ->service_group_id->toBe($serviceGroup->id)
+        ->and($serviceGroup->services()->count())->toBe(1);
+});
+
+test('an owner can rename a service group and names stay unique', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    ServiceGroup::factory()->create(['name' => 'Group Existing']);
+    $serviceGroup = ServiceGroup::factory()->create(['name' => 'Group Lama']);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.master.service-groups.update', $serviceGroup), [
+            'name' => 'Group Existing',
+        ])
+        ->assertSessionHasErrors('name');
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.master.service-groups.update', $serviceGroup), [
+            'name' => 'Group Baru',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($serviceGroup->refresh()->name)->toBe('Group Baru');
+});
+
+test('deleting a service group keeps its services and order history', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $serviceGroup = ServiceGroup::factory()->create();
+    $service = Service::factory()->for($serviceGroup)->create();
+    $order = Order::factory()->create();
+    $order->services()->attach($service, [
+        'service_name' => $service->name,
+        'unit_price' => $service->price,
+        'stamps' => $service->stamps,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.master.service-groups.destroy', $serviceGroup))
+        ->assertRedirect(route('admin.master.services.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($service->refresh()->service_group_id)->toBeNull()
+        ->and($order->services()->whereKey($service->id)->exists())->toBeTrue();
+});
+
+test('service group assignment must reference an existing group', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.services.store'), servicePayload([
+            'service_group_id' => 999999,
+        ]))
+        ->assertSessionHasErrors('service_group_id');
+});
+
+test('the catalog size families are backfilled into ten service groups', function () {
+    $migration = require database_path('migrations/2026_08_31_213316_backfill_service_groups.php');
+    $migration->down();
+
+    Service::factory()->create(['name' => 'Coating Lite - Small']);
+    Service::factory()->create(['name' => 'Coating Lite - Extra Large']);
+    Service::factory()->create(['name' => 'Complete Detailing Motor - Medium']);
+
+    $migration->up();
+
+    expect(ServiceGroup::query()->count())->toBe(10)
+        ->and(Service::query()->where('name', 'Coating Lite - Small')->firstOrFail()->serviceGroup?->name)->toBe('Coating Lite')
+        ->and(Service::query()->where('name', 'Coating Lite - Extra Large')->firstOrFail()->serviceGroup?->name)->toBe('Coating Lite')
+        ->and(Service::query()->where('name', 'Complete Detailing Motor - Medium')->firstOrFail()->serviceGroup?->name)->toBe('Complete Detailing Motor');
 });
 
 test('an owner can update a service and deactivate it', function () {
@@ -207,6 +300,20 @@ test('read only staff see the list without write capabilities', function () {
     $this->actingAs($staff, 'admin')
         ->delete(route('admin.master.services.destroy', $service))
         ->assertForbidden();
+
+    $serviceGroup = ServiceGroup::factory()->create();
+
+    $this->actingAs($staff, 'admin')
+        ->post(route('admin.master.service-groups.store'), ['name' => 'Ditolak'])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'admin')
+        ->patch(route('admin.master.service-groups.update', $serviceGroup), ['name' => 'Ditolak'])
+        ->assertForbidden();
+
+    $this->actingAs($staff, 'admin')
+        ->delete(route('admin.master.service-groups.destroy', $serviceGroup))
+        ->assertForbidden();
 });
 
 test('an owner can drag services into a new order', function () {
@@ -290,4 +397,19 @@ test('the shared order catalog follows the master service order', function () {
                 ->where('services.0.id', $firstService->id)
                 ->where('services.1.id', $last->id),
         );
+});
+
+test('the master service page renders group management and accordion controls', function () {
+    $servicesPage = file_get_contents(
+        resource_path('js/pages/admin/master/Services.vue'),
+    );
+
+    expect($servicesPage)
+        ->toContain('Tambah Group')
+        ->toContain('v-model="serviceForm.service_group_id"')
+        ->toContain('v-for="entry in visibleCatalogEntries"')
+        ->toContain('toggleServiceGroup(entry.group.id)')
+        ->toContain('Layanan di dalamnya tetap tersimpan tanpa group.')
+        ->toContain('isReorderMode.value')
+        ->toContain('serviceList.value.map((service) => ({');
 });

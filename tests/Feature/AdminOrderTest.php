@@ -7,6 +7,7 @@ use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\Service;
+use App\Models\ServiceGroup;
 use Inertia\Testing\AssertableInertia;
 
 test('guests cannot open the live order module', function () {
@@ -16,7 +17,8 @@ test('guests cannot open the live order module', function () {
 
 test('the live order page uses the shared component and database records', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $service = Service::factory()->create(['name' => 'Premium Wash']);
+    $serviceGroup = ServiceGroup::factory()->create(['name' => 'Premium Group']);
+    $service = Service::factory()->for($serviceGroup)->create(['name' => 'Premium Wash']);
     $order = Order::factory()->create(['number' => 'ORD-TEST-001']);
     $order->services()->attach($service, [
         'service_name' => $service->name,
@@ -33,6 +35,8 @@ test('the live order page uses the shared component and database records', funct
                 ->where('mode', 'live')
                 ->where('orders.0.orderNo', 'ORD-TEST-001')
                 ->where('orders.0.serviceIds.0', $service->id)
+                ->where('services.0.serviceGroup.id', $serviceGroup->id)
+                ->where('services.0.serviceGroup.name', 'Premium Group')
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
                 ->where('modules.1.key', 'orders')
@@ -66,10 +70,11 @@ test('an owner can create a member order with database priced services', functio
         'name' => 'Honda Brio',
         'plate' => 'B 1234 XYZ',
     ]);
+    $serviceGroup = ServiceGroup::factory()->create();
     $services = Service::factory()->count(2)->sequence(
         ['price' => 45000, 'stamps' => 1],
         ['price' => 25000, 'stamps' => 0],
-    )->create();
+    )->for($serviceGroup)->create();
 
     $this->actingAs($owner, 'admin')
         ->post(route('admin.orders.store'), [

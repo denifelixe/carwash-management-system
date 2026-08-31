@@ -10,7 +10,7 @@ class Catalog
     /**
      * Services shared by the POS grid, order builder, and customer catalog.
      *
-     * @return list<array{id: int, name: string, category: string, price: int, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
+     * @return list<array{id: int, name: string, category: string, price: int, stamps: int, icon: string, description: string, popular: bool, isActive: bool, serviceGroup?: array{id: int, name: string}}>
      */
     public static function services(): array
     {
@@ -27,6 +27,10 @@ class Catalog
             ['id' => 10, 'name' => 'Salon Jok & Karpet', 'category' => 'Interior', 'price' => 350000, 'stamps' => 3, 'icon' => '🪑', 'description' => 'Cuci jok, karpet, dan plafon dengan mesin extractor.', 'popular' => false, 'isActive' => true],
             ['id' => 11, 'name' => 'Parfum & Anti Jamur Kaca', 'category' => 'Add-on', 'price' => 60000, 'stamps' => 0, 'icon' => '💨', 'description' => 'Wangi kabin tahan lama plus kaca bebas jamur.', 'popular' => false, 'isActive' => true],
             ['id' => 12, 'name' => 'Semir Ban Premium', 'category' => 'Add-on', 'price' => 25000, 'stamps' => 0, 'icon' => '⚫', 'description' => 'Ban hitam pekat mengkilap tahan hingga 2 minggu.', 'popular' => false, 'isActive' => true],
+            ['id' => 13, 'name' => 'Coating Lite - Small', 'category' => 'Coating Mobil', 'price' => 800000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran small.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
+            ['id' => 14, 'name' => 'Coating Lite - Medium', 'category' => 'Coating Mobil', 'price' => 950000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran medium.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
+            ['id' => 15, 'name' => 'Coating Lite - Large', 'category' => 'Coating Mobil', 'price' => 1100000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran large.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
+            ['id' => 16, 'name' => 'Coating Lite - Extra Large', 'category' => 'Coating Mobil', 'price' => 1250000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran extra large.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
         ];
     }
 

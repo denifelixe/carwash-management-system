@@ -455,12 +455,14 @@ test('the order form filters its service list from a search field', function () 
         // The field itself, bound to the query the list reads.
         ->toContain('v-model="serviceQuery"')
         ->toContain('placeholder="Cari layanan"')
-        // Every token has to land, so a two-word query still narrows the list.
-        ->toContain('const visibleServices = computed<CarwashService[]>')
+        // Every token has to land across both group names and child services.
+        ->toContain('const visibleServiceEntries = computed<ServicePickerEntry[]>')
         ->toContain('tokens.every((token) => haystack.includes(token))')
-        // The grid renders the filtered list, with a note when nothing matches.
-        ->toContain('v-for="service in visibleServices"')
-        ->toContain('v-if="visibleServices.length > 0"')
+        // The grid renders one card per service or group and opens a nested picker.
+        ->toContain('v-for="entry in visibleServiceEntries"')
+        ->toContain('v-if="visibleServiceEntries.length > 0"')
+        ->toContain('activeServiceGroupId = entry.group.id')
+        ->toContain('caption="Pilih satu atau beberapa layanan"')
         ->toContain('Layanan tidak ditemukan.')
         // A cleared draft starts the next order with the full list.
         ->toContain("serviceQuery.value = '';");

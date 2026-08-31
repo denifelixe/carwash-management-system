@@ -58,6 +58,10 @@ export interface CarwashService {
     description: string;
     popular: boolean;
     isActive: boolean;
+    serviceGroup?: {
+        id: number;
+        name: string;
+    } | null;
 }
 
 export interface CarwashReward {
