@@ -2,7 +2,18 @@
 
 use App\Models\Admin;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Testing\AssertableInertia as Assert;
+
+test('the global password rule accepts one character in every environment', function () {
+    $validator = Validator::make(
+        ['password' => '#'],
+        ['password' => ['required', Password::defaults()]],
+    );
+
+    expect($validator->passes())->toBeTrue();
+});
 
 test('security page is displayed', function () {
     $admin = Admin::factory()->create();
