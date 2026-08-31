@@ -2,8 +2,8 @@
 
 $applicationType = (string) env('APP_TYPE', 'ALL');
 
-if (! in_array($applicationType, ['DEMO', 'LIVE', 'ALL'], true)) {
-    throw new InvalidArgumentException('APP_TYPE must be one of: DEMO, LIVE, ALL.');
+if (! in_array($applicationType, ['DEMO', 'LIVE', 'STAGING', 'ALL'], true)) {
+    throw new InvalidArgumentException('APP_TYPE must be one of: DEMO, LIVE, STAGING, ALL.');
 }
 
 return [

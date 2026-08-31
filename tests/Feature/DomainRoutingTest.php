@@ -75,6 +75,14 @@ test('live mode only registers live routes', function () {
         ->toBeEmpty();
 });
 
+test('staging mode only registers live routes', function () {
+    $routeNames = routesForApplicationType('STAGING')->pluck('name');
+
+    expect($routeNames)->toContain('home', 'admin.login', 'member.login')
+        ->and($routeNames->filter(fn (?string $name): bool => Str::startsWith((string) $name, 'demo.')))
+        ->toBeEmpty();
+});
+
 test('all mode registers demo and live routes', function () {
     $routeNames = routesForApplicationType('ALL')->pluck('name');
 
@@ -91,7 +99,26 @@ test('an invalid application type prevents the application from booting', functi
 
     expect($result->failed())->toBeTrue()
         ->and($result->output().$result->errorOutput())
-        ->toContain('APP_TYPE must be one of: DEMO, LIVE, ALL.');
+        ->toContain('APP_TYPE must be one of: DEMO, LIVE, STAGING, ALL.');
+});
+
+test('staging pages show a fixed warning banner', function () {
+    config(['app.type' => 'STAGING']);
+
+    $this->get(route('admin.login'))
+        ->assertOk()
+        ->assertSee('STAGING ENVIRONMENT')
+        ->assertSee('app-staging', false)
+        ->assertSee('staging-banner fixed', false);
+});
+
+test('non-staging pages do not show the warning banner', function () {
+    config(['app.type' => 'LIVE']);
+
+    $this->get(route('admin.login'))
+        ->assertOk()
+        ->assertDontSee('STAGING ENVIRONMENT')
+        ->assertDontSee('app-staging', false);
 });
 
 test('the main domain sends visitors to the member portal', function () {

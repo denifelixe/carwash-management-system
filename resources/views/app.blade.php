@@ -59,7 +59,26 @@
             <title>{{ $meta['title'] }}</title>
         </x-inertia::head>
     </head>
-    <body class="font-sans antialiased">
+    <body @class([
+        'font-sans antialiased',
+        'app-staging' => config('app.type') === 'STAGING',
+    ])>
+        @if (config('app.type') === 'STAGING')
+            <div
+                role="status"
+                aria-label="Staging environment"
+                class="staging-banner fixed inset-x-0 top-0 z-[100] flex h-12 items-center justify-center gap-3 px-4 text-center sm:h-14 sm:gap-4"
+            >
+                <span class="staging-banner__dot" aria-hidden="true"></span>
+                <span class="staging-banner__label text-sm font-bold tracking-[0.3em] text-amber-100 uppercase sm:text-lg sm:tracking-[0.45em]">
+                    STAGING ENVIRONMENT
+                </span>
+                <span class="hidden text-xs font-medium tracking-[0.1em] text-amber-200/50 sm:inline" aria-hidden="true">
+                    Data uji coba &middot; bukan data real
+                </span>
+            </div>
+        @endif
+
         <x-inertia::app />
     </body>
 </html>
