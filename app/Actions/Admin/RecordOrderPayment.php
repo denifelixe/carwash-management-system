@@ -5,6 +5,7 @@ namespace App\Actions\Admin;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -17,8 +18,10 @@ use Illuminate\Support\Facades\DB;
  */
 class RecordOrderPayment
 {
+    public function __construct(private TransactionShiftResolver $transactionShiftResolver) {}
+
     /**
-     * @param  array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>}  $payment
+     * @param  array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null}  $payment
      */
     public function handle(Order $order, Admin $cashier, array $payment): OrderTransaction
     {
@@ -52,8 +55,12 @@ class RecordOrderPayment
             $completesOrder = $isFullyPaid && $payment['intent'] === 'settlement';
             $channels = self::channelBreakdown($payment['channels'], $amount);
 
-            $cashier->loadMissing('workShift');
-            $shift = $cashier->getRelation('workShift');
+            $paidAt = now();
+            $shift = $this->transactionShiftResolver->resolve(
+                $cashier,
+                $payment['transaction_shift_id'],
+                $paidAt,
+            );
 
             $transaction = $order->transactions()->create([
                 'recorded_by_admin_id' => $cashier->getKey(),
@@ -63,7 +70,7 @@ class RecordOrderPayment
                 'amount' => $amount,
                 'channel_breakdown' => $channels,
                 /* The outlet's own clock, which is what the column holds. */
-                'paid_at' => now(),
+                'paid_at' => $paidAt,
             ]);
 
             $order->update([

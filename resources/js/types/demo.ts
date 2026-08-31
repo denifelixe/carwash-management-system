@@ -303,7 +303,7 @@ export interface CarwashMoneyEntry {
     method: string;
     channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
-    /** The shift its recorder was rostered onto; absent when they had none. */
+    /** The shift resolved and stamped when the entry was created. */
     shift?: string | null;
     source?: string;
     orderId?: number | null;
@@ -400,6 +400,26 @@ export interface CarwashPersona {
     initials: string;
     shift: string;
     avatar: string | null;
+}
+
+export interface CarwashTransactionShiftOption {
+    id: number;
+    name: string;
+    starts_at: string;
+    ends_at: string;
+    time: string;
+}
+
+export interface CarwashTransactionShiftAssignment {
+    mode: 'fixed' | 'schedule';
+    label: string;
+    caption: string;
+    shifts: CarwashTransactionShiftOption[];
+}
+
+export interface CarwashTimezone {
+    id: string;
+    code: string;
 }
 
 export interface CarwashStaff {
@@ -508,9 +528,11 @@ export interface CarwashAdminShellProps {
     pageTitle?: string;
     brand: CarwashBrand;
     notifications: CarwashNotification[];
+    timezone: CarwashTimezone;
     role: CarwashRole;
     modules: CarwashAdminModule[];
     persona: CarwashPersona;
+    transactionShift: CarwashTransactionShiftAssignment;
     profileHref: string | null;
     headerAction: CarwashAdminAction | null;
     exitAction: CarwashAdminAction;

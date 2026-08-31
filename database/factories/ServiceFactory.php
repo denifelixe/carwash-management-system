@@ -27,6 +27,7 @@ class ServiceFactory extends Factory
             'description' => fake()->sentence(),
             'is_popular' => false,
             'is_active' => true,
+            'sort_order' => 0,
         ];
     }
 }

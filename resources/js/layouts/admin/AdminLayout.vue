@@ -25,7 +25,7 @@ import {
     X,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { Toaster } from '@/components/ui/sonner';
 import type {
     CarwashAdminModule,
@@ -39,6 +39,7 @@ const brand = computed(() => page.props.brand);
 const role = computed(() => page.props.role);
 const modules = computed(() => page.props.modules);
 const persona = computed(() => page.props.persona);
+const timezone = computed(() => page.props.timezone);
 const profileHref = computed(() => page.props.profileHref);
 const headerAction = computed(() => page.props.headerAction);
 const exitAction = computed(() => page.props.exitAction);
@@ -80,10 +81,35 @@ const isSidebarCollapsed = ref<boolean>(false);
 const expandedGroups = ref<string[]>([]);
 const isNotificationsOpen = ref<boolean>(false);
 const notifications = ref<CarwashNotification[]>([]);
+const currentTime = ref<string>('--:--:--');
+let clockTimer: ReturnType<typeof setInterval> | undefined;
+
+const clockFormatter = computed(
+    () =>
+        new Intl.DateTimeFormat('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+            timeZone: timezone.value.id,
+        }),
+);
+
+function updateClock(): void {
+    currentTime.value = clockFormatter.value.format(new Date());
+}
 
 onMounted(() => {
     isSidebarCollapsed.value =
         localStorage.getItem(sidebarStorageKey.value) === 'collapsed';
+    updateClock();
+    clockTimer = setInterval(updateClock, 1000);
+});
+
+onUnmounted(() => {
+    if (clockTimer !== undefined) {
+        clearInterval(clockTimer);
+    }
 });
 
 watch(
@@ -518,6 +544,33 @@ function closeSidebar(module: CarwashAdminModule): void {
                         >
                             {{ pageTitle }}
                         </h1>
+                    </div>
+
+                    <div
+                        class="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-2.5 py-1.5 text-slate-600 shadow-sm sm:px-3"
+                        :title="`${timezone.id} · ${page.props.transactionShift.caption}`"
+                    >
+                        <Clock3
+                            class="hidden h-[18px] w-[18px] text-cyan-600 sm:block"
+                        />
+                        <div class="leading-none">
+                            <time
+                                class="block font-mono text-xs font-semibold tracking-wide text-slate-900 tabular-nums sm:text-sm"
+                            >
+                                {{ currentTime }}
+                            </time>
+                            <p
+                                class="mt-1 flex max-w-32 items-center gap-1 text-[10px] font-medium text-slate-500 sm:max-w-48 sm:text-[11px]"
+                            >
+                                <span class="text-cyan-700">{{
+                                    timezone.code
+                                }}</span>
+                                <span aria-hidden="true">·</span>
+                                <span class="truncate">{{
+                                    page.props.transactionShift.caption
+                                }}</span>
+                            </p>
+                        </div>
                     </div>
 
                     <div class="relative">

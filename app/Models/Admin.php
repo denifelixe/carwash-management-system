@@ -18,6 +18,7 @@ use Illuminate\Support\Str;
  * @property int $id
  * @property int|null $role_id
  * @property int|null $shift_id
+ * @property string $shift_mode
  * @property string $name
  * @property string $email
  * @property string|null $phone
@@ -32,7 +33,7 @@ use Illuminate\Support\Str;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'shift_id', 'is_active'])]
+#[Fillable(['name', 'email', 'phone', 'password', 'role_id', 'shift_id', 'shift_mode', 'is_active'])]
 #[Hidden(['password', 'remember_token', 'profile_photo_path'])]
 class Admin extends Authenticatable
 {
@@ -42,6 +43,7 @@ class Admin extends Authenticatable
     /** @var array<string, mixed> */
     protected $attributes = [
         'is_hidden' => false,
+        'shift_mode' => 'fixed',
     ];
 
     /**

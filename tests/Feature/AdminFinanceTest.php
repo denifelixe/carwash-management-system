@@ -671,3 +671,39 @@ test('a hand-written entry takes the shift of the admin who wrote it', function 
         ->and(CashEntry::query()->where('recorded_by_admin_id', $unrostered->id)->firstOrFail())
         ->shift_name->toBeNull();
 });
+
+test('a scheduled hand-written entry requires a valid choice during overlapping shifts', function () {
+    $this->travelTo('2026-08-30 14:30:00');
+    $overlappingShift = AdminShift::query()->create([
+        'key' => 'afternoon',
+        'name' => 'Shift Siang',
+        'starts_at' => '14:00',
+        'ends_at' => '20:00',
+        'is_active' => true,
+    ]);
+    $admin = Admin::factory()->create([
+        'is_owner' => true,
+        'shift_mode' => 'schedule',
+        'shift_id' => null,
+    ]);
+    $payload = [
+        'direction' => 'in',
+        'category' => 'Penjualan Produk',
+        'description' => 'Parfum mobil',
+        'amount' => 50000,
+        'method' => 'Tunai',
+    ];
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.finance.store'), $payload)
+        ->assertSessionHasErrors('transaction_shift_id');
+
+    $this->actingAs($admin, 'admin')
+        ->post(route('admin.finance.store'), [
+            ...$payload,
+            'transaction_shift_id' => $overlappingShift->id,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(CashEntry::query()->sole()->shift_name)->toBe('Shift Siang');
+});

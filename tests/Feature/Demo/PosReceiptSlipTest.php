@@ -139,7 +139,7 @@ test('the POS stacks its lists as accordions with only Pelunasan open', function
         ->toContain('title="Pelunasan"')
         ->toContain('default-open')
         ->toContain('title="Pembayaran Sebagian/Booking"')
-        ->toContain('title="Order Selesai"');
+        ->toContain('title="Lunas"');
 
     expect(substr_count($pos, 'default-open'))->toBe(1);
     expect(substr_count($pos, '<AccordionSection'))->toBe(3);

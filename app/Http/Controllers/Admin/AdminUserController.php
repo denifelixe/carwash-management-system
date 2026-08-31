@@ -12,6 +12,7 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Http\RedirectResponse;
@@ -139,7 +140,10 @@ class AdminUserController extends Controller
             'role_key' => $admin->is_owner ? 'owner' : ($role instanceof AdminRole ? $role->key : 'unassigned'),
             'role_name' => $admin->is_owner ? 'Owner' : ($role instanceof AdminRole ? $role->name : 'Belum ada role'),
             'shift_id' => $admin->shift_id,
-            'shift_name' => $workShift instanceof AdminShift ? $workShift->name : 'Tidak ada Shift',
+            'shift_mode' => $admin->shift_mode,
+            'shift_name' => $admin->shift_mode === TransactionShiftResolver::MODE_SCHEDULE
+                ? 'Mengikuti Jam Shift'
+                : ($workShift instanceof AdminShift ? $workShift->name : 'Tidak ada Shift'),
             'is_owner' => $admin->is_owner,
             'is_active' => $admin->is_active,
             'last_active' => $admin->last_login_at?->locale('id')->diffForHumans() ?? 'Belum pernah login',

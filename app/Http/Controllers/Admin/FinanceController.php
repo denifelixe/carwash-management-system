@@ -19,6 +19,7 @@ use App\Support\Admin\FinanceQueries;
 use App\Support\Admin\FinanceReference;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
+use App\Support\Admin\TransactionShiftResolver;
 use App\Support\Demo\DateFilter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -76,17 +77,23 @@ class FinanceController extends Controller
         ]);
     }
 
-    public function store(StoreCashEntryRequest $request): RedirectResponse
-    {
+    public function store(
+        StoreCashEntryRequest $request,
+        TransactionShiftResolver $transactionShiftResolver,
+    ): RedirectResponse {
         $data = $request->validated();
 
         /** @var Admin $admin */
         $admin = $request->user('admin');
-        $admin->loadMissing('workShift');
         /* Both read off the outlet clock, so the entry_date is the day the
          * till was actually open. */
         $occurredAt = CarbonImmutable::now();
         $entryDate = $occurredAt->toDateString();
+        $shift = $transactionShiftResolver->resolve(
+            $admin,
+            $request->integer('transaction_shift_id') ?: null,
+            $occurredAt,
+        );
 
         /** @var list<UploadedFile> $attachments */
         $attachments = $request->file('attachments', []);
@@ -98,6 +105,7 @@ class FinanceController extends Controller
                 $admin,
                 $entryDate,
                 $occurredAt,
+                $shift,
                 $attachments,
                 &$storedFiles,
             ): void {
@@ -108,7 +116,7 @@ class FinanceController extends Controller
                     'amount' => $data['amount'],
                     'method' => $data['method'],
                     'recorded_by_admin_id' => $admin->getKey(),
-                    'shift_name' => $admin->workShift?->name,
+                    'shift_name' => $shift?->name,
                     'entry_date' => $entryDate,
                     'occurred_at' => $occurredAt,
                     /* Placeholder: the reference is only stable once the row has an ID. */

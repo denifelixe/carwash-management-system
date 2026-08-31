@@ -74,6 +74,7 @@ test('the cashier only settles orders the floor handed over, and keeps upcoming 
 
 test('a partial payment leaves the order open and records its channels', function () {
     $shift = AdminShift::query()->where('key', 'morning')->firstOrFail();
+    $otherShift = AdminShift::query()->where('key', 'evening')->firstOrFail();
     $cashier = Admin::factory()->create(['is_owner' => true, 'shift_id' => $shift->id]);
     $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 100000]);
 
@@ -86,6 +87,7 @@ test('a partial payment leaves the order open and records its channels', functio
                 ['method' => 'Tunai', 'amount' => 25000, 'provider' => '', 'reference' => ''],
                 ['method' => 'Debit', 'amount' => 15000, 'provider' => 'BCA', 'reference' => '99881'],
             ],
+            'transaction_shift_id' => $otherShift->id,
         ])
         ->assertSessionHasNoErrors();
 
@@ -107,6 +109,32 @@ test('a partial payment leaves the order open and records its channels', functio
             ['label' => 'Tunai', 'amount' => 25000],
             ['label' => 'Debit · BCA', 'amount' => 15000, 'reference' => '99881'],
         ]);
+});
+
+test('the cashier page exposes the current overlap status and selectable windows', function () {
+    $this->travelTo('2026-08-31 14:30:00');
+    AdminShift::query()->create([
+        'key' => 'afternoon',
+        'name' => 'Shift Siang',
+        'starts_at' => '14:00',
+        'ends_at' => '20:00',
+        'is_active' => true,
+    ]);
+    $cashier = Admin::factory()->create([
+        'is_owner' => true,
+        'shift_mode' => 'schedule',
+        'shift_id' => null,
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->get(route('admin.pos.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('persona.shift', 'Pilih saat transaksi')
+            ->where('transactionShift.mode', 'schedule')
+            ->where('transactionShift.label', 'Pilih saat transaksi')
+            ->where('transactionShift.caption', 'Shift Pagi & Shift Siang')
+            ->has('transactionShift.shifts', 3)
+            ->where('transactionShift.shifts.0.starts_at', '08:00'));
 });
 
 test('settling the balance closes the order and issues its invoice', function () {
@@ -437,4 +465,93 @@ test('a payment taken by a cashier on no shift is stored without one', function 
     expect(OrderTransaction::query()->firstOrFail())
         ->shift_name->toBeNull()
         ->recorded_by_admin_id->toBe($cashier->id);
+});
+
+test('a scheduled cashier payment follows the only matching shift', function () {
+    $this->travelTo('2026-08-31 09:00:00');
+    $cashier = Admin::factory()->create([
+        'is_owner' => true,
+        'shift_mode' => 'schedule',
+        'shift_id' => null,
+    ]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [['method' => 'Tunai', 'amount' => 50000]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(OrderTransaction::query()->firstOrFail()->shift_name)->toBe('Shift Pagi');
+});
+
+test('a scheduled cashier payment outside every shift is stored without one', function () {
+    $this->travelTo('2026-08-31 07:00:00');
+    $cashier = Admin::factory()->create([
+        'is_owner' => true,
+        'shift_mode' => 'schedule',
+        'shift_id' => null,
+    ]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [['method' => 'Tunai', 'amount' => 50000]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(OrderTransaction::query()->firstOrFail()->shift_name)->toBeNull();
+});
+
+test('a scheduled cashier must choose one of overlapping shifts for every payment', function () {
+    $this->travelTo('2026-08-31 14:30:00');
+    $overlappingShift = AdminShift::query()->create([
+        'key' => 'afternoon',
+        'name' => 'Shift Siang',
+        'starts_at' => '14:00',
+        'ends_at' => '20:00',
+        'is_active' => true,
+    ]);
+    $outsideShift = AdminShift::query()->where('key', 'evening')->firstOrFail();
+    $cashier = Admin::factory()->create([
+        'is_owner' => true,
+        'shift_mode' => 'schedule',
+        'shift_id' => null,
+    ]);
+    $firstOrder = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+    $secondOrder = Order::factory()->create(['status' => 'pelunasan', 'total' => 50000]);
+    $payload = [
+        'intent' => 'settlement',
+        'discount' => 0,
+        'amount' => 50000,
+        'channels' => [['method' => 'Tunai', 'amount' => 50000]],
+    ];
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $firstOrder), $payload)
+        ->assertSessionHasErrors('transaction_shift_id');
+
+    expect(OrderTransaction::query()->count())->toBe(0);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $firstOrder), [
+            ...$payload,
+            'transaction_shift_id' => $outsideShift->id,
+        ])
+        ->assertSessionHasErrors('transaction_shift_id');
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $secondOrder), [
+            ...$payload,
+            'transaction_shift_id' => $overlappingShift->id,
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(OrderTransaction::query()->firstOrFail()->shift_name)->toBe('Shift Siang');
 });

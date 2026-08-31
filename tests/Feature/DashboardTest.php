@@ -30,6 +30,8 @@ test('authenticated admins can visit the dashboard', function () {
             fn (AssertableInertia $page) => $page
                 ->component('admin/Dashboard')
                 ->where('mode', 'live')
+                ->where('timezone.id', 'Asia/Jakarta')
+                ->where('timezone.code', 'WIB')
                 ->has('stats', 4)
                 ->has('modules')
                 ->has('filters')

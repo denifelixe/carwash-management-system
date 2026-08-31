@@ -84,6 +84,7 @@ Route::domain((string) config('domains.admin'))
             Route::patch('roles/{adminRole}', [AdminRoleController::class, 'update'])->name('roles.update');
             Route::get('master/layanan', [ServiceController::class, 'index'])->name('master.services.index');
             Route::post('master/layanan', [ServiceController::class, 'store'])->name('master.services.store');
+            Route::patch('master/layanan/urutan', [ServiceController::class, 'updateOrder'])->name('master.services.order.update');
             Route::patch('master/layanan/{service}', [ServiceController::class, 'update'])->name('master.services.update');
             Route::delete('master/layanan/{service}', [ServiceController::class, 'destroy'])->name('master.services.destroy');
             Route::get('master/shift', [WorkShiftController::class, 'index'])->name('master.work-shifts.index');

@@ -66,6 +66,7 @@ test('an owner sees the service list and an expandable master sidebar group', fu
                 ->component('admin/master/Services')
                 ->where('mode', 'live')
                 ->has('services', 3)
+                ->has('services.0.sort_order')
                 ->has('categories')
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
@@ -206,4 +207,87 @@ test('read only staff see the list without write capabilities', function () {
     $this->actingAs($staff, 'admin')
         ->delete(route('admin.master.services.destroy', $service))
         ->assertForbidden();
+});
+
+test('an owner can drag services into a new order', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $first = Service::factory()->create(['name' => 'Cuci A', 'sort_order' => 1]);
+    $second = Service::factory()->create(['name' => 'Cuci B', 'sort_order' => 2]);
+    $third = Service::factory()->create(['name' => 'Cuci C', 'sort_order' => 3]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.master.services.order.update'), [
+            'ids' => [$third->id, $first->id, $second->id],
+        ])
+        ->assertRedirect(route('admin.master.services.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($third->refresh()->sort_order)->toBe(1)
+        ->and($first->refresh()->sort_order)->toBe(2)
+        ->and($second->refresh()->sort_order)->toBe(3);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.master.services.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('services.0.id', $third->id)
+                ->where('services.0.sort_order', 1)
+                ->where('services.1.id', $first->id)
+                ->where('services.2.id', $second->id),
+        );
+});
+
+test('a partial order list is rejected so no service is left unnumbered', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $first = Service::factory()->create(['sort_order' => 1]);
+    $second = Service::factory()->create(['sort_order' => 2]);
+    Service::factory()->create(['sort_order' => 3]);
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.master.services.index'))
+        ->patch(route('admin.master.services.order.update'), [
+            'ids' => [$second->id, $first->id],
+        ])
+        ->assertSessionHasErrors('ids');
+
+    expect($first->refresh()->sort_order)->toBe(1)
+        ->and($second->refresh()->sort_order)->toBe(2);
+});
+
+test('read only staff cannot reorder services', function () {
+    $staff = serviceStaff(['read' => true]);
+    $service = Service::factory()->create(['sort_order' => 1]);
+
+    $this->actingAs($staff, 'admin')
+        ->patch(route('admin.master.services.order.update'), ['ids' => [$service->id]])
+        ->assertForbidden();
+
+    expect($service->refresh()->sort_order)->toBe(1);
+});
+
+test('a new service is appended to the end of the order', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    Service::factory()->create(['sort_order' => 1]);
+    Service::factory()->create(['sort_order' => 7]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.services.store'), servicePayload())
+        ->assertSessionHasNoErrors();
+
+    expect(Service::query()->where('name', 'Cuci Kilat')->firstOrFail()->sort_order)->toBe(8);
+});
+
+test('the shared order catalog follows the master service order', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $last = Service::factory()->create(['name' => 'Paling Bawah', 'sort_order' => 9]);
+    $firstService = Service::factory()->create(['name' => 'Paling Atas', 'sort_order' => 1]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('services.0.id', $firstService->id)
+                ->where('services.1.id', $last->id),
+        );
 });

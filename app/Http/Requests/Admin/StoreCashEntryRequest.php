@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\AdminShift;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\OrderQueries;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -35,6 +36,11 @@ class StoreCashEntryRequest extends FormRequest
             'description' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
             'method' => ['required', Rule::in(OrderQueries::PAYMENT_METHODS)],
+            'transaction_shift_id' => [
+                'nullable',
+                'integer',
+                Rule::exists(AdminShift::class, 'id')->where('is_active', true),
+            ],
             /* Outgoing money must carry supporting documentation (BR-10). */
             'attachments' => [
                 Rule::requiredIf(fn (): bool => $this->input('direction') === 'out'),

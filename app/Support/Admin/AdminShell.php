@@ -5,7 +5,9 @@ namespace App\Support\Admin;
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
+use App\Support\AppSettings;
 use App\Support\Demo\Brand;
+use App\Support\Timezones;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Str;
 
@@ -14,6 +16,8 @@ use Illuminate\Support\Str;
  */
 class AdminShell
 {
+    public function __construct(private TransactionShiftResolver $transactionShiftResolver) {}
+
     /** @var array<string, string> */
     private const MODULE_ICONS = [
         'dashboard' => 'dashboard',
@@ -39,12 +43,18 @@ class AdminShell
     {
         $admin->loadMissing('role');
         $role = $admin->getRelation('role');
+        $shiftAssignment = $this->transactionShiftResolver->presentation($admin, now());
+        $timezone = AppSettings::timezone();
 
         return [
             'mode' => 'live',
             'pageTitle' => $pageTitle,
             'brand' => Brand::identity(),
             'notifications' => [],
+            'timezone' => [
+                'id' => $timezone,
+                'code' => Timezones::code($timezone),
+            ],
             'role' => [
                 'key' => $admin->is_owner ? 'owner' : ($role instanceof AdminRole ? $role->key : 'staff'),
                 'name' => $admin->is_owner ? 'Owner' : ($role instanceof AdminRole ? $role->name : 'Staf'),
@@ -64,9 +74,10 @@ class AdminShell
                     ->take(2)
                     ->map(fn (string $name): string => Str::upper(Str::substr($name, 0, 1)))
                     ->implode(''),
-                'shift' => $admin->workShift?->name ?? '',
+                'shift' => $shiftAssignment['label'],
                 'avatar' => $admin->profilePhotoUrl(),
             ],
+            'transactionShift' => $shiftAssignment,
             'profileHref' => route('admin.profile.edit', absolute: false),
             'headerAction' => null,
             'exitAction' => [

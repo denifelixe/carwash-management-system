@@ -80,8 +80,8 @@ class OrderQueries
             ->where(fn ($query) => $query
                 ->where('is_active', true)
                 ->orWhereHas('orders', fn ($orderQuery) => $orderQuery->whereKey($orders->modelKeys())))
-            ->orderBy('category')
-            ->orderBy('name')
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
     }
 

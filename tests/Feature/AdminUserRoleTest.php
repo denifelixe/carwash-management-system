@@ -265,6 +265,37 @@ test('an owner can assign a shift directly to any user including their own accou
     expect($owner->refresh()->shift_id)->toBe($shift->id);
 });
 
+test('an owner can make a user follow the current shift schedule', function () {
+    $owner = Admin::factory()->create(['is_owner' => true, 'shift_id' => null]);
+    $shift = AdminShift::query()->where('key', 'morning')->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.shift.update', $owner), [
+            'shift_mode' => 'schedule',
+            'shift_id' => null,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($owner->refresh())
+        ->shift_mode->toBe('schedule')
+        ->shift_id->toBeNull();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('staff.0.shift_mode', 'schedule')
+            ->where('staff.0.shift_name', 'Mengikuti Jam Shift'));
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.users.index'))
+        ->patch(route('admin.users.shift.update', $owner), [
+            'shift_mode' => 'schedule',
+            'shift_id' => $shift->id,
+        ])
+        ->assertSessionHasErrors('shift_id');
+});
+
 test('the owner account cannot be changed from the staff module', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $role = AdminRole::query()->where('key', 'manager')->firstOrFail();

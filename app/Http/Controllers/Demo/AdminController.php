@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Demo;
 
 use App\Http\Controllers\Controller;
 use App\Support\Admin\ModuleGroups;
+use App\Support\AppSettings;
 use App\Support\Demo\Brand;
 use App\Support\Demo\RoleAccess;
+use App\Support\Timezones;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -31,14 +33,36 @@ abstract class AdminController extends Controller
             ],
             RoleAccess::modulesFor($role),
         ));
+        $persona = RoleAccess::personaFor()[$role];
+        $timezone = AppSettings::timezone();
 
         return Inertia::render($component, array_merge([
             'mode' => 'demo',
             'brand' => Brand::identity(),
             'notifications' => Brand::notifications(),
+            'timezone' => [
+                'id' => $timezone,
+                'code' => Timezones::code($timezone),
+            ],
             'role' => RoleAccess::role($role),
             'modules' => $modules,
-            'persona' => RoleAccess::personaFor()[$role],
+            'persona' => $persona,
+            'transactionShift' => [
+                'mode' => 'fixed',
+                'label' => $persona['shift'],
+                'caption' => $persona['shift'],
+                'shifts' => array_map(function (array $shift, int $index): array {
+                    [$startsAt, $endsAt] = explode(' - ', $shift['time']);
+
+                    return [
+                        'id' => $index + 1,
+                        'name' => $shift['name'],
+                        'starts_at' => str_replace('.', ':', $startsAt),
+                        'ends_at' => str_replace('.', ':', $endsAt),
+                        'time' => $shift['time'],
+                    ];
+                }, Brand::shifts(), array_keys(Brand::shifts())),
+            ],
             'profileHref' => null,
             'headerAction' => [
                 'label' => 'Ganti role',

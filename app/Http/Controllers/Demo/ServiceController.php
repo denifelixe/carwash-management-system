@@ -15,8 +15,11 @@ class ServiceController extends AdminController
 {
     public function index(Request $request): Response
     {
+        $catalog = Catalog::services();
+
+        /** The fixture order is the catalog order the demo console shows. */
         $services = array_map(
-            fn (array $service): array => [
+            fn (array $service, int $index): array => [
                 'id' => $service['id'],
                 'name' => $service['name'],
                 'category' => $service['category'],
@@ -26,9 +29,11 @@ class ServiceController extends AdminController
                 'description' => $service['description'],
                 'is_popular' => $service['popular'],
                 'is_active' => $service['isActive'],
+                'sort_order' => $index + 1,
                 'order_count' => self::orderCountFor($service['id']),
             ],
-            Catalog::services(),
+            $catalog,
+            array_keys($catalog),
         );
 
         return $this->page($request, 'admin/master/Services', [

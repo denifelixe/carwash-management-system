@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Master;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\ReorderServicesRequest;
 use App\Http\Requests\Admin\StoreServiceRequest;
 use App\Http\Requests\Admin\UpdateServiceRequest;
 use App\Models\Admin;
@@ -11,6 +12,7 @@ use App\Support\Admin\AdminShell;
 use App\Support\Admin\ServiceIcons;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -25,8 +27,8 @@ class ServiceController extends Controller
         $authenticatedAdmin = $request->user('admin');
         $services = Service::query()
             ->withCount('orders')
-            ->orderBy('category')
-            ->orderBy('name')
+            ->orderBy('sort_order')
+            ->orderBy('id')
             ->get();
 
         return Inertia::render('admin/master/Services', [
@@ -44,9 +46,32 @@ class ServiceController extends Controller
 
     public function store(StoreServiceRequest $request): RedirectResponse
     {
-        Service::query()->create($request->validated());
+        Service::query()->create([
+            ...$request->validated(),
+            'sort_order' => (int) Service::query()->max('sort_order') + 1,
+        ]);
 
         return to_route('admin.master.services.index')->with('success', 'Layanan berhasil ditambahkan.');
+    }
+
+    /**
+     * Persist the catalog order the operator dragged into place. The request
+     * only passes if it carries every service, so the numbering stays dense.
+     */
+    public function updateOrder(ReorderServicesRequest $request): RedirectResponse
+    {
+        /** @var list<int> $ids */
+        $ids = $request->validated()['ids'];
+
+        DB::transaction(function () use ($ids): void {
+            foreach ($ids as $index => $id) {
+                Service::query()->whereKey($id)->update(['sort_order' => $index + 1]);
+            }
+        });
+
+        Inertia::flash('toast', ['type' => 'success', 'message' => 'Urutan layanan berhasil disimpan.']);
+
+        return to_route('admin.master.services.index');
     }
 
     public function update(UpdateServiceRequest $request, Service $service): RedirectResponse
@@ -86,6 +111,7 @@ class ServiceController extends Controller
             'description' => $service->description ?? '',
             'is_popular' => $service->is_popular,
             'is_active' => $service->is_active,
+            'sort_order' => (int) $service->sort_order,
             'order_count' => (int) ($service->orders_count ?? 0),
         ];
     }

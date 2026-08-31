@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\AdminShift;
 use App\Models\Order;
 use App\Support\Admin\OrderQueries;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -35,6 +36,11 @@ class StoreOrderPaymentRequest extends FormRequest
             'channels.*.amount' => ['required', 'integer', 'min:1'],
             'channels.*.provider' => ['nullable', 'string', 'max:60'],
             'channels.*.reference' => ['nullable', 'string', 'max:60'],
+            'transaction_shift_id' => [
+                'nullable',
+                'integer',
+                Rule::exists(AdminShift::class, 'id')->where('is_active', true),
+            ],
         ];
     }
 
@@ -122,7 +128,7 @@ class StoreOrderPaymentRequest extends FormRequest
     }
 
     /**
-     * @return array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>}
+     * @return array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null}
      */
     public function payment(): array
     {
@@ -131,6 +137,7 @@ class StoreOrderPaymentRequest extends FormRequest
             'discount' => $this->integer('discount'),
             'amount' => $this->integer('amount'),
             'channels' => $this->channelInput(),
+            'transaction_shift_id' => $this->integer('transaction_shift_id') ?: null,
         ];
     }
 }

@@ -204,6 +204,7 @@ class RoleAccess
                 'role_key' => $staff['role'],
                 'role_name' => self::role($staff['role'])['name'],
                 'shift_id' => $shiftIds[$staff['shift']] + 1,
+                'shift_mode' => 'fixed',
                 'shift_name' => $staff['shift'],
                 'is_owner' => $staff['role'] === 'owner',
                 'is_active' => $staff['status'] === 'aktif',

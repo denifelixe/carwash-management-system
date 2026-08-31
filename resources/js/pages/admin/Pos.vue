@@ -19,6 +19,7 @@ import {
     store as storePosPayment,
     storeMember as storePosMember,
 } from '@/actions/App/Http/Controllers/Admin/PosController';
+import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import AccordionSection from '@/components/demo/AccordionSection.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -33,6 +34,7 @@ import {
     formatNumber,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { matchingTransactionShifts } from '@/composables/useTransactionShift';
 import { openPosReceiptWindow, paymentChannelLabel } from '@/lib/posReceipt';
 import type {
     PosPaymentBreakdown,
@@ -53,6 +55,8 @@ import type {
     CarwashReward,
     CarwashService,
     CarwashTransaction,
+    CarwashTransactionShiftAssignment,
+    CarwashTransactionShiftOption,
     CarwashWorkShift,
 } from '@/types/demo';
 
@@ -69,6 +73,7 @@ const props = defineProps<{
     rewards: CarwashReward[];
     paymentMethods: string[];
     persona: CarwashPersona;
+    transactionShift: CarwashTransactionShiftAssignment;
     capabilities: {
         create: boolean;
     };
@@ -105,6 +110,11 @@ interface MemberDraft {
 interface PaymentChannelRow {
     id: number;
     method: string;
+}
+
+interface PendingPayment {
+    order: CarwashOrder;
+    snapshot: PaymentSnapshot;
 }
 
 interface PaymentRecapRow {
@@ -310,10 +320,9 @@ const paymentRecapShiftTabs = computed(() =>
 );
 
 /**
- * A payment belongs to the shift of the cashier who took it, which is stamped
- * on it by name when it is written. The clock is never consulted: guessing a
- * shift from the hour disagreed with the shift windows the outlet actually
- * keeps, and hid the fact that a cashier was rostered onto no shift at all.
+ * A payment is filtered by the shift name resolved and stamped when it was
+ * written. Reporting never re-derives that value from the transaction hour,
+ * so later schedule changes cannot move historical money between tabs.
  */
 function isTransactionInShift(
     transaction: CarwashTransaction,
@@ -1406,14 +1415,49 @@ function submitPayment(): void {
     }
 
     const snapshot = paymentSnapshot(order);
+    const matchingShifts = matchingTransactionShifts(
+        props.transactionShift,
+        props.filters.timezone,
+    );
 
-    if (props.mode === 'live') {
-        submitLivePayment(order, snapshot);
+    if (matchingShifts.length > 1) {
+        pendingPayment.value = { order, snapshot };
+        overlappingTransactionShifts.value = matchingShifts;
 
         return;
     }
 
-    applyDemoPayment(order, snapshot);
+    completePayment(order, snapshot, matchingShifts[0]?.id ?? null);
+}
+
+function selectTransactionShift(shiftId: number): void {
+    const pending = pendingPayment.value;
+
+    if (pending === null) {
+        return;
+    }
+
+    closeTransactionShiftDialog();
+    completePayment(pending.order, pending.snapshot, shiftId);
+}
+
+function closeTransactionShiftDialog(): void {
+    pendingPayment.value = null;
+    overlappingTransactionShifts.value = [];
+}
+
+function completePayment(
+    order: CarwashOrder,
+    snapshot: PaymentSnapshot,
+    transactionShiftId: number | null,
+): void {
+    if (props.mode === 'live') {
+        submitLivePayment(order, snapshot, transactionShiftId);
+
+        return;
+    }
+
+    applyDemoPayment(order, snapshot, transactionShiftId);
 
     /*
      * Still inside the cashier's click, so the browser lets the slip window
@@ -1431,6 +1475,7 @@ function submitPayment(): void {
 function submitLivePayment(
     order: CarwashOrder,
     snapshot: PaymentSnapshot,
+    transactionShiftId: number | null,
 ): void {
     paymentForm.intent = snapshot.intent;
     paymentForm.discount = snapshot.discount;
@@ -1441,6 +1486,7 @@ function submitLivePayment(
         provider: payment.provider,
         reference: payment.reference,
     }));
+    paymentForm.transaction_shift_id = transactionShiftId;
 
     paymentForm.submit(storePosPayment(order.id), {
         preserveScroll: true,
@@ -1519,6 +1565,7 @@ function settledReceipt(
 function applyDemoPayment(
     order: CarwashOrder,
     snapshot: PaymentSnapshot,
+    transactionShiftId: number | null,
 ): void {
     const customer = orderCustomer.value;
     const { amount, discount, reward } = snapshot;
@@ -1532,6 +1579,12 @@ function applyDemoPayment(
         amount: payment.amount,
     }));
     const fallbackChannel = reward ? 'Reward' : 'Diskon';
+    const transactionShiftName =
+        props.transactionShift.mode === 'schedule'
+            ? (props.transactionShift.shifts.find(
+                  (shift) => shift.id === transactionShiftId,
+              )?.name ?? null)
+            : props.persona.shift || null;
 
     order.total -= discount;
     order.discount += discount;
@@ -1573,7 +1626,7 @@ function applyDemoPayment(
                 ? transactionChannelBreakdown
                 : [{ label: fallbackChannel, amount }],
         recordedBy: props.persona.name,
-        shift: props.persona.shift,
+        shift: transactionShiftName,
     };
 
     order.transactions.push(transaction);
@@ -1592,7 +1645,7 @@ function applyDemoPayment(
         method: transaction.channels,
         channelBreakdown: transaction.channelBreakdown,
         recordedBy: props.persona.name,
-        shift: props.persona.shift,
+        shift: transactionShiftName,
         source: 'pos',
         orderId: order.id,
         orderNo: order.orderNo,
@@ -1791,7 +1844,10 @@ const paymentForm = useForm({
     discount: 0,
     amount: 0,
     channels: [] as PosPaymentBreakdown[],
+    transaction_shift_id: null as number | null,
 });
+const pendingPayment = ref<PendingPayment | null>(null);
+const overlappingTransactionShifts = ref<CarwashTransactionShiftOption[]>([]);
 const memberForm = useForm({
     name: '',
     phone: '',
@@ -1802,6 +1858,13 @@ const memberForm = useForm({
 
 <template>
     <Head :title="`${brand.name} — Kasir POS`" />
+
+    <TransactionShiftDialog
+        :open="pendingPayment !== null"
+        :shifts="overlappingTransactionShifts"
+        @close="closeTransactionShiftDialog"
+        @select="selectTransactionShift"
+    />
 
     <div class="space-y-4">
         <DateFilterBar :filters="filters" @change="applyDate" />
@@ -2999,7 +3062,7 @@ const memberForm = useForm({
 
             <!-- Settled orders, kept around so the slip can be reprinted -->
             <AccordionSection
-                title="Order Selesai"
+                title="Lunas"
                 :caption="`${visibleCompletedOrders.length} order lunas — cetak ulang struk di sini`"
                 :icon="CircleCheck"
                 tone="emerald"

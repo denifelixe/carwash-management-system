@@ -35,7 +35,7 @@ test('demo workflow shares in-memory state across admin modules', function () {
         ->toContain('workflow.orders.value');
 });
 
-test('payments are attributed to the active user and their configured shift', function () {
+test('payments are attributed to the active user and resolved transaction shift', function () {
     $pos = file_get_contents(
         resource_path('js/pages/admin/Pos.vue'),
     );
@@ -45,7 +45,7 @@ test('payments are attributed to the active user and their configured shift', fu
 
     expect($pos)
         ->toContain('recordedBy: props.persona.name')
-        ->toContain('shift: props.persona.shift')
+        ->toContain('shift: transactionShiftName')
         ->and($finance)
         /* A row is filed under the shift it was stamped with, not its hour. */
         ->toContain(
@@ -56,7 +56,7 @@ test('payments are attributed to the active user and their configured shift', fu
         )
         ->not->toContain("entry.time < '15.00'")
         ->toContain('recordedBy: props.persona.name')
-        ->toContain('shift: props.persona.shift')
+        ->toContain('shift: transactionShiftName')
         ->toContain('{{ entry.shift }}');
 });
 

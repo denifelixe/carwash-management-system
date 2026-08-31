@@ -62,6 +62,7 @@ test('admin and role schema contains the required tables columns and indexes', f
             'id',
             'role_id',
             'shift_id',
+            'shift_mode',
             'name',
             'email',
             'phone',
@@ -201,6 +202,7 @@ test('staff roles shifts modules and access assignments can be persisted', funct
 
     expect(DB::table('admins')->find($adminId))
         ->role_id->toBe($roleId)
+        ->shift_mode->toBe('fixed')
         ->phone->toBe('081234567890')
         ->is_owner->toBe(1)
         ->is_active->toBe(1)

@@ -19,11 +19,12 @@ use Illuminate\Support\Carbon;
  * @property string|null $description
  * @property bool $is_popular
  * @property bool $is_active
+ * @property int $sort_order
  * @property-read int|null $orders_count
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'category', 'price', 'stamps', 'icon', 'description', 'is_popular', 'is_active'])]
+#[Fillable(['name', 'category', 'price', 'stamps', 'icon', 'description', 'is_popular', 'is_active', 'sort_order'])]
 class Service extends Model
 {
     /** @use HasFactory<ServiceFactory> */
@@ -42,6 +43,7 @@ class Service extends Model
         return [
             'is_popular' => 'boolean',
             'is_active' => 'boolean',
+            'sort_order' => 'integer',
         ];
     }
 }

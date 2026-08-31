@@ -15,6 +15,28 @@ test('the page heading names the module without dating it', function () {
         ->not->toContain('{{ brand.today }}');
 });
 
+test('the admin header always shows the outlet clock timezone and current user shift', function () {
+    $layout = file_get_contents(
+        resource_path('js/layouts/admin/AdminLayout.vue'),
+    );
+
+    expect($layout)
+        ->toContain('timeZone: timezone.value.id')
+        ->toContain('{{ currentTime }}')
+        ->toContain('timezone.code')
+        ->toContain('page.props.transactionShift.caption');
+
+    $this->withSession(['carwash_role' => 'owner'])
+        ->get(route('demo.admin.dashboard'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('timezone.id', 'Asia/Jakarta')
+                ->where('timezone.code', 'WIB')
+                ->where('transactionShift.caption', 'Shift Pagi'),
+        );
+});
+
 test('the finance module is named keuangan throughout the console', function () {
     $financeModule = collect(RoleAccess::modules())->firstWhere('key', 'finance');
     $financePage = file_get_contents(

@@ -22,6 +22,7 @@ import {
     update as updateCashEntry,
     updateTransaction as updateOrderTransaction,
 } from '@/actions/App/Http/Controllers/Admin/FinanceController';
+import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
@@ -35,6 +36,7 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { matchingTransactionShifts } from '@/composables/useTransactionShift';
 import { openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
 import admin from '@/routes/demo/admin';
@@ -47,6 +49,8 @@ import type {
     CarwashPersona,
     CarwashShift,
     CarwashTransaction,
+    CarwashTransactionShiftAssignment,
+    CarwashTransactionShiftOption,
 } from '@/types/demo';
 
 const props = defineProps<{
@@ -62,6 +66,7 @@ const props = defineProps<{
     shifts: CarwashShift[];
     orders: CarwashOrder[];
     persona: CarwashPersona;
+    transactionShift: CarwashTransactionShiftAssignment;
     capabilities: {
         create: boolean;
         update: boolean;
@@ -118,6 +123,8 @@ interface PendingAttachment {
 
 const pendingAttachments = ref<PendingAttachment[]>([]);
 const removedAttachmentIds = ref<number[]>([]);
+const pendingShiftEntry = ref(false);
+const overlappingTransactionShifts = ref<CarwashTransactionShiftOption[]>([]);
 
 const draft = ref({
     category: props.incomeCategories[0],
@@ -135,6 +142,7 @@ const entryForm = useForm<{
     method: string;
     attachments: File[];
     removed_attachment_ids: number[];
+    transaction_shift_id: number | null;
 }>({
     direction: 'in',
     category: props.incomeCategories[0],
@@ -143,6 +151,7 @@ const entryForm = useForm<{
     method: 'Tunai',
     attachments: [],
     removed_attachment_ids: [],
+    transaction_shift_id: null,
 });
 
 const deleteForm = useForm({});
@@ -188,10 +197,9 @@ const shiftTabs = computed(() => [
 ]);
 
 /**
- * An entry belongs to the shift its recorder was rostered onto, stamped on it
- * by name when it was written. The clock is never consulted: a row taken by
- * someone on no shift has no shift, and saying otherwise put the same rupiah
- * under a shift nobody was working.
+ * An entry is filtered by the shift name resolved and stamped when it was
+ * written. Reporting never re-derives that value from the transaction hour,
+ * so later schedule changes cannot move historical money between tabs.
  */
 function isInActiveShift(entry: CarwashMoneyEntry): boolean {
     if (activeShift.value === allShiftsKey) {
@@ -778,22 +786,55 @@ function saveEntry(): void {
         return;
     }
 
-    if (props.mode === 'live') {
-        saveLiveEntry();
+    if (editingEntry.value !== null) {
+        completeEntrySave(null);
 
         return;
     }
 
-    saveDemoEntry();
+    const matchingShifts = matchingTransactionShifts(
+        props.transactionShift,
+        props.filters.timezone,
+    );
+
+    if (matchingShifts.length > 1) {
+        pendingShiftEntry.value = true;
+        overlappingTransactionShifts.value = matchingShifts;
+
+        return;
+    }
+
+    completeEntrySave(matchingShifts[0]?.id ?? null);
+}
+
+function selectTransactionShift(shiftId: number): void {
+    closeTransactionShiftDialog();
+    completeEntrySave(shiftId);
+}
+
+function closeTransactionShiftDialog(): void {
+    pendingShiftEntry.value = false;
+    overlappingTransactionShifts.value = [];
+}
+
+function completeEntrySave(transactionShiftId: number | null): void {
+    if (props.mode === 'live') {
+        saveLiveEntry(transactionShiftId);
+
+        return;
+    }
+
+    saveDemoEntry(transactionShiftId);
 }
 
 /** The live ledger writes to the database and re-reads the reloaded props. */
-function saveLiveEntry(): void {
+function saveLiveEntry(transactionShiftId: number | null): void {
     entryForm.direction = activeLedger.value;
     entryForm.category = draft.value.category;
     entryForm.description = draft.value.description;
     entryForm.amount = draft.value.amount;
     entryForm.method = draft.value.method;
+    entryForm.transaction_shift_id = transactionShiftId;
 
     const editingId =
         editingEntry.value === null ? null : cashEntryId(editingEntry.value);
@@ -813,11 +854,17 @@ function saveLiveEntry(): void {
 }
 
 /** The demo console keeps its entries in memory instead of hitting the database. */
-function saveDemoEntry(): void {
+function saveDemoEntry(transactionShiftId: number | null): void {
     const isIncome = activeLedger.value === 'in';
     const sequence =
         (isIncome ? incomeList.value.length : expenseList.value.length) + 32;
 
+    const transactionShiftName =
+        props.transactionShift.mode === 'schedule'
+            ? (props.transactionShift.shifts.find(
+                  (shift) => shift.id === transactionShiftId,
+              )?.name ?? null)
+            : props.persona.shift || null;
     const entry: CarwashMoneyEntry = {
         id: sequence,
         ref: transactionReference(
@@ -842,7 +889,7 @@ function saveDemoEntry(): void {
             { label: draft.value.method, amount: draft.value.amount },
         ],
         recordedBy: props.persona.name,
-        shift: props.persona.shift,
+        shift: transactionShiftName,
         attachments: pendingAttachments.value.map((attachment, index) => ({
             id: `demo-${sequence}-${index}`,
             name: attachment.file.name,
@@ -892,6 +939,13 @@ function applyDate(date: string): void {
 
 <template>
     <Head :title="`${brand.name} — Keuangan`" />
+
+    <TransactionShiftDialog
+        :open="pendingShiftEntry"
+        :shifts="overlappingTransactionShifts"
+        @close="closeTransactionShiftDialog"
+        @select="selectTransactionShift"
+    />
 
     <div class="space-y-4">
         <DateFilterBar :filters="filters" @change="applyDate" />
