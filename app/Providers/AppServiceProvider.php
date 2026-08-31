@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\Models\Admin;
 use App\Support\AppSettings;
+use App\Support\DangerousKeyManager;
 use App\Support\Demo\Brand;
 use App\Support\Session\DatabaseSessionHandler;
 use Carbon\CarbonImmutable;
@@ -25,7 +26,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(
+            DangerousKeyManager::class,
+            fn (Application $app): DangerousKeyManager => new DangerousKeyManager($app->environmentFilePath()),
+        );
     }
 
     /**
