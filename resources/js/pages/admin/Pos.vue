@@ -28,6 +28,7 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import RecapPrintMenu from '@/components/demo/RecapPrintMenu.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
 import {
     formatCurrency,
     formatDate,
@@ -1058,21 +1059,6 @@ function clearPaymentMethod(method: string): void {
     paymentReferences.value[method] = '';
 }
 
-function formatPaymentAmountInput(method: string): string {
-    const amount = Math.trunc(paymentAmounts.value[method] ?? 0);
-
-    return amount > 0 ? formatNumber(amount) : '';
-}
-
-function updatePaymentAmount(method: string, event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const digits = input.value.replace(/\D/g, '');
-    const amount = digits === '' ? 0 : Number.parseInt(digits, 10);
-
-    paymentAmounts.value[method] = Number.isSafeInteger(amount) ? amount : 0;
-    input.value = formatPaymentAmountInput(method);
-}
-
 function selectPaymentMethod(row: PaymentChannelRow, event: Event): void {
     const previousMethod = row.method;
     const method = (event.target as HTMLSelectElement).value;
@@ -1141,23 +1127,6 @@ function fillRemainingAmount(method: string): void {
 
 function markPaymentTotalEdited(): void {
     isPaymentTotalEdited.value = true;
-}
-
-function formatPaymentTotalAmount(): string {
-    const amount = Math.trunc(paymentTotalInput.value);
-
-    return amount > 0 ? formatNumber(amount) : '';
-}
-
-function updatePaymentTotalAmount(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    const digits = input.value.replace(/\D/g, '');
-    const amount = digits === '' ? 0 : Number.parseInt(digits, 10);
-    const safeAmount = Number.isSafeInteger(amount) ? amount : 0;
-
-    paymentTotalInput.value = Math.min(safeAmount, amountAfterDiscount.value);
-    input.value = formatPaymentTotalAmount();
-    markPaymentTotalEdited();
 }
 
 function requiresPaymentProvider(method: string): boolean {
@@ -3606,12 +3575,10 @@ const memberForm = useForm({
                                     <span class="text-sm text-slate-500"
                                         >Rp</span
                                     >
-                                    <input
-                                        v-model.number="discountAmount"
-                                        type="number"
+                                    <MoneyInput
+                                        v-model="discountAmount"
                                         min="0"
-                                        :max="maximumCashierDiscount"
-                                        step="1000"
+                                        :max-value="maximumCashierDiscount"
                                         placeholder="0"
                                         class="w-full bg-transparent text-base font-semibold text-slate-900 tabular-nums placeholder:text-slate-300 focus:outline-none"
                                     />
@@ -3653,14 +3620,14 @@ const memberForm = useForm({
                                         class="text-lg font-semibold text-slate-500"
                                         >Rp</span
                                     >
-                                    <input
-                                        :value="formatPaymentTotalAmount()"
-                                        type="text"
-                                        inputmode="numeric"
-                                        autocomplete="off"
+                                    <MoneyInput
+                                        v-model="paymentTotalInput"
+                                        :max-value="amountAfterDiscount"
                                         placeholder="0"
                                         class="w-full bg-transparent text-3xl font-bold tracking-tight text-slate-950 tabular-nums focus:outline-none sm:text-4xl"
-                                        @input="updatePaymentTotalAmount"
+                                        @update:model-value="
+                                            markPaymentTotalEdited
+                                        "
                                     />
                                 </span>
                             </label>
@@ -3756,25 +3723,14 @@ const memberForm = useForm({
                                             <span class="text-xs text-slate-400"
                                                 >Rp</span
                                             >
-                                            <input
+                                            <MoneyInput
                                                 :id="`payment-${row.id}`"
-                                                :value="
-                                                    formatPaymentAmountInput(
-                                                        row.method,
-                                                    )
+                                                v-model="
+                                                    paymentAmounts[row.method]
                                                 "
-                                                type="text"
-                                                inputmode="numeric"
-                                                autocomplete="off"
                                                 placeholder="0"
                                                 :aria-label="`Nominal pembayaran ${row.method}`"
                                                 class="min-w-0 flex-1 bg-transparent text-right text-sm font-semibold text-slate-900 tabular-nums placeholder:text-slate-300 focus:outline-none"
-                                                @input="
-                                                    updatePaymentAmount(
-                                                        row.method,
-                                                        $event,
-                                                    )
-                                                "
                                             />
                                             <button
                                                 v-if="remainingTenderAmount > 0"

@@ -24,6 +24,7 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import InputError from '@/components/InputError.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
 import type { CarwashBrand } from '@/types/demo';
 
@@ -1164,11 +1165,10 @@ function saveOrder(): void {
                                     {{ variationLabel(variation.variations) }}
                                 </td>
                                 <td class="px-3 py-3">
-                                    <input
-                                        v-model.number="variation.price"
-                                        type="number"
+                                    <MoneyInput
+                                        v-model="variation.price"
                                         min="0"
-                                        max="999999999"
+                                        :max-value="999999999"
                                         class="w-40 rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
                                         required
                                     />

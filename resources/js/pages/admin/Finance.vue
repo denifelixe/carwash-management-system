@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Fancybox } from '@fancyapps/ui';
+import type { Fancybox } from '@fancyapps/ui';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Banknote,
@@ -30,6 +30,7 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import RecapPrintMenu from '@/components/demo/RecapPrintMenu.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import InputError from '@/components/InputError.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
 import {
     formatCurrency,
     formatDate,
@@ -937,16 +938,33 @@ function saveDemoEntry(transactionShiftId: number | null): void {
  * an attachment cannot navigate Inertia's history or lose the ledger position.
  */
 const LIGHTBOX_GROUP = 'lampiran-keuangan';
+type FancyboxApi = typeof Fancybox;
 
-onMounted(() => {
+let attachmentLightbox: FancyboxApi | null = null;
+let financePageUnmounted = false;
+
+/** Fancybox mutates browser globals when imported, so SSR must never load it. */
+async function bindAttachmentLightbox(): Promise<void> {
+    const { Fancybox } = await import('@fancyapps/ui');
+
+    if (financePageUnmounted) {
+        return;
+    }
+
+    attachmentLightbox = Fancybox;
     Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {
         Hash: false,
     });
+}
+
+onMounted(() => {
+    void bindAttachmentLightbox();
 });
 
 onUnmounted(() => {
+    financePageUnmounted = true;
     clearPendingAttachments();
-    Fancybox.destroy();
+    attachmentLightbox?.destroy();
 });
 
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
@@ -1754,12 +1772,10 @@ function applyDate(date: string): void {
                 >
                     Nominal transaksi (Rp)
                 </label>
-                <input
+                <MoneyInput
                     id="transaction-amount"
-                    v-model.number="transactionForm.amount"
-                    type="number"
+                    v-model="transactionForm.amount"
                     min="1"
-                    step="1000"
                     class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
                 />
                 <InputError
@@ -1851,12 +1867,10 @@ function applyDate(date: string): void {
                                 >
                                     Nominal (Rp)
                                 </label>
-                                <input
+                                <MoneyInput
                                     :id="`transaction-channel-amount-${channelIndex}`"
-                                    v-model.number="channel.amount"
-                                    type="number"
+                                    v-model="channel.amount"
                                     min="1"
-                                    step="1000"
                                     class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
                                 />
                             </div>
@@ -2000,12 +2014,10 @@ function applyDate(date: string): void {
                     >
                         Nominal (Rp)
                     </label>
-                    <input
+                    <MoneyInput
                         id="fin-amount"
-                        v-model.number="draft.amount"
-                        type="number"
+                        v-model="draft.amount"
                         min="0"
-                        step="1000"
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
                     />
                     <InputError

@@ -4,7 +4,7 @@ let openModalCount = 0;
 
 <script setup lang="ts">
 import { X } from '@lucide/vue';
-import { onBeforeUnmount, watch } from 'vue';
+import { onBeforeUnmount, onMounted, watch } from 'vue';
 
 const props = defineProps<{
     open: boolean;
@@ -46,7 +46,9 @@ function syncPageScrollLock(locked: boolean): void {
     document.body.style.overflow = openModalCount > 0 ? 'hidden' : '';
 }
 
-watch(() => props.open, syncPageScrollLock, { immediate: true });
+onMounted(() => {
+    watch(() => props.open, syncPageScrollLock, { immediate: true });
+});
 
 onBeforeUnmount(() => syncPageScrollLock(false));
 </script>

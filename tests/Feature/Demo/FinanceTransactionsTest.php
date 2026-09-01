@@ -165,12 +165,14 @@ test('cash summary is calculated from individual ledger transactions', function 
         ]);
 });
 
-test('closing a finance attachment keeps the current ledger position', function () {
+test('finance attachments are client-only and keep the current ledger position', function () {
     $financePage = file_get_contents(
         resource_path('js/pages/admin/Finance.vue'),
     );
 
     expect($financePage)
+        ->not->toContain("import { Fancybox } from '@fancyapps/ui';")
+        ->toContain("await import('@fancyapps/ui')")
         ->toContain('Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {')
         ->toContain('Hash: false,');
 });
