@@ -110,7 +110,7 @@ class MemberQueries
 
         $orders = Order::query()
             ->whereBelongsTo($member)
-            ->with(['services:id,name', 'transactions.recordedBy:id,name', 'crew:id,name'])
+            ->with(['serviceVariations:id,service_id', 'transactions.recordedBy:id,name', 'crew:id,name'])
             ->latest('service_date')
             ->latest('id')
             ->limit(50)
@@ -135,7 +135,7 @@ class MemberQueries
             ->values()
             ->map(fn (Order $order): array => [
                 'id' => $order->id,
-                'title' => $order->services->pluck('pivot.service_name')->join(', '),
+                'title' => $order->serviceVariations->pluck('pivot.service_name')->join(', '),
                 'detail' => $order->vehicle_plate,
                 'stamps' => (int) $order->stamps_earned,
                 'type' => 'earn',

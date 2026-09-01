@@ -114,7 +114,11 @@ onBeforeUnmount(clearPhotoPreview);
                             >
                                 <img
                                     v-if="photoPreviewUrl || admin.avatar"
-                                    :src="photoPreviewUrl ?? admin.avatar"
+                                    :src="
+                                        photoPreviewUrl ??
+                                        admin.avatar ??
+                                        undefined
+                                    "
                                     :alt="admin.name"
                                     class="h-full w-full object-cover"
                                 />

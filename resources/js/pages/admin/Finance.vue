@@ -84,7 +84,7 @@ const unassignedShiftKey = 'tanpa-shift';
 const activeLedger = ref<Ledger>('in');
 const activeShift = ref<Shift>(allShiftsKey);
 const search = ref<string>('');
-const categoryFilter = ref<string>('Semua');
+const categoryFilters = ref<string[]>(['Semua']);
 const isFormOpen = ref<boolean>(false);
 const editingEntry = ref<CarwashMoneyEntry | null>(null);
 const editingPosEntry = ref<CarwashMoneyEntry | null>(null);
@@ -256,8 +256,8 @@ const filteredEntries = computed<CarwashMoneyEntry[]>(() => {
 
     return activeEntries.value.filter((entry) => {
         const matchesCategory =
-            categoryFilter.value === 'Semua' ||
-            entry.category === categoryFilter.value;
+            categoryFilters.value.includes('Semua') ||
+            categoryFilters.value.includes(entry.category);
         const matchesQuery =
             query === '' ||
             entry.description.toLowerCase().includes(query) ||
@@ -473,14 +473,36 @@ function posTransactionId(entry: CarwashMoneyEntry): number | null {
 
 function switchLedger(ledger: Ledger): void {
     activeLedger.value = ledger;
-    categoryFilter.value = 'Semua';
+    categoryFilters.value = ['Semua'];
     search.value = '';
 }
 
 function switchShift(shift: Shift): void {
     activeShift.value = shift;
-    categoryFilter.value = 'Semua';
+    categoryFilters.value = ['Semua'];
     search.value = '';
+}
+
+function toggleCategoryFilter(category: string): void {
+    if (category === 'Semua') {
+        categoryFilters.value = ['Semua'];
+
+        return;
+    }
+
+    const selectedCategories = categoryFilters.value.filter(
+        (selectedCategory) => selectedCategory !== 'Semua',
+    );
+
+    categoryFilters.value = selectedCategories.includes(category)
+        ? selectedCategories.filter(
+              (selectedCategory) => selectedCategory !== category,
+          )
+        : [...selectedCategories, category];
+
+    if (categoryFilters.value.length === 0) {
+        categoryFilters.value = ['Semua'];
+    }
 }
 
 function clearPendingAttachments(): void {
@@ -1138,9 +1160,9 @@ function applyDate(date: string): void {
                         v-model:search="search"
                         placeholder="Cari transaksi / order / plat"
                         :filters="filterOptions"
-                        :active-filter="categoryFilter"
+                        :active-filter="categoryFilters"
                         wide-search
-                        @filter="categoryFilter = $event"
+                        @filter="toggleCategoryFilter"
                     />
                 </div>
             </div>

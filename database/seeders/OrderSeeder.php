@@ -14,14 +14,18 @@ class OrderSeeder extends Seeder
     public function run(): void
     {
         $service = Service::factory()->create();
+        $variation = $service->serviceVariations()->firstOrFail();
         $order = Order::factory()->create([
             'subtotal' => $service->price,
             'total' => $service->price,
             'stamps_earned' => $service->stamps,
         ]);
-        $order->services()->attach($service, [
+        $order->serviceVariations()->attach($variation, [
             'service_name' => $service->name,
+            'variations' => null,
             'unit_price' => $service->price,
+            'quantity' => 1,
+            'total_price' => $service->price,
             'stamps' => $service->stamps,
         ]);
     }

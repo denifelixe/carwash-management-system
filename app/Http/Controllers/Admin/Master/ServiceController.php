@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Admin\Master;
 
+use App\Actions\Admin\SaveService;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ReorderServicesRequest;
 use App\Http\Requests\Admin\StoreServiceRequest;
 use App\Http\Requests\Admin\UpdateServiceRequest;
 use App\Models\Admin;
 use App\Models\Service;
-use App\Models\ServiceGroup;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\ServiceIcons;
 use Illuminate\Http\RedirectResponse;
@@ -27,8 +27,7 @@ class ServiceController extends Controller
         /** @var Admin $authenticatedAdmin */
         $authenticatedAdmin = $request->user('admin');
         $services = Service::query()
-            ->with('serviceGroup:id,name')
-            ->withCount('orders')
+            ->with(['serviceVariations' => fn ($query) => $query->withCount('orders')->orderBy('id')])
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -36,7 +35,6 @@ class ServiceController extends Controller
         return Inertia::render('admin/master/Services', [
             ...$adminShell->props($authenticatedAdmin, 'Layanan', 'master_services'),
             'services' => $services->map(fn (Service $service): array => $this->serviceData($service))->all(),
-            'serviceGroups' => ServiceGroup::query()->orderBy('name')->get(['id', 'name'])->all(),
             'categories' => $services->pluck('category')->unique()->sort()->values()->all(),
             'icons' => ServiceIcons::options(),
             'capabilities' => [
@@ -47,12 +45,9 @@ class ServiceController extends Controller
         ]);
     }
 
-    public function store(StoreServiceRequest $request): RedirectResponse
+    public function store(StoreServiceRequest $request, SaveService $saveService): RedirectResponse
     {
-        Service::query()->create([
-            ...$request->validated(),
-            'sort_order' => (int) Service::query()->max('sort_order') + 1,
-        ]);
+        $saveService->handle($request->validated());
 
         return to_route('admin.master.services.index')->with('success', 'Layanan berhasil ditambahkan.');
     }
@@ -77,9 +72,9 @@ class ServiceController extends Controller
         return to_route('admin.master.services.index');
     }
 
-    public function update(UpdateServiceRequest $request, Service $service): RedirectResponse
+    public function update(UpdateServiceRequest $request, Service $service, SaveService $saveService): RedirectResponse
     {
-        $service->update($request->validated());
+        $saveService->handle($request->validated(), $service);
 
         return to_route('admin.master.services.index')->with('success', 'Layanan berhasil diperbarui.');
     }
@@ -88,7 +83,7 @@ class ServiceController extends Controller
     {
         Gate::authorize('admin.master_services.delete');
 
-        if ($service->orders()->exists()) {
+        if ($service->serviceVariations()->whereHas('orders')->exists()) {
             return back()->withErrors([
                 'service' => 'Layanan sudah dipakai pada order sehingga tidak bisa dihapus. Nonaktifkan layanan ini sebagai gantinya.',
             ]);
@@ -106,17 +101,26 @@ class ServiceController extends Controller
     {
         return [
             'id' => $service->id,
-            'service_group_id' => $service->service_group_id,
             'name' => $service->name,
             'category' => $service->category,
-            'price' => (int) $service->price,
+            'variations' => $service->variations,
+            'service_variations' => $service->serviceVariations->map(fn ($variation): array => [
+                'id' => $variation->id,
+                'variations' => $variation->variations,
+                'price' => (int) $variation->price,
+                'is_active' => $variation->is_active,
+                'order_count' => (int) ($variation->orders_count ?? 0),
+            ])->all(),
+            'price' => (int) ($service->serviceVariations->where('is_active', true)->min('price')
+                ?? $service->serviceVariations->min('price')
+                ?? 0),
             'stamps' => (int) $service->stamps,
             'icon' => $service->icon,
             'description' => $service->description ?? '',
             'is_popular' => $service->is_popular,
             'is_active' => $service->is_active,
             'sort_order' => (int) $service->sort_order,
-            'order_count' => (int) ($service->orders_count ?? 0),
+            'order_count' => $service->serviceVariations->sum('orders_count'),
         ];
     }
 }

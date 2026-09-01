@@ -264,11 +264,8 @@ test('the booking form is the order form plus a date', function () {
         resource_path('js/pages/admin/Orders.vue'),
     );
 
-    // Both forms keep the customer picker and multi-service grid.
-    foreach ([
-        'function toggleDraftService(serviceId: number): void {',
-        'class="customer-search"',
-    ] as $shared) {
+    // Both forms keep the customer picker and variation-aware service cart.
+    foreach (['<ServiceCartPicker', 'v-model="draft.serviceItems"', 'class="customer-search"'] as $shared) {
         expect($ordersPage)->toContain($shared)
             ->and($bookingsPage)->toContain($shared);
     }

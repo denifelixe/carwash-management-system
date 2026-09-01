@@ -2,14 +2,16 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Models\ServiceGroup;
 use App\Support\Admin\ServiceIcons;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreServiceRequest extends FormRequest
 {
+    use ValidatesServiceVariations;
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -26,15 +28,20 @@ class StoreServiceRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'service_group_id' => ['nullable', 'integer', Rule::exists(ServiceGroup::class, 'id')],
             'name' => ['required', 'string', 'max:255', Rule::unique('services', 'name')],
             'category' => ['required', 'string', 'max:100'],
-            'price' => ['required', 'integer', 'min:0', 'max:999999999'],
             'stamps' => ['required', 'integer', 'min:0', 'max:999'],
             'icon' => ['required', 'string', Rule::in(ServiceIcons::values())],
             'description' => ['nullable', 'string', 'max:500'],
             'is_popular' => ['required', 'boolean'],
             'is_active' => ['required', 'boolean'],
+            ...$this->serviceVariationRules(),
         ];
+    }
+
+    /** @return list<callable(Validator): void> */
+    public function after(): array
+    {
+        return $this->serviceVariationAfter();
     }
 }

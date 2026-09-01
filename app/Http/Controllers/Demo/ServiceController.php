@@ -21,10 +21,17 @@ class ServiceController extends AdminController
         $services = array_map(
             fn (array $service, int $index): array => [
                 'id' => $service['id'],
-                'service_group_id' => $service['serviceGroup']['id'] ?? null,
                 'name' => $service['name'],
                 'category' => $service['category'],
                 'price' => $service['price'],
+                'variations' => $service['variations'],
+                'service_variations' => array_map(fn (array $variation): array => [
+                    'id' => $variation['id'],
+                    'variations' => $variation['variations'],
+                    'price' => $variation['price'],
+                    'is_active' => $variation['isActive'],
+                    'order_count' => self::orderCountFor($service['id']),
+                ], $service['serviceVariations']),
                 'stamps' => $service['stamps'],
                 'icon' => $service['icon'],
                 'description' => $service['description'],
@@ -39,13 +46,6 @@ class ServiceController extends AdminController
 
         return $this->page($request, 'admin/master/Services', [
             'services' => $services,
-            'serviceGroups' => collect($catalog)
-                ->pluck('serviceGroup')
-                ->filter()
-                ->unique('id')
-                ->sortBy('name')
-                ->values()
-                ->all(),
             'categories' => array_values(array_unique(array_column($services, 'category'))),
             'icons' => ServiceIcons::options(),
             'capabilities' => ['create' => true, 'update' => true, 'delete' => true],

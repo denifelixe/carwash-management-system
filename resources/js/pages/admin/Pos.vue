@@ -849,10 +849,16 @@ const orderCustomer = computed<CarwashCustomer | null>(
         ) ?? null,
 );
 
-const orderServices = computed<CarwashService[]>(() =>
-    props.services.filter((service) =>
-        selectedOrder.value?.serviceIds.includes(service.id),
-    ),
+const orderServices = computed(() =>
+    (selectedOrder.value?.serviceItems ?? []).map((item) => ({
+        ...item,
+        icon:
+            props.services.find((service) => service.id === item.serviceId)
+                ?.icon ?? '✨',
+        name: item.label,
+        price: item.totalPrice,
+        id: item.serviceVariationId,
+    })),
 );
 
 const orderServiceTotal = computed<number>(() =>
@@ -902,7 +908,9 @@ const rewardDiscount = computed<number>(() => {
 
     const applicableServicePrices = orderServices.value
         .filter((service) =>
-            selectedReward.value?.applicableServiceIds.includes(service.id),
+            selectedReward.value?.applicableServiceIds.includes(
+                service.serviceId,
+            ),
         )
         .map((service) => service.price);
 
@@ -1755,9 +1763,6 @@ function transactionReceipt(
         0,
     );
     const paidTotal = previouslyPaid + (settlement?.amount ?? 0);
-    const services = props.services.filter((service) =>
-        order.serviceIds.includes(service.id),
-    );
 
     return {
         orderNo: order.orderNo,
@@ -1773,9 +1778,9 @@ function transactionReceipt(
         vehicle: order.vehicle,
         plate: order.plate,
         items: order.items,
-        lines: services.map((service) => ({
-            name: service.name,
-            price: service.price,
+        lines: order.serviceItems.map((item) => ({
+            name: item.label,
+            price: item.totalPrice,
         })),
         subtotal: order.total,
         priorDiscount: order.discount,

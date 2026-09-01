@@ -80,8 +80,7 @@ const selectableStatusFilters = computed<string[]>(() =>
     props.statusFilters.filter((filter) => filter !== 'Semua'),
 );
 const allFiltersSelected = computed<boolean>(
-    () =>
-        statusFilter.value === 'Semua' && accountFilter.value === 'Semua',
+    () => statusFilter.value === 'Semua' && accountFilter.value === 'Semua',
 );
 const detailCustomerId = ref<number | null>(
     props.memberDetail?.customer.id ?? null,
@@ -212,8 +211,6 @@ function openDetail(customer: CarwashCustomer): void {
     router.reload({
         only: ['memberDetail'],
         data: { member: customer.id },
-        preserveScroll: true,
-        preserveState: true,
     });
 }
 
@@ -665,9 +662,7 @@ function stampToneClass(type: string): string {
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
-                                <div
-                                    class="flex flex-col items-start gap-1.5"
-                                >
+                                <div class="flex flex-col items-start gap-1.5">
                                     <StatusPill
                                         :status="customer.status"
                                         :label="
@@ -855,10 +850,7 @@ function stampToneClass(type: string): string {
                 </div>
             </div>
 
-            <div
-                v-if="capabilities.update"
-                class="grid grid-cols-2 gap-2"
-            >
+            <div v-if="capabilities.update" class="grid grid-cols-2 gap-2">
                 <button
                     type="button"
                     class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
@@ -1010,7 +1002,7 @@ function stampToneClass(type: string): string {
                 </div>
             </div>
         </div>
-        <div v-else class="space-y-4 animate-pulse">
+        <div v-else class="animate-pulse space-y-4">
             <div class="h-28 rounded-2xl bg-slate-100"></div>
             <div class="h-16 rounded-xl bg-slate-100"></div>
             <div class="h-48 rounded-xl bg-slate-100"></div>

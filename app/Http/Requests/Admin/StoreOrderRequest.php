@@ -4,7 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\Member;
 use App\Models\MemberVehicle;
-use App\Models\Service;
+use App\Models\ServiceVariation;
 use App\Support\VehiclePlate;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -65,8 +65,14 @@ class StoreOrderRequest extends FormRequest
                     [Rule::unique(MemberVehicle::class, 'plate')],
                 ),
             ],
-            'service_ids' => ['required', 'array', 'min:1'],
-            'service_ids.*' => ['integer', 'distinct', Rule::exists(Service::class, 'id')->where('is_active', true)],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.service_variation_id' => [
+                'required',
+                'integer',
+                'distinct',
+                Rule::exists(ServiceVariation::class, 'id')->where('is_active', true),
+            ],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
         ];
     }
 

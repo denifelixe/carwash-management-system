@@ -86,9 +86,12 @@ test('it clears operational data while preserving users roles and masters', func
         'member_vehicle_id' => $vehicle->id,
         'created_by_admin_id' => $admin->id,
     ]);
-    $order->services()->attach($service->id, [
+    $variation = $service->serviceVariations()->firstOrFail();
+    $order->serviceVariations()->attach($variation->id, [
         'service_name' => $service->name,
         'unit_price' => $service->price,
+        'quantity' => 1,
+        'total_price' => $service->price,
         'stamps' => $service->stamps,
     ]);
     OrderTransaction::factory()->for($order)->create(['recorded_by_admin_id' => $admin->id]);

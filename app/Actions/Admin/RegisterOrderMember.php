@@ -64,7 +64,9 @@ class RegisterOrderMember
                  * nobody to hold them. There is now, so the visit is worth what
                  * its services have always been worth.
                  */
-                'stamps_earned' => (int) $order->services()->sum('order_services.stamps'),
+                'stamps_earned' => (int) $order->serviceVariations()->get()->sum(
+                    fn ($variation): int => (int) $variation->pivot->stamps * (int) $variation->pivot->quantity,
+                ),
             ]);
 
             return $member;

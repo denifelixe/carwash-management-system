@@ -66,7 +66,7 @@ class FinanceQueries
         $dayStart = CarbonImmutable::parse($date)->startOfDay();
 
         return OrderTransaction::query()
-            ->with(['order.services:id,name', 'recordedBy:id,name'])
+            ->with(['order.serviceVariations:id,service_id', 'recordedBy:id,name'])
             ->where('paid_at', '>=', $dayStart)
             ->where('paid_at', '<', $dayStart->addDay())
             ->where('amount', '>', 0)
@@ -100,7 +100,7 @@ class FinanceQueries
         $dayStart = CarbonImmutable::parse($date)->startOfDay();
 
         return Order::query()
-            ->with(['services:id,name', 'transactions.recordedBy:id,name', 'crew:id,name'])
+            ->with(['serviceVariations:id,service_id', 'transactions.recordedBy:id,name', 'crew:id,name'])
             ->whereHas('transactions', fn ($query) => $query
                 ->where('paid_at', '>=', $dayStart)
                 ->where('paid_at', '<', $dayStart->addDay()))

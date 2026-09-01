@@ -4,12 +4,10 @@ import {
     CalendarCheck,
     CalendarClock,
     CalendarDays,
-    CircleCheck,
     Clock,
     Phone,
     Plus,
     Search,
-    Sparkles,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
@@ -19,21 +17,20 @@ import {
     store as storeBooking,
     update as updateBooking,
 } from '@/actions/App/Http/Controllers/Admin/BookingController';
+import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
-import {
-    formatCurrency,
-    formatDate,
-    formatDateCode,
-} from '@/composables/useCarwashFormat';
+import { formatDate, formatDateCode } from '@/composables/useCarwashFormat';
 import type {
     CarwashBooking,
     CarwashBrand,
+    CarwashCartItem,
     CarwashCustomer,
     CarwashService,
+    CarwashServiceItem,
     CarwashVehicle,
 } from '@/types/demo';
 
@@ -108,7 +105,7 @@ const draft = ref({
     customerPhone: '',
     vehicle: '',
     plate: '',
-    serviceIds: [] as number[],
+    serviceItems: [] as CarwashCartItem[],
     date: props.today,
 });
 
@@ -234,23 +231,24 @@ const draftCustomer = computed<CarwashCustomer | null>(
         ) ?? null,
 );
 
-const draftServices = computed<CarwashService[]>(() =>
-    props.services.filter((service) =>
-        draft.value.serviceIds.includes(service.id),
-    ),
+const draftLineItems = computed(() =>
+    draft.value.serviceItems.flatMap((item) => {
+        const service = props.services.find(
+            (candidate) => candidate.id === item.serviceId,
+        );
+        const variation = service?.serviceVariations.find(
+            (candidate) => candidate.id === item.serviceVariationId,
+        );
+
+        return service && variation ? [{ item, service, variation }] : [];
+    }),
 );
 
 const draftTotal = computed<number>(() =>
-    draftServices.value.reduce((total, service) => total + service.price, 0),
-);
-
-const draftStamps = computed<number>(() =>
-    draft.value.customerId === null
-        ? 0
-        : draftServices.value.reduce(
-              (total, service) => total + service.stamps,
-              0,
-          ),
+    draftLineItems.value.reduce(
+        (total, line) => total + line.variation.price * line.item.quantity,
+        0,
+    ),
 );
 
 const hasCustomer = computed<boolean>(() => {
@@ -284,7 +282,7 @@ const canCreate = computed<boolean>(
         (editingBookingId.value === null
             ? props.capabilities.create
             : props.capabilities.update) &&
-        draftServices.value.length > 0 &&
+        draftLineItems.value.length > 0 &&
         draft.value.plate.trim() !== '' &&
         hasBookableDate.value &&
         hasCustomer.value,
@@ -374,12 +372,6 @@ function selectCustomerMode(mode: CustomerMode): void {
     clearCustomer();
 }
 
-function toggleDraftService(serviceId: number): void {
-    draft.value.serviceIds = draft.value.serviceIds.includes(serviceId)
-        ? draft.value.serviceIds.filter((id) => id !== serviceId)
-        : [...draft.value.serviceIds, serviceId];
-}
-
 function resetDraft(): void {
     draft.value = {
         customerId: null,
@@ -387,7 +379,7 @@ function resetDraft(): void {
         customerPhone: '',
         vehicle: '',
         plate: '',
-        serviceIds: [],
+        serviceItems: [],
         date: props.today,
     };
     customerQuery.value = '';
@@ -432,7 +424,11 @@ function startEditingBooking(): void {
             customerOption || booking.phone === '—' ? '' : booking.phone,
         vehicle: booking.vehicle,
         plate: booking.plate,
-        serviceIds: [...booking.serviceIds],
+        serviceItems: booking.serviceItems.map((item) => ({
+            serviceVariationId: item.serviceVariationId,
+            serviceId: item.serviceId,
+            quantity: item.quantity,
+        })),
         date: booking.date,
     };
     detailBookingId.value = null;
@@ -453,7 +449,10 @@ function saveBooking(): void {
             customer_phone: draft.value.customerPhone,
             vehicle_name: draft.value.vehicle,
             vehicle_plate: draft.value.plate,
-            service_ids: [...draft.value.serviceIds],
+            items: draft.value.serviceItems.map((item) => ({
+                service_variation_id: item.serviceVariationId,
+                quantity: item.quantity,
+            })),
             service_date: draft.value.date,
         };
         const action =
@@ -472,14 +471,34 @@ function saveBooking(): void {
     }
 
     const customer = draftCustomer.value;
+    const serviceItems: CarwashServiceItem[] = draftLineItems.value.map(
+        ({ item, service, variation }) => {
+            const values = Object.entries(variation.variations ?? {})
+                .map(([attribute, value]) => `${attribute}: ${value}`)
+                .join(', ');
+            const label = values ? `${service.name} (${values})` : service.name;
+
+            return {
+                serviceVariationId: variation.id,
+                serviceId: service.id,
+                serviceName: service.name,
+                variations: variation.variations,
+                quantity: item.quantity,
+                unitPrice: variation.price,
+                totalPrice: variation.price * item.quantity,
+                label: item.quantity > 1 ? `${label} x${item.quantity}` : label,
+            };
+        },
+    );
     const bookingFields = {
         customerId: customer?.id ?? null,
         customer: customer?.name ?? draft.value.walkInName,
         phone: (customer?.phone ?? draft.value.customerPhone.trim()) || '—',
         vehicle: draft.value.vehicle || '—',
         plate: draft.value.plate.toUpperCase(),
-        service: draftServices.value.map((service) => service.name).join(', '),
-        serviceIds: [...draft.value.serviceIds],
+        service: serviceItems.map((item) => item.label).join(', '),
+        serviceIds: [...new Set(serviceItems.map((item) => item.serviceId))],
+        serviceItems,
         date: draft.value.date,
         estimate: draftTotal.value,
     };
@@ -979,45 +998,14 @@ function saveBooking(): void {
             <!-- Services -->
             <div>
                 <p
-                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                    class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"
                 >
                     Layanan
                 </p>
-                <div
-                    class="mt-2 grid max-h-56 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
-                >
-                    <button
-                        v-for="service in services"
-                        :key="service.id"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                        :class="
-                            draft.serviceIds.includes(service.id)
-                                ? 'border-cyan-400 bg-cyan-50/60'
-                                : 'border-slate-200 hover:border-slate-300'
-                        "
-                        @click="toggleDraftService(service.id)"
-                    >
-                        <span class="text-lg">{{ service.icon }}</span>
-                        <span class="min-w-0 flex-1 leading-tight">
-                            <span
-                                class="block truncate text-xs font-medium text-slate-800"
-                            >
-                                {{ service.name }}
-                            </span>
-                            <span class="block text-[10px] text-slate-500">
-                                {{ formatCurrency(service.price) }} • +{{
-                                    service.stamps
-                                }}
-                                stempel
-                            </span>
-                        </span>
-                        <CircleCheck
-                            v-if="draft.serviceIds.includes(service.id)"
-                            class="h-4 w-4 shrink-0 text-cyan-600"
-                        />
-                    </button>
-                </div>
+                <ServiceCartPicker
+                    v-model="draft.serviceItems"
+                    :services="services"
+                />
             </div>
 
             <!-- Booking date: the one field an order does not have -->
@@ -1068,37 +1056,6 @@ function saveBooking(): void {
                     class="mt-1.5 text-[11px] font-medium text-red-600"
                 >
                     Tanggal kedatangan tidak boleh sebelum hari ini.
-                </p>
-            </div>
-
-            <!-- Selected services -->
-            <div class="rounded-2xl bg-slate-50 p-4">
-                <div class="flex items-center justify-between gap-3">
-                    <p class="text-[11px] font-medium text-slate-500">
-                        {{ draftServices.length }} layanan dipilih
-                    </p>
-                    <p
-                        v-if="draftStamps > 0"
-                        class="flex items-center gap-1 text-xs font-medium text-emerald-600"
-                    >
-                        <Sparkles class="h-3.5 w-3.5" />
-                        +{{ draftStamps }} stempel
-                    </p>
-                </div>
-                <ul
-                    v-if="draftServices.length > 0"
-                    class="mt-2 flex flex-wrap gap-2"
-                >
-                    <li
-                        v-for="service in draftServices"
-                        :key="service.id"
-                        class="rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                    >
-                        {{ service.name }}
-                    </li>
-                </ul>
-                <p v-else class="mt-1 text-sm text-slate-400">
-                    Belum ada layanan dipilih
                 </p>
             </div>
         </div>

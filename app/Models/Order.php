@@ -66,11 +66,11 @@ class Order extends Model
         return $this->belongsTo(Admin::class, 'crew_admin_id');
     }
 
-    /** @return BelongsToMany<Service, $this> */
-    public function services(): BelongsToMany
+    /** @return BelongsToMany<ServiceVariation, $this> */
+    public function serviceVariations(): BelongsToMany
     {
-        return $this->belongsToMany(Service::class, 'order_services')
-            ->withPivot(['service_name', 'unit_price', 'stamps']);
+        return $this->belongsToMany(ServiceVariation::class, 'order_services')
+            ->withPivot(['service_name', 'variations', 'unit_price', 'quantity', 'total_price', 'stamps']);
     }
 
     /** @return HasMany<OrderTransaction, $this> */

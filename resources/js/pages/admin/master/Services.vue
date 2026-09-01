@@ -1,34 +1,24 @@
 <script setup lang="ts">
-import { Head, useForm, usePage } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import {
-    ArrowUpDown,
     ChevronDown,
     ChevronRight,
-    ChevronUp,
-    FolderPlus,
     GripVertical,
     Pencil,
     Plus,
-    Save,
+    Search,
     Sparkles,
     SprayCan,
     Trash2,
-    Wallet,
     X,
 } from '@lucide/vue';
-import { computed, onUnmounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
     destroy as destroyService,
     store as storeService,
     update as updateService,
     updateOrder as updateServiceOrder,
 } from '@/actions/App/Http/Controllers/Admin/Master/ServiceController';
-import {
-    destroy as destroyServiceGroup,
-    store as storeServiceGroup,
-    update as updateServiceGroup,
-} from '@/actions/App/Http/Controllers/Admin/Master/ServiceGroupController';
-import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import StatCard from '@/components/demo/StatCard.vue';
@@ -37,17 +27,21 @@ import InputError from '@/components/InputError.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
 import type { CarwashBrand } from '@/types/demo';
 
-type ServiceIcon = {
-    value: string;
-    label: string;
+type ServiceIcon = { value: string; label: string };
+type VariationRow = {
+    id: number | null;
+    variations: Record<string, string> | null;
+    price: number;
+    is_active: boolean;
+    order_count: number;
 };
-
 type Service = {
     id: number;
-    service_group_id: number | null;
     name: string;
     category: string;
     price: number;
+    variations: Record<string, string[]> | null;
+    service_variations: VariationRow[];
     stamps: number;
     icon: string;
     description: string;
@@ -56,245 +50,418 @@ type Service = {
     sort_order: number;
     order_count: number;
 };
-
-type ServiceGroup = {
-    id: number;
-    name: string;
-};
-
-type CatalogEntry = {
-    key: string;
-    group: ServiceGroup | null;
-    services: Service[];
-};
+type VariationAttribute = { name: string; values: string[] };
 
 const props = defineProps<{
     mode: 'demo' | 'live';
     brand: CarwashBrand;
     services: Service[];
-    serviceGroups: ServiceGroup[];
     categories: string[];
     icons: ServiceIcon[];
-    capabilities: {
-        create: boolean;
-        update: boolean;
-        delete: boolean;
-    };
+    capabilities: { create: boolean; update: boolean; delete: boolean };
 }>();
 
-const serviceList = ref(props.services.map((service) => ({ ...service })));
-const serviceGroupList = ref(
-    props.serviceGroups.map((serviceGroup) => ({ ...serviceGroup })),
-);
-const search = ref('');
-const categoryFilter = ref('Semua');
-const editingServiceId = ref<number | null>(null);
-const isServiceFormOpen = ref(false);
+const serviceList = ref(props.services.map(cloneService));
+const query = ref('');
+/** An empty selection means every category, matching the "Semua" chip. */
+const selectedCategories = ref<string[]>([]);
+const expandedIds = ref<number[]>([]);
+const isFormOpen = ref(false);
+const editingId = ref<number | null>(null);
 const deletingService = ref<Service | null>(null);
-const editingServiceGroupId = ref<number | null>(null);
-const isServiceGroupFormOpen = ref(false);
-const deletingServiceGroup = ref<ServiceGroup | null>(null);
-const expandedServiceGroupIds = ref<number[]>([]);
-const isReorderMode = ref(false);
+const isSorting = ref(false);
 const orderSnapshot = ref<number[]>([]);
-const draggingIndex = ref<number | null>(null);
-const dropIndex = ref<number | null>(null);
-const orderForm = useForm<{ ids: number[] }>({ ids: [] });
-
-watch(
-    () => props.services,
-    (services) => {
-        if (props.mode !== 'live') {
-            return;
-        }
-
-        /**
-         * A reload that lands mid-reorder would throw away the rows the
-         * operator has already dragged, so only the save round-trip
-         * (still `processing` while props swap) is allowed through.
-         */
-        if (isReorderMode.value && !orderForm.processing) {
-            return;
-        }
-
-        serviceList.value = services.map((service) => ({ ...service }));
-        orderSnapshot.value = serviceList.value.map((service) => service.id);
-    },
-);
-
-watch(
-    () => props.serviceGroups,
-    (serviceGroups) => {
-        if (props.mode === 'live') {
-            serviceGroupList.value = serviceGroups.map((serviceGroup) => ({
-                ...serviceGroup,
-            }));
-        }
-    },
-);
-
-const defaultIcon = props.icons[0]?.value ?? '';
+const draggingId = ref<number | null>(null);
+const listRef = ref<HTMLElement | null>(null);
+const variationAttributes = ref<VariationAttribute[]>([]);
 
 const serviceForm = useForm({
-    service_group_id: null as number | null,
     name: '',
     category: '',
-    price: 0,
+    variations: null as Record<string, string[]> | null,
+    service_variations: [
+        { id: null, variations: null, price: 0, is_active: true },
+    ] as VariationRow[],
     stamps: 0,
-    icon: defaultIcon,
+    icon: props.icons[0]?.value ?? 'sparkles',
     description: '',
     is_popular: false,
     is_active: true,
 });
-
-const serviceGroupForm = useForm({ name: '' });
-const serviceGroupDeleteForm = useForm({});
-
 const deleteForm = useForm({});
-const page = usePage<{ errors: Record<string, string> }>();
+const orderForm = useForm({ ids: [] as number[] });
 
-/** The destroy endpoint rejects services already used by an order. */
-const deleteError = computed(() => page.props.errors.service ?? '');
+watch(
+    () => props.services,
+    (services) => {
+        if (props.mode === 'live') {
+            serviceList.value = services.map(cloneService);
+            orderSnapshot.value = serviceList.value.map(
+                (service) => service.id,
+            );
+        }
+    },
+);
 
-const filterOptions = computed(() => ['Semua', ...props.categories]);
-
-function serviceMatchesFilters(service: Service, query: string): boolean {
-    const serviceGroupName = serviceGroupList.value.find(
-        (serviceGroup) => serviceGroup.id === service.service_group_id,
-    )?.name;
-    const matchesCategory =
-        categoryFilter.value === 'Semua' ||
-        service.category === categoryFilter.value;
-    const haystack =
-        `${service.name} ${service.category} ${service.description} ${serviceGroupName ?? ''}`.toLowerCase();
-
-    return matchesCategory && (query === '' || haystack.includes(query));
-}
-
+const categoryOptions = computed(() => [
+    ...new Set(serviceList.value.map((service) => service.category)),
+]);
 const filteredServices = computed(() => {
-    const query = search.value.trim().toLowerCase();
+    const tokens = query.value.toLowerCase().split(/\s+/).filter(Boolean);
 
-    return serviceList.value.filter((service) =>
-        serviceMatchesFilters(service, query),
-    );
-});
+    return serviceList.value.filter((service) => {
+        if (
+            selectedCategories.value.length &&
+            !selectedCategories.value.includes(service.category)
+        ) {
+            return false;
+        }
 
-const visibleCatalogEntries = computed<CatalogEntry[]>(() => {
-    if (isReorderMode.value) {
-        return serviceList.value.map((service) => ({
-            key: `service-${service.id}`,
-            group: null,
-            services: [service],
-        }));
-    }
+        const haystack = [
+            service.name,
+            service.category,
+            service.description,
+            ...Object.keys(service.variations ?? {}),
+            ...Object.values(service.variations ?? {}).flat(),
+        ]
+            .join(' ')
+            .toLowerCase();
 
-    const query = search.value.trim().toLowerCase();
-    const entries: CatalogEntry[] = serviceGroupList.value.flatMap(
-        (serviceGroup) => {
-            const allServices = serviceList.value.filter(
-                (service) => service.service_group_id === serviceGroup.id,
-            );
-            const categoryServices = allServices.filter(
-                (service) =>
-                    categoryFilter.value === 'Semua' ||
-                    service.category === categoryFilter.value,
-            );
-            const groupMatches = serviceGroup.name
-                .toLowerCase()
-                .includes(query);
-            const services = groupMatches
-                ? categoryServices
-                : categoryServices.filter((service) =>
-                      serviceMatchesFilters(service, query),
-                  );
-            const emptyGroupMatches =
-                allServices.length === 0 &&
-                categoryFilter.value === 'Semua' &&
-                (query === '' || groupMatches);
-
-            return services.length > 0 || emptyGroupMatches
-                ? [
-                      {
-                          key: `group-${serviceGroup.id}`,
-                          group: serviceGroup,
-                          services,
-                      },
-                  ]
-                : [];
-        },
-    );
-
-    entries.push(
-        ...filteredServices.value
-            .filter((service) => service.service_group_id === null)
-            .map((service) => ({
-                key: `service-${service.id}`,
-                group: null,
-                services: [service],
-            })),
-    );
-
-    return entries.sort((left, right) => {
-        const leftOrder = Math.min(
-            ...left.services.map((service) => service.sort_order),
-            Number.MAX_SAFE_INTEGER,
-        );
-        const rightOrder = Math.min(
-            ...right.services.map((service) => service.sort_order),
-            Number.MAX_SAFE_INTEGER,
-        );
-
-        return leftOrder - rightOrder || left.key.localeCompare(right.key);
+        return tokens.every((token) => haystack.includes(token));
     });
 });
-
+const activeCount = computed(
+    () => serviceList.value.filter((service) => service.is_active).length,
+);
+/** Reordering a filtered subset would move rows the operator cannot see. */
+const visibleServices = computed(() =>
+    isSorting.value ? serviceList.value : filteredServices.value,
+);
 const isOrderDirty = computed(() =>
     serviceList.value.some(
         (service, index) => service.id !== orderSnapshot.value[index],
     ),
 );
 
-const activeCount = computed(
-    () => serviceList.value.filter((service) => service.is_active).length,
-);
+function categoryCount(option: string): number {
+    return serviceList.value.filter((service) => service.category === option)
+        .length;
+}
 
-const popularCount = computed(
-    () => serviceList.value.filter((service) => service.is_popular).length,
-);
+function toggleCategory(option: string): void {
+    selectedCategories.value = selectedCategories.value.includes(option)
+        ? selectedCategories.value.filter((selected) => selected !== option)
+        : [...selectedCategories.value, option];
+}
 
-const averagePrice = computed(() => {
-    if (serviceList.value.length === 0) {
-        return 0;
+function cloneService(service: Service): Service {
+    return {
+        ...service,
+        variations: cloneVariationConfiguration(service.variations),
+        service_variations: service.service_variations.map((variation) => ({
+            ...variation,
+            variations: variation.variations
+                ? { ...variation.variations }
+                : null,
+        })),
+    };
+}
+
+function cloneVariationConfiguration(
+    variations: Record<string, string[]> | null,
+): Record<string, string[]> | null {
+    if (variations === null) {
+        return null;
     }
 
-    const total = serviceList.value.reduce(
-        (sum, service) => sum + service.price,
-        0,
+    return Object.fromEntries(
+        Object.entries(variations).map(([attribute, values]) => [
+            attribute,
+            [...values],
+        ]),
     );
+}
 
-    return Math.round(total / serviceList.value.length);
-});
+function openCreate(): void {
+    editingId.value = null;
+    variationAttributes.value = [];
+    serviceForm.clearErrors();
+    serviceForm.defaults({
+        name: '',
+        category: props.categories[0] ?? '',
+        variations: null,
+        service_variations: [
+            {
+                id: null,
+                variations: null,
+                price: 0,
+                is_active: true,
+                order_count: 0,
+            },
+        ],
+        stamps: 0,
+        icon: props.icons[0]?.value ?? 'sparkles',
+        description: '',
+        is_popular: false,
+        is_active: true,
+    });
+    serviceForm.reset();
+    isFormOpen.value = true;
+}
 
-function enterReorderMode(): void {
-    if (!props.capabilities.update) {
+function openEdit(service: Service): void {
+    editingId.value = service.id;
+    variationAttributes.value = Object.entries(service.variations ?? {}).map(
+        ([name, values]) => ({ name, values: [...values] }),
+    );
+    serviceForm.clearErrors();
+    serviceForm.defaults({
+        name: service.name,
+        category: service.category,
+        variations: cloneVariationConfiguration(service.variations),
+        service_variations: service.service_variations.map((variation) => ({
+            ...variation,
+            variations: variation.variations
+                ? { ...variation.variations }
+                : null,
+        })),
+        stamps: service.stamps,
+        icon: service.icon,
+        description: service.description,
+        is_popular: service.is_popular,
+        is_active: service.is_active,
+    });
+    serviceForm.reset();
+    isFormOpen.value = true;
+}
+
+function addAttribute(): void {
+    variationAttributes.value.push({
+        name: variationAttributes.value.length
+            ? `Variasi ${variationAttributes.value.length + 1}`
+            : 'Ukuran',
+        values: [''],
+    });
+    regenerateVariations();
+}
+
+function removeAttribute(index: number): void {
+    variationAttributes.value.splice(index, 1);
+    regenerateVariations();
+}
+
+function addValue(index: number): void {
+    variationAttributes.value[index]?.values.push('');
+    regenerateVariations();
+}
+
+function removeValue(attributeIndex: number, valueIndex: number): void {
+    variationAttributes.value[attributeIndex]?.values.splice(valueIndex, 1);
+    regenerateVariations();
+}
+
+function regenerateVariations(): void {
+    const configuration = Object.fromEntries(
+        variationAttributes.value
+            .map(
+                (attribute) =>
+                    [
+                        attribute.name.trim(),
+                        attribute.values
+                            .map((value) => value.trim())
+                            .filter(Boolean),
+                    ] as const,
+            )
+            .filter(([name, values]) => name !== '' && values.length > 0),
+    );
+    serviceForm.variations = Object.keys(configuration).length
+        ? configuration
+        : null;
+    const combinations = buildCombinations(configuration);
+    const existing = new Map(
+        serviceForm.service_variations.map((variation) => [
+            signature(variation.variations),
+            variation,
+        ]),
+    );
+    serviceForm.service_variations = combinations.map((values) => {
+        const retained = existing.get(signature(values));
+
+        return retained
+            ? { ...retained, variations: values }
+            : {
+                  id: null,
+                  variations: values,
+                  price: 0,
+                  is_active: true,
+                  order_count: 0,
+              };
+    });
+}
+
+function buildCombinations(
+    configuration: Record<string, string[]>,
+): (Record<string, string> | null)[] {
+    if (!Object.keys(configuration).length) {
+        return [null];
+    }
+
+    let combinations: Record<string, string>[] = [{}];
+
+    for (const [attribute, values] of Object.entries(configuration)) {
+        combinations = combinations.flatMap((combination) =>
+            values.map((value) => ({ ...combination, [attribute]: value })),
+        );
+    }
+
+    return combinations;
+}
+
+function signature(values: Record<string, string> | null): string {
+    return JSON.stringify(values);
+}
+
+function variationLabel(values: Record<string, string> | null): string {
+    return (
+        Object.entries(values ?? {})
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(' · ') || 'Harga default'
+    );
+}
+
+function priceRange(service: Service): string {
+    const prices = service.service_variations
+        .filter((variation) => variation.is_active)
+        .map((variation) => variation.price);
+
+    if (!prices.length) {
+        return 'Tidak tersedia';
+    }
+
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+
+    return min === max
+        ? formatCurrency(min)
+        : `${formatCurrency(min)}–${formatCurrency(max)}`;
+}
+
+function submitService(): void {
+    regenerateVariations();
+
+    if (props.mode === 'demo') {
+        saveDemoService();
+
         return;
     }
 
-    search.value = '';
-    categoryFilter.value = 'Semua';
-    orderSnapshot.value = serviceList.value.map((service) => service.id);
-    orderForm.clearErrors();
-    isReorderMode.value = true;
+    const action =
+        editingId.value === null
+            ? storeService()
+            : updateService(editingId.value);
+    serviceForm.submit(action, {
+        preserveScroll: true,
+        onSuccess: () => {
+            isFormOpen.value = false;
+            serviceForm.reset();
+        },
+    });
 }
 
-function cancelReorder(): void {
-    const snapshot = orderSnapshot.value;
+function saveDemoService(): void {
+    const id =
+        editingId.value ??
+        Math.max(0, ...serviceList.value.map((service) => service.id)) + 1;
+    const service: Service = {
+        id,
+        name: serviceForm.name,
+        category: serviceForm.category,
+        price: Math.min(
+            ...serviceForm.service_variations.map(
+                (variation) => variation.price,
+            ),
+        ),
+        variations: serviceForm.variations,
+        service_variations: serviceForm.service_variations.map(
+            (variation, index) => ({
+                ...variation,
+                id: variation.id ?? id * 100 + index + 1,
+            }),
+        ),
+        stamps: serviceForm.stamps,
+        icon: serviceForm.icon,
+        description: serviceForm.description,
+        is_popular: serviceForm.is_popular,
+        is_active: serviceForm.is_active,
+        sort_order:
+            editingId.value === null
+                ? serviceList.value.length + 1
+                : (serviceList.value.find((item) => item.id === id)
+                      ?.sort_order ?? 0),
+        order_count: serviceForm.service_variations.reduce(
+            (sum, variation) => sum + variation.order_count,
+            0,
+        ),
+    };
+    serviceList.value =
+        editingId.value === null
+            ? [...serviceList.value, service]
+            : serviceList.value.map((item) =>
+                  item.id === id ? service : item,
+              );
+    isFormOpen.value = false;
+}
 
+function confirmDelete(): void {
+    if (!deletingService.value) {
+        return;
+    }
+
+    const id = deletingService.value.id;
+
+    if (props.mode === 'demo') {
+        serviceList.value = serviceList.value.filter(
+            (service) => service.id !== id,
+        );
+        deletingService.value = null;
+
+        return;
+    }
+
+    deleteForm.submit(destroyService(id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            deletingService.value = null;
+        },
+    });
+}
+
+function toggleExpanded(id: number): void {
+    if (isSorting.value) {
+        return;
+    }
+
+    expandedIds.value = expandedIds.value.includes(id)
+        ? expandedIds.value.filter((candidate) => candidate !== id)
+        : [...expandedIds.value, id];
+}
+
+function startSorting(): void {
+    query.value = '';
+    selectedCategories.value = [];
+    expandedIds.value = [];
+    orderSnapshot.value = serviceList.value.map((service) => service.id);
+    orderForm.clearErrors();
+    isSorting.value = true;
+}
+
+function cancelSorting(): void {
+    const snapshot = orderSnapshot.value;
     serviceList.value = [...serviceList.value].sort(
         (a, b) => snapshot.indexOf(a.id) - snapshot.indexOf(b.id),
     );
-    resetDrag();
-    isReorderMode.value = false;
+    stopDrag();
+    isSorting.value = false;
 }
 
 function moveService(from: number, to: number): void {
@@ -304,109 +471,148 @@ function moveService(from: number, to: number): void {
 
     const rows = [...serviceList.value];
     const [moved] = rows.splice(from, 1);
-    rows.splice(to, 0, moved);
+    rows.splice(to, 0, moved!);
     serviceList.value = rows;
 }
 
+function moveServiceByKey(service: Service, direction: -1 | 1): void {
+    const from = serviceList.value.findIndex(
+        (candidate) => candidate.id === service.id,
+    );
+    moveService(from, from + direction);
+}
+
 /**
- * A native drag will not scroll the page for us — the browser tries the
- * `overflow-x-auto` wrapper around the table instead — so the catalog has to
- * be walked by hand while the pointer sits near the top or bottom edge.
+ * The drag runs on pointer events instead of the native HTML5 drag so the
+ * operator keeps the mouse wheel while holding a row, and so the page can be
+ * walked by hand while the pointer rests against a viewport edge.
  */
-const AUTO_SCROLL_EDGE = 140;
-const AUTO_SCROLL_MAX_STEP = 22;
+const AUTO_SCROLL_EDGE = 120;
+const AUTO_SCROLL_MAX_STEP = 24;
 
-let autoScrollFrame: number | null = null;
 let pointerY = 0;
+let dragFrame: number | null = null;
 
-function trackPointer(event: DragEvent): void {
-    pointerY = event.clientY;
-}
-
-function startAutoScroll(): void {
-    if (autoScrollFrame !== null) {
-        return;
-    }
-
-    document.addEventListener('dragover', trackPointer);
-
-    const step = (): void => {
-        const bottomEdge = window.innerHeight - AUTO_SCROLL_EDGE;
-        let distance = 0;
-
-        if (pointerY < AUTO_SCROLL_EDGE) {
-            distance = -(AUTO_SCROLL_EDGE - pointerY);
-        } else if (pointerY > bottomEdge) {
-            distance = pointerY - bottomEdge;
-        }
-
-        if (distance !== 0) {
-            const speed = (distance / AUTO_SCROLL_EDGE) * AUTO_SCROLL_MAX_STEP;
-            window.scrollBy(0, speed);
-        }
-
-        autoScrollFrame = requestAnimationFrame(step);
-    };
-
-    autoScrollFrame = requestAnimationFrame(step);
-}
-
-function stopAutoScroll(): void {
-    if (autoScrollFrame !== null) {
-        cancelAnimationFrame(autoScrollFrame);
-        autoScrollFrame = null;
-    }
-
-    document.removeEventListener('dragover', trackPointer);
-}
-
-onUnmounted(stopAutoScroll);
-
-function resetDrag(): void {
-    draggingIndex.value = null;
-    dropIndex.value = null;
-    stopAutoScroll();
-}
-
-function onRowDragStart(index: number, event: DragEvent): void {
-    draggingIndex.value = index;
-    pointerY = event.clientY;
-
-    if (event.dataTransfer) {
-        event.dataTransfer.effectAllowed = 'move';
-        /** Firefox refuses to start a drag without a payload. */
-        event.dataTransfer.setData('text/plain', String(index));
-    }
-
-    startAutoScroll();
-}
-
-function onRowDragOver(index: number, event: DragEvent): void {
-    if (draggingIndex.value === null) {
+/**
+ * The move is tracked on the document rather than through pointer capture:
+ * capture is dropped as soon as the row is re-inserted somewhere else, which
+ * cut every upward drag short the moment the page scrolled.
+ */
+function startDrag(service: Service, event: PointerEvent): void {
+    if (!isSorting.value || event.button !== 0) {
         return;
     }
 
     event.preventDefault();
+    draggingId.value = service.id;
+    pointerY = event.clientY;
+    document.addEventListener('pointermove', trackDrag);
+    document.addEventListener('pointerup', stopDrag);
+    document.addEventListener('pointercancel', stopDrag);
+    document.body.style.userSelect = 'none';
 
-    if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = 'move';
+    if (dragFrame === null) {
+        dragFrame = requestAnimationFrame(stepDrag);
     }
-
-    dropIndex.value = index;
 }
 
-function onRowDrop(index: number): void {
-    if (draggingIndex.value !== null) {
-        moveService(draggingIndex.value, index);
+function trackDrag(event: PointerEvent): void {
+    if (draggingId.value === null) {
+        return;
     }
 
-    resetDrag();
+    pointerY = event.clientY;
 }
+
+function stopDrag(): void {
+    document.removeEventListener('pointermove', trackDrag);
+    document.removeEventListener('pointerup', stopDrag);
+    document.removeEventListener('pointercancel', stopDrag);
+    document.body.style.removeProperty('user-select');
+    draggingId.value = null;
+
+    if (dragFrame !== null) {
+        cancelAnimationFrame(dragFrame);
+        dragFrame = null;
+    }
+}
+
+function stepDrag(): void {
+    if (draggingId.value === null) {
+        dragFrame = null;
+
+        return;
+    }
+
+    autoScroll();
+    settleDraggedRow();
+    dragFrame = requestAnimationFrame(stepDrag);
+}
+
+function autoScroll(): void {
+    const bottomEdge = window.innerHeight - AUTO_SCROLL_EDGE;
+    let distance = 0;
+
+    if (pointerY < AUTO_SCROLL_EDGE) {
+        distance = pointerY - AUTO_SCROLL_EDGE;
+    } else if (pointerY > bottomEdge) {
+        distance = pointerY - bottomEdge;
+    }
+
+    if (distance !== 0) {
+        window.scrollBy(
+            0,
+            (distance / AUTO_SCROLL_EDGE) * AUTO_SCROLL_MAX_STEP,
+        );
+    }
+}
+
+/** Rows are re-measured every frame so wheel and auto scrolling stay honest. */
+function settleDraggedRow(): void {
+    const rows =
+        listRef.value?.querySelectorAll<HTMLElement>('[data-service-row]');
+    const from = serviceList.value.findIndex(
+        (service) => service.id === draggingId.value,
+    );
+
+    if (!rows?.length || from === -1) {
+        return;
+    }
+
+    const first = rows[0]!.getBoundingClientRect();
+    const last = rows[rows.length - 1]!.getBoundingClientRect();
+
+    if (pointerY <= first.top) {
+        moveService(from, 0);
+
+        return;
+    }
+
+    if (pointerY >= last.bottom) {
+        moveService(from, rows.length - 1);
+
+        return;
+    }
+
+    for (let index = 0; index < rows.length; index += 1) {
+        const rect = rows[index]!.getBoundingClientRect();
+
+        if (pointerY >= rect.top && pointerY <= rect.bottom) {
+            moveService(from, index);
+
+            return;
+        }
+    }
+}
+
+onBeforeUnmount(stopDrag);
 
 function saveOrder(): void {
+    stopDrag();
+
     if (props.mode === 'demo') {
         orderSnapshot.value = serviceList.value.map((service) => service.id);
-        isReorderMode.value = false;
+        isSorting.value = false;
 
         return;
     }
@@ -415,1156 +621,622 @@ function saveOrder(): void {
     orderForm.submit(updateServiceOrder(), {
         preserveScroll: true,
         onSuccess: () => {
-            isReorderMode.value = false;
-        },
-    });
-}
-
-function openCreateService(): void {
-    editingServiceId.value = null;
-    serviceForm.clearErrors();
-    serviceForm.defaults({
-        service_group_id: null,
-        name: '',
-        category: props.categories[0] ?? '',
-        price: 0,
-        stamps: 0,
-        icon: defaultIcon,
-        description: '',
-        is_popular: false,
-        is_active: true,
-    });
-    serviceForm.reset();
-    isServiceFormOpen.value = true;
-}
-
-function openEditService(service: Service): void {
-    if (!props.capabilities.update) {
-        return;
-    }
-
-    editingServiceId.value = service.id;
-    serviceForm.clearErrors();
-    serviceForm.defaults({
-        service_group_id: service.service_group_id,
-        name: service.name,
-        category: service.category,
-        price: service.price,
-        stamps: service.stamps,
-        icon: service.icon,
-        description: service.description,
-        is_popular: service.is_popular,
-        is_active: service.is_active,
-    });
-    serviceForm.reset();
-    isServiceFormOpen.value = true;
-}
-
-function submitService(): void {
-    if (props.mode === 'demo') {
-        saveDemoService();
-
-        return;
-    }
-
-    const action =
-        editingServiceId.value === null
-            ? storeService()
-            : updateService(editingServiceId.value);
-
-    serviceForm.submit(action, {
-        preserveScroll: true,
-        onSuccess: () => {
-            isServiceFormOpen.value = false;
-            serviceForm.reset();
-        },
-    });
-}
-
-/** The demo console keeps its edits in memory instead of hitting the database. */
-function saveDemoService(): void {
-    serviceForm.clearErrors();
-
-    if (!serviceForm.name.trim()) {
-        serviceForm.setError('name', 'Nama layanan wajib diisi.');
-    }
-
-    if (!serviceForm.category.trim()) {
-        serviceForm.setError('category', 'Kategori wajib diisi.');
-    }
-
-    if (serviceForm.price < 0) {
-        serviceForm.setError('price', 'Harga tidak boleh negatif.');
-    }
-
-    const isDuplicate = serviceList.value.some(
-        (service) =>
-            service.id !== editingServiceId.value &&
-            service.name.trim().toLowerCase() ===
-                serviceForm.name.trim().toLowerCase(),
-    );
-
-    if (isDuplicate) {
-        serviceForm.setError('name', 'Nama layanan sudah dipakai.');
-    }
-
-    if (serviceForm.hasErrors) {
-        return;
-    }
-
-    const values = {
-        service_group_id: serviceForm.service_group_id,
-        name: serviceForm.name.trim(),
-        category: serviceForm.category.trim(),
-        price: serviceForm.price,
-        stamps: serviceForm.stamps,
-        icon: serviceForm.icon,
-        description: serviceForm.description,
-        is_popular: serviceForm.is_popular,
-        is_active: serviceForm.is_active,
-    };
-
-    if (editingServiceId.value === null) {
-        serviceList.value.unshift({
-            id:
-                Math.max(0, ...serviceList.value.map((service) => service.id)) +
-                1,
-            ...values,
-            sort_order:
-                Math.max(
-                    0,
-                    ...serviceList.value.map((service) => service.sort_order),
-                ) + 1,
-            order_count: 0,
-        });
-    } else {
-        const service = serviceList.value.find(
-            (item) => item.id === editingServiceId.value,
-        );
-
-        if (service) {
-            Object.assign(service, values);
-        }
-    }
-
-    isServiceFormOpen.value = false;
-    serviceForm.reset();
-}
-
-function serviceIndex(serviceId: number): number {
-    return serviceList.value.findIndex((service) => service.id === serviceId);
-}
-
-function isServiceGroupExpanded(serviceGroupId: number): boolean {
-    return (
-        search.value.trim() !== '' ||
-        expandedServiceGroupIds.value.includes(serviceGroupId)
-    );
-}
-
-function toggleServiceGroup(serviceGroupId: number): void {
-    expandedServiceGroupIds.value = expandedServiceGroupIds.value.includes(
-        serviceGroupId,
-    )
-        ? expandedServiceGroupIds.value.filter((id) => id !== serviceGroupId)
-        : [...expandedServiceGroupIds.value, serviceGroupId];
-}
-
-function serviceGroupCategories(services: Service[]): string {
-    const categories = [
-        ...new Set(services.map((service) => service.category)),
-    ];
-
-    return categories.length > 0 ? categories.join(', ') : 'Belum ada layanan';
-}
-
-function serviceGroupPrice(services: Service[]): string {
-    if (services.length === 0) {
-        return '—';
-    }
-
-    const prices = services.map((service) => service.price);
-    const minimum = Math.min(...prices);
-    const maximum = Math.max(...prices);
-
-    return minimum === maximum
-        ? formatCurrency(minimum)
-        : `${formatCurrency(minimum)}–${formatCurrency(maximum)}`;
-}
-
-function serviceGroupActiveCount(services: Service[]): number {
-    return services.filter((service) => service.is_active).length;
-}
-
-function serviceGroupOrderCount(services: Service[]): number {
-    return services.reduce((total, service) => total + service.order_count, 0);
-}
-
-function openCreateServiceGroup(): void {
-    editingServiceGroupId.value = null;
-    serviceGroupForm.clearErrors();
-    serviceGroupForm.defaults({ name: '' });
-    serviceGroupForm.reset();
-    isServiceGroupFormOpen.value = true;
-}
-
-function openEditServiceGroup(serviceGroup: ServiceGroup): void {
-    if (!props.capabilities.update) {
-        return;
-    }
-
-    editingServiceGroupId.value = serviceGroup.id;
-    serviceGroupForm.clearErrors();
-    serviceGroupForm.defaults({ name: serviceGroup.name });
-    serviceGroupForm.reset();
-    isServiceGroupFormOpen.value = true;
-}
-
-function submitServiceGroup(): void {
-    if (props.mode === 'demo') {
-        saveDemoServiceGroup();
-
-        return;
-    }
-
-    const action =
-        editingServiceGroupId.value === null
-            ? storeServiceGroup()
-            : updateServiceGroup(editingServiceGroupId.value);
-
-    serviceGroupForm.submit(action, {
-        preserveScroll: true,
-        onSuccess: () => {
-            isServiceGroupFormOpen.value = false;
-            serviceGroupForm.reset();
-        },
-    });
-}
-
-function saveDemoServiceGroup(): void {
-    serviceGroupForm.clearErrors();
-    const name = serviceGroupForm.name.trim();
-
-    if (name === '') {
-        serviceGroupForm.setError('name', 'Nama group wajib diisi.');
-    }
-
-    if (
-        serviceGroupList.value.some(
-            (serviceGroup) =>
-                serviceGroup.id !== editingServiceGroupId.value &&
-                serviceGroup.name.toLowerCase() === name.toLowerCase(),
-        )
-    ) {
-        serviceGroupForm.setError('name', 'Nama group sudah dipakai.');
-    }
-
-    if (serviceGroupForm.hasErrors) {
-        return;
-    }
-
-    if (editingServiceGroupId.value === null) {
-        serviceGroupList.value.push({
-            id:
-                Math.max(
-                    0,
-                    ...serviceGroupList.value.map(
-                        (serviceGroup) => serviceGroup.id,
-                    ),
-                ) + 1,
-            name,
-        });
-    } else {
-        const serviceGroup = serviceGroupList.value.find(
-            (item) => item.id === editingServiceGroupId.value,
-        );
-
-        if (serviceGroup) {
-            serviceGroup.name = name;
-        }
-    }
-
-    isServiceGroupFormOpen.value = false;
-    serviceGroupForm.reset();
-}
-
-function confirmDeleteServiceGroup(): void {
-    if (deletingServiceGroup.value === null) {
-        return;
-    }
-
-    if (props.mode === 'demo') {
-        const serviceGroupId = deletingServiceGroup.value.id;
-
-        serviceList.value.forEach((service) => {
-            if (service.service_group_id === serviceGroupId) {
-                service.service_group_id = null;
-            }
-        });
-        serviceGroupList.value = serviceGroupList.value.filter(
-            (serviceGroup) => serviceGroup.id !== serviceGroupId,
-        );
-        deletingServiceGroup.value = null;
-
-        return;
-    }
-
-    serviceGroupDeleteForm.submit(
-        destroyServiceGroup(deletingServiceGroup.value.id),
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                deletingServiceGroup.value = null;
-            },
-        },
-    );
-}
-
-function openDeleteService(service: Service): void {
-    if (!props.capabilities.delete || service.order_count > 0) {
-        return;
-    }
-
-    deleteForm.clearErrors();
-    deletingService.value = service;
-}
-
-function confirmDeleteService(): void {
-    if (deletingService.value === null) {
-        return;
-    }
-
-    if (props.mode === 'demo') {
-        serviceList.value = serviceList.value.filter(
-            (service) => service.id !== deletingService.value?.id,
-        );
-        deletingService.value = null;
-
-        return;
-    }
-
-    deleteForm.submit(destroyService(deletingService.value.id), {
-        preserveScroll: true,
-        onSuccess: () => {
-            deletingService.value = null;
+            orderSnapshot.value = serviceList.value.map(
+                (service) => service.id,
+            );
+            isSorting.value = false;
         },
     });
 }
 </script>
 
 <template>
-    <Head :title="`${brand.name} — Layanan`" />
-
+    <Head :title="`${brand.name} — Master Layanan`" />
     <div class="space-y-4">
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div class="grid gap-4 sm:grid-cols-2">
             <StatCard
                 label="Total layanan"
                 :value="String(serviceList.length)"
-                :caption="`${categories.length} kategori`"
+                caption="Service logis"
                 :icon="SprayCan"
             />
             <StatCard
                 label="Layanan aktif"
                 :value="String(activeCount)"
-                caption="Tampil di order & POS"
+                caption="Tampil di order"
                 :icon="Sparkles"
                 tone="emerald"
             />
-            <StatCard
-                label="Layanan populer"
-                :value="String(popularCount)"
-                caption="Ditandai sebagai unggulan"
-                :icon="Sparkles"
-                tone="amber"
-            />
-            <StatCard
-                label="Harga rata-rata"
-                :value="formatCurrency(averagePrice)"
-                caption="Seluruh layanan terdaftar"
-                :icon="Wallet"
-                tone="violet"
-            />
-        </section>
+        </div>
 
         <section
-            class="rounded-2xl border border-slate-200/80 bg-white shadow-sm"
+            class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
         >
-            <div class="space-y-3 border-b border-slate-100 p-5">
-                <div class="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                        <h3 class="text-sm font-semibold text-slate-900">
-                            Daftar layanan
-                        </h3>
-                        <p class="mt-0.5 text-xs text-slate-500">
-                            {{
-                                isReorderMode
-                                    ? 'Seret baris dengan gagang di kiri untuk mengubah urutan.'
-                                    : `${filteredServices.length} layanan ditampilkan`
-                            }}
-                        </p>
-                    </div>
-                    <DataToolbar
-                        v-if="!isReorderMode"
-                        v-model:search="search"
-                        placeholder="Cari nama / kategori"
-                        :filters="filterOptions"
-                        :active-filter="categoryFilter"
-                        @filter="categoryFilter = $event"
-                    />
+            <div
+                class="flex flex-col gap-3 border-b border-slate-100 p-5 sm:flex-row sm:items-center sm:justify-between"
+            >
+                <div>
+                    <h2 class="text-sm font-semibold text-slate-900">
+                        Daftar layanan
+                    </h2>
+                    <p class="text-xs text-slate-500">
+                        {{ visibleServices.length }} layanan ditampilkan
+                    </p>
                 </div>
-
                 <div
-                    v-if="!isReorderMode"
-                    class="flex flex-wrap items-center gap-2"
+                    class="flex w-full items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 sm:w-72"
+                    :class="isSorting ? 'opacity-50' : ''"
                 >
-                    <button
-                        v-if="capabilities.create"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
-                        @click="openCreateService"
-                    >
-                        <Plus class="h-4 w-4" /> Tambah Layanan
-                    </button>
-                    <button
-                        v-if="capabilities.create"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-100"
-                        @click="openCreateServiceGroup"
-                    >
-                        <FolderPlus class="h-4 w-4" /> Tambah Group
-                    </button>
-                    <button
-                        v-if="capabilities.update && serviceList.length > 1"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                        @click="enterReorderMode"
-                    >
-                        <ArrowUpDown class="h-4 w-4" /> Ubah Urutan
-                    </button>
+                    <Search class="h-4 w-4 text-slate-400" /><input
+                        v-model="query"
+                        :disabled="isSorting"
+                        class="min-w-0 flex-1 text-sm focus:outline-none disabled:cursor-not-allowed"
+                        placeholder="Cari layanan / variasi"
+                    />
                 </div>
             </div>
 
-            <div v-if="visibleCatalogEntries.length" class="overflow-x-auto">
-                <table class="w-full min-w-[860px] text-sm">
-                    <thead>
-                        <tr
-                            class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
-                        >
-                            <th v-if="isReorderMode" class="w-24 px-5 py-3">
-                                Urutan
-                            </th>
-                            <th class="px-5 py-3">Layanan</th>
-                            <th class="px-5 py-3">Kategori</th>
-                            <th class="px-5 py-3">Harga</th>
-                            <th class="px-5 py-3">Stempel</th>
-                            <th class="px-5 py-3">Status</th>
-                            <th class="px-5 py-3">Dipakai order</th>
-                            <th class="px-5 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50">
-                        <template
-                            v-for="entry in visibleCatalogEntries"
-                            :key="entry.key"
-                        >
-                            <tr
-                                v-if="entry.group"
-                                class="bg-slate-50/80 transition hover:bg-slate-100/80"
+            <div
+                class="flex flex-wrap gap-2 border-b border-slate-100 px-5 py-3"
+                :class="isSorting ? 'pointer-events-none opacity-50' : ''"
+            >
+                <button
+                    type="button"
+                    class="rounded-full px-3 py-1.5 text-xs font-semibold transition"
+                    :class="
+                        selectedCategories.length
+                            ? 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
+                            : 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
+                    "
+                    @click="selectedCategories = []"
+                >
+                    Semua
+                    <span
+                        class="ml-1 tabular-nums"
+                        :class="
+                            selectedCategories.length
+                                ? 'text-slate-400'
+                                : 'text-white/70'
+                        "
+                        >{{ serviceList.length }}</span
+                    >
+                </button>
+                <button
+                    v-for="option in categoryOptions"
+                    :key="option"
+                    type="button"
+                    class="rounded-full px-3 py-1.5 text-xs font-semibold transition"
+                    :class="
+                        selectedCategories.includes(option)
+                            ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
+                            : 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
+                    "
+                    @click="toggleCategory(option)"
+                >
+                    {{ option }}
+                    <span
+                        class="ml-1 tabular-nums"
+                        :class="
+                            selectedCategories.includes(option)
+                                ? 'text-white/70'
+                                : 'text-slate-400'
+                        "
+                        >{{ categoryCount(option) }}</span
+                    >
+                </button>
+            </div>
+
+            <div
+                class="flex flex-wrap items-center gap-2 border-b border-slate-100 px-5 py-3"
+            >
+                <button
+                    v-if="capabilities.create"
+                    type="button"
+                    :disabled="isSorting"
+                    class="inline-flex items-center gap-2 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-cyan-700 disabled:opacity-40"
+                    @click="openCreate"
+                >
+                    <Plus class="h-4 w-4" />Tambah Layanan
+                </button>
+                <button
+                    v-if="capabilities.update"
+                    type="button"
+                    class="inline-flex items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-600 hover:border-cyan-300 hover:text-cyan-700"
+                    :class="isSorting ? 'border-cyan-300 text-cyan-700' : ''"
+                    @click="isSorting ? cancelSorting() : startSorting()"
+                >
+                    <GripVertical class="h-4 w-4" />{{
+                        isSorting ? 'Batal ubah urutan' : 'Ubah urutan'
+                    }}
+                </button>
+            </div>
+
+            <div
+                v-if="visibleServices.length"
+                ref="listRef"
+                class="divide-y divide-slate-100"
+                :class="draggingId !== null ? 'select-none' : ''"
+            >
+                <article
+                    v-for="service in visibleServices"
+                    :key="service.id"
+                    data-service-row
+                    class="bg-white transition"
+                    :class="[
+                        isSorting
+                            ? 'cursor-grab select-none active:cursor-grabbing'
+                            : '',
+                        draggingId === service.id
+                            ? 'relative z-10 rounded-xl shadow-lg ring-2 shadow-cyan-500/20 ring-cyan-400'
+                            : '',
+                    ]"
+                    draggable="false"
+                    @dragstart.prevent
+                    @pointerdown="startDrag(service, $event)"
+                >
+                    <div
+                        class="grid items-center gap-3 px-5 py-4 md:grid-cols-[minmax(0,2fr)_1fr_1fr_auto]"
+                    >
+                        <div class="flex min-w-0 items-center gap-3">
+                            <button
+                                v-if="isSorting"
+                                type="button"
+                                class="-ml-1 touch-none rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                                :class="
+                                    draggingId === service.id
+                                        ? 'bg-cyan-50 text-cyan-600'
+                                        : ''
+                                "
+                                :aria-label="`Geser posisi ${service.name}`"
+                                title="Seret baris untuk mengubah urutan"
+                                @keydown.up.prevent="
+                                    moveServiceByKey(service, -1)
+                                "
+                                @keydown.down.prevent="
+                                    moveServiceByKey(service, 1)
+                                "
                             >
-                                <td class="px-5 py-3.5">
-                                    <button
-                                        type="button"
-                                        class="flex items-center gap-3 text-left"
-                                        :aria-expanded="
-                                            isServiceGroupExpanded(
-                                                entry.group.id,
-                                            )
-                                        "
-                                        @click="
-                                            toggleServiceGroup(entry.group.id)
+                                <GripVertical class="h-4 w-4" />
+                            </button>
+                            <button
+                                type="button"
+                                class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                                :class="isSorting ? 'pointer-events-none' : ''"
+                                @click="toggleExpanded(service.id)"
+                            >
+                                <ChevronDown
+                                    v-if="expandedIds.includes(service.id)"
+                                    class="h-4 w-4 text-slate-400"
+                                /><ChevronRight
+                                    v-else-if="!isSorting"
+                                    class="h-4 w-4 text-slate-400"
+                                />
+                                <span
+                                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-xl"
+                                    >{{ service.icon }}</span
+                                >
+                                <span class="min-w-0"
+                                    ><span
+                                        class="block truncate text-sm font-semibold text-slate-900"
+                                        >{{ service.name }}</span
+                                    ><span
+                                        class="block truncate text-xs text-slate-500"
+                                        >{{ service.description }}</span
+                                    ></span
+                                >
+                            </button>
+                        </div>
+                        <div>
+                            <p class="text-xs text-slate-500">
+                                {{ service.category }}
+                            </p>
+                            <p class="text-sm font-semibold text-slate-800">
+                                {{ priceRange(service) }}
+                            </p>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <StatusPill
+                                :status="
+                                    service.is_active ? 'aktif' : 'nonaktif'
+                                "
+                            /><span class="text-xs text-slate-500"
+                                >{{ service.order_count }} order</span
+                            >
+                        </div>
+                        <div class="flex items-center justify-end gap-1">
+                            <template v-if="!isSorting"
+                                ><button
+                                    v-if="capabilities.update"
+                                    type="button"
+                                    class="rounded-lg p-2 text-cyan-600 hover:bg-cyan-50"
+                                    @click="openEdit(service)"
+                                >
+                                    <Pencil class="h-4 w-4" /></button
+                                ><button
+                                    v-if="capabilities.delete"
+                                    type="button"
+                                    class="rounded-lg p-2 text-rose-500 hover:bg-rose-50"
+                                    @click="deletingService = service"
+                                >
+                                    <Trash2 class="h-4 w-4" /></button
+                            ></template>
+                        </div>
+                    </div>
+                    <div
+                        v-if="!isSorting && expandedIds.includes(service.id)"
+                        class="border-t border-slate-100 bg-slate-50/70 px-5 py-4"
+                    >
+                        <div
+                            class="overflow-x-auto rounded-xl border border-slate-200 bg-white"
+                        >
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-50 text-slate-500">
+                                    <tr>
+                                        <th class="px-4 py-2.5">Kombinasi</th>
+                                        <th class="px-4 py-2.5">Harga</th>
+                                        <th class="px-4 py-2.5">Status</th>
+                                        <th class="px-4 py-2.5">Dipakai</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100">
+                                    <tr
+                                        v-for="variation in service.service_variations"
+                                        :key="
+                                            variation.id ??
+                                            signature(variation.variations)
                                         "
                                     >
-                                        <span
-                                            class="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-700"
+                                        <td
+                                            class="px-4 py-3 font-medium text-slate-800"
                                         >
-                                            <ChevronDown
-                                                v-if="
-                                                    isServiceGroupExpanded(
-                                                        entry.group.id,
-                                                    )
-                                                "
-                                                class="h-4 w-4"
-                                            />
-                                            <ChevronRight
-                                                v-else
-                                                class="h-4 w-4"
-                                            />
-                                        </span>
-                                        <span>
-                                            <span
-                                                class="block font-semibold text-slate-900"
-                                            >
-                                                {{ entry.group.name }}
-                                            </span>
-                                            <span
-                                                class="text-[11px] text-slate-500"
-                                            >
-                                                {{ entry.services.length }}
-                                                layanan
-                                            </span>
-                                        </span>
-                                    </button>
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 text-xs font-medium text-slate-600"
-                                >
-                                    {{ serviceGroupCategories(entry.services) }}
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
-                                >
-                                    {{ serviceGroupPrice(entry.services) }}
-                                </td>
-                                <td class="px-5 py-3.5 text-slate-400">—</td>
-                                <td
-                                    class="px-5 py-3.5 text-xs font-medium text-emerald-700"
-                                >
-                                    {{
-                                        serviceGroupActiveCount(entry.services)
-                                    }}/{{ entry.services.length }} aktif
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 text-[11px] text-slate-500"
-                                >
-                                    {{ serviceGroupOrderCount(entry.services) }}
-                                    order
-                                </td>
-                                <td class="px-5 py-3.5">
-                                    <div
-                                        class="flex items-center justify-end gap-1"
-                                    >
-                                        <button
-                                            v-if="capabilities.update"
-                                            type="button"
-                                            class="rounded-lg p-2 text-cyan-700 transition hover:bg-cyan-50"
-                                            aria-label="Edit group layanan"
-                                            @click="
-                                                openEditServiceGroup(
-                                                    entry.group,
+                                            {{
+                                                variationLabel(
+                                                    variation.variations,
                                                 )
-                                            "
-                                        >
-                                            <Pencil class="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            v-if="capabilities.delete"
-                                            type="button"
-                                            class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50"
-                                            aria-label="Hapus group layanan"
-                                            @click="
-                                                deletingServiceGroup =
-                                                    entry.group
-                                            "
-                                        >
-                                            <Trash2 class="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                            <tr
-                                v-for="service in entry.services"
-                                v-show="
-                                    entry.group === null ||
-                                    isServiceGroupExpanded(entry.group.id)
-                                "
-                                :key="service.id"
-                                class="transition"
-                                :class="[
-                                    isReorderMode
-                                        ? 'select-none'
-                                        : 'hover:bg-slate-50/70',
-                                    draggingIndex === serviceIndex(service.id)
-                                        ? 'opacity-40'
-                                        : '',
-                                    isReorderMode &&
-                                    dropIndex === serviceIndex(service.id) &&
-                                    draggingIndex !== serviceIndex(service.id)
-                                        ? 'bg-cyan-50/60 ring-2 ring-cyan-300 ring-inset'
-                                        : '',
-                                ]"
-                                :draggable="isReorderMode"
-                                @dragstart="
-                                    onRowDragStart(
-                                        serviceIndex(service.id),
-                                        $event,
-                                    )
-                                "
-                                @dragover="
-                                    onRowDragOver(
-                                        serviceIndex(service.id),
-                                        $event,
-                                    )
-                                "
-                                @drop.prevent="
-                                    onRowDrop(serviceIndex(service.id))
-                                "
-                                @dragend="resetDrag"
-                            >
-                                <td v-if="isReorderMode" class="px-5 py-3.5">
-                                    <div class="flex items-center gap-1">
-                                        <GripVertical
-                                            class="h-4 w-4 shrink-0 cursor-grab text-slate-400 active:cursor-grabbing"
-                                            aria-hidden="true"
-                                        />
-                                        <div class="flex flex-col">
-                                            <button
-                                                type="button"
-                                                class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                                                :disabled="
-                                                    serviceIndex(service.id) ===
-                                                    0
+                                            }}
+                                        </td>
+                                        <td class="px-4 py-3 tabular-nums">
+                                            {{
+                                                formatCurrency(variation.price)
+                                            }}
+                                        </td>
+                                        <td class="px-4 py-3">
+                                            <StatusPill
+                                                :status="
+                                                    variation.is_active
+                                                        ? 'aktif'
+                                                        : 'nonaktif'
                                                 "
-                                                aria-label="Naikkan urutan"
-                                                @click="
-                                                    moveService(
-                                                        serviceIndex(
-                                                            service.id,
-                                                        ),
-                                                        serviceIndex(
-                                                            service.id,
-                                                        ) - 1,
-                                                    )
-                                                "
-                                            >
-                                                <ChevronUp
-                                                    class="h-3.5 w-3.5"
-                                                />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                class="rounded p-0.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:bg-transparent"
-                                                :disabled="
-                                                    serviceIndex(service.id) ===
-                                                    serviceList.length - 1
-                                                "
-                                                aria-label="Turunkan urutan"
-                                                @click="
-                                                    moveService(
-                                                        serviceIndex(
-                                                            service.id,
-                                                        ),
-                                                        serviceIndex(
-                                                            service.id,
-                                                        ) + 1,
-                                                    )
-                                                "
-                                            >
-                                                <ChevronDown
-                                                    class="h-3.5 w-3.5"
-                                                />
-                                            </button>
-                                        </div>
-                                        <span
-                                            class="text-xs font-medium text-slate-400 tabular-nums"
-                                        >
-                                            {{ serviceIndex(service.id) + 1 }}
-                                        </span>
-                                    </div>
-                                </td>
-                                <td class="px-5 py-3.5">
-                                    <div class="flex items-center gap-3">
-                                        <div
-                                            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-sky-100 text-lg"
-                                        >
-                                            {{ service.icon }}
-                                        </div>
-                                        <div class="min-w-0">
-                                            <p
-                                                class="flex items-center gap-2 font-medium text-slate-900"
-                                            >
-                                                {{ service.name }}
-                                                <span
-                                                    v-if="service.is_popular"
-                                                    class="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700"
-                                                >
-                                                    Populer
-                                                </span>
-                                            </p>
-                                            <p
-                                                v-if="service.description"
-                                                class="max-w-md truncate text-[11px] text-slate-500"
-                                            >
-                                                {{ service.description }}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 text-xs font-medium text-slate-600"
-                                >
-                                    {{ service.category }}
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 font-medium text-slate-900 tabular-nums"
-                                >
-                                    {{ formatCurrency(service.price) }}
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 text-xs font-medium text-emerald-600 tabular-nums"
-                                >
-                                    +{{ service.stamps }}
-                                </td>
-                                <td class="px-5 py-3.5">
-                                    <StatusPill
-                                        :status="
-                                            service.is_active
-                                                ? 'aktif'
-                                                : 'nonaktif'
-                                        "
-                                    />
-                                </td>
-                                <td
-                                    class="px-5 py-3.5 text-[11px] text-slate-500"
-                                >
-                                    {{ service.order_count }} order
-                                </td>
-                                <td class="px-5 py-3.5">
-                                    <div
-                                        class="flex items-center justify-end gap-1"
-                                    >
-                                        <button
-                                            v-if="
-                                                capabilities.update &&
-                                                !isReorderMode
-                                            "
-                                            type="button"
-                                            class="rounded-lg p-2 text-cyan-700 transition hover:bg-cyan-50"
-                                            aria-label="Edit layanan"
-                                            @click="openEditService(service)"
-                                        >
-                                            <Pencil class="h-4 w-4" />
-                                        </button>
-                                        <button
-                                            v-if="
-                                                capabilities.delete &&
-                                                !isReorderMode
-                                            "
-                                            type="button"
-                                            class="rounded-lg p-2 text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
-                                            :disabled="service.order_count > 0"
-                                            :title="
-                                                service.order_count > 0
-                                                    ? 'Sudah dipakai order, nonaktifkan saja'
-                                                    : 'Hapus layanan'
-                                            "
-                                            aria-label="Hapus layanan"
-                                            @click="openDeleteService(service)"
-                                        >
-                                            <Trash2 class="h-4 w-4" />
-                                        </button>
-                                    </div>
-                                </td>
-                            </tr>
-                        </template>
-                    </tbody>
-                </table>
+                                            />
+                                        </td>
+                                        <td class="px-4 py-3 text-slate-500">
+                                            {{ variation.order_count }} order
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </article>
             </div>
             <EmptyState
                 v-else
-                :icon="SprayCan"
                 title="Layanan tidak ditemukan"
-                caption="Ubah kata kunci atau pilih kategori lain."
+                description="Ubah kata pencarian atau kategori."
             />
         </section>
-
-        <!-- Sticky so the operator never scrolls past it on a long catalog. -->
-        <div
-            v-if="isReorderMode"
-            class="sticky bottom-4 z-20 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-lg backdrop-blur"
-            :class="draggingIndex !== null ? 'pointer-events-none' : ''"
-        >
-            <div class="min-w-0">
-                <p class="text-sm font-semibold text-slate-900">
-                    {{
-                        isOrderDirty
-                            ? 'Urutan diubah dan belum disimpan.'
-                            : 'Belum ada perubahan urutan.'
-                    }}
-                </p>
-                <p class="mt-0.5 text-xs text-slate-500">
-                    Urutan ini juga dipakai pada daftar layanan di POS dan
-                    order.
-                </p>
-                <InputError class="mt-1" :message="orderForm.errors.ids" />
-            </div>
-            <div class="flex items-center gap-2">
-                <button
-                    type="button"
-                    class="flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                    :disabled="orderForm.processing"
-                    @click="cancelReorder"
-                >
-                    <X class="h-4 w-4" /> Batal
-                </button>
-                <button
-                    type="button"
-                    class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    :disabled="!isOrderDirty || orderForm.processing"
-                    @click="saveOrder"
-                >
-                    <Save class="h-4 w-4" />
-                    {{
-                        orderForm.processing ? 'Menyimpan...' : 'Simpan urutan'
-                    }}
-                </button>
-            </div>
-        </div>
+        <div v-if="isSorting" class="h-24" aria-hidden="true"></div>
     </div>
 
+    <Teleport to="body">
+        <Transition
+            enter-active-class="transition duration-200"
+            enter-from-class="translate-y-6 opacity-0"
+            leave-active-class="transition duration-150"
+            leave-to-class="translate-y-6 opacity-0"
+        >
+            <div
+                v-if="isSorting"
+                class="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
+            >
+                <div
+                    class="flex w-full max-w-2xl flex-col gap-3 rounded-2xl bg-slate-900 px-5 py-4 text-white shadow-2xl shadow-slate-900/30 sm:flex-row sm:items-center sm:justify-between"
+                >
+                    <p
+                        class="flex items-center gap-2 text-xs text-slate-300 sm:text-sm"
+                    >
+                        <GripVertical class="h-4 w-4 shrink-0 text-cyan-300" />
+                        <span>
+                            Seret baris layanan untuk mengatur urutan.
+                            <strong
+                                v-if="isOrderDirty"
+                                class="font-semibold text-amber-300"
+                                >Urutan belum disimpan.</strong
+                            >
+                        </span>
+                    </p>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <button
+                            type="button"
+                            class="rounded-xl px-4 py-2 text-sm font-medium text-slate-300 hover:text-white"
+                            @click="cancelSorting"
+                        >
+                            Batal
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="orderForm.processing || !isOrderDirty"
+                            class="rounded-xl bg-cyan-500 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-400 disabled:opacity-40"
+                            @click="saveOrder"
+                        >
+                            {{
+                                orderForm.processing
+                                    ? 'Menyimpan...'
+                                    : 'Simpan urutan'
+                            }}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </Transition>
+    </Teleport>
+
     <ModalDialog
-        :open="isServiceFormOpen"
-        :title="editingServiceId ? 'Edit layanan' : 'Tambah layanan'"
-        caption="Data ini dipakai pada order, POS, dan katalog member."
-        size="lg"
-        @close="isServiceFormOpen = false"
+        :open="isFormOpen"
+        :title="editingId === null ? 'Tambah Layanan' : 'Edit Layanan'"
+        caption="Harga disimpan pada setiap kombinasi variation."
+        size="xl"
+        @close="isFormOpen = false"
     >
         <form
-            id="master-service-form"
-            class="space-y-4"
+            id="service-form"
+            class="space-y-5"
             @submit.prevent="submitService"
         >
-            <div>
-                <label
-                    for="service-group"
-                    class="text-xs font-medium text-slate-600"
-                >
-                    Group layanan (opsional)
-                </label>
-                <select
-                    id="service-group"
-                    v-model="serviceForm.service_group_id"
-                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                >
-                    <option :value="null">Tanpa group</option>
-                    <option
-                        v-for="serviceGroup in serviceGroupList"
-                        :key="serviceGroup.id"
-                        :value="serviceGroup.id"
-                    >
-                        {{ serviceGroup.name }}
-                    </option>
-                </select>
-                <InputError
-                    class="mt-1"
-                    :message="serviceForm.errors.service_group_id"
-                />
-            </div>
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_15rem]">
-                <div>
-                    <label
-                        for="service-name"
-                        class="text-xs font-medium text-slate-600"
-                        >Nama layanan</label
-                    >
-                    <input
-                        id="service-name"
+            <div class="grid gap-4 sm:grid-cols-2">
+                <label class="space-y-1 text-xs font-medium text-slate-600"
+                    >Nama<input
                         v-model="serviceForm.name"
-                        type="text"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
-                    <InputError
-                        class="mt-1"
+                        class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                        required /><InputError
                         :message="serviceForm.errors.name"
-                    />
-                </div>
-                <div>
-                    <label
-                        for="service-icon"
-                        class="text-xs font-medium text-slate-600"
-                        >Ikon</label
-                    >
-                    <div class="mt-1.5 flex items-center gap-2">
-                        <span
-                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-50 to-sky-100 text-lg"
-                            aria-hidden="true"
-                        >
-                            {{ serviceForm.icon }}
-                        </span>
-                        <select
-                            id="service-icon"
-                            v-model="serviceForm.icon"
-                            class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                        >
-                            <option
-                                v-if="
-                                    serviceForm.icon &&
-                                    !icons.some(
-                                        (icon) =>
-                                            icon.value === serviceForm.icon,
-                                    )
-                                "
-                                :value="serviceForm.icon"
-                            >
-                                {{ serviceForm.icon }} Ikon lama
-                            </option>
-                            <option
-                                v-for="icon in icons"
-                                :key="icon.value"
-                                :value="icon.value"
-                            >
-                                {{ icon.value }} {{ icon.label }}
-                            </option>
-                        </select>
-                    </div>
-                    <InputError
-                        class="mt-1"
-                        :message="serviceForm.errors.icon"
-                    />
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                <div>
-                    <label
-                        for="service-category"
-                        class="text-xs font-medium text-slate-600"
-                        >Kategori</label
-                    >
-                    <input
-                        id="service-category"
+                /></label>
+                <label class="space-y-1 text-xs font-medium text-slate-600"
+                    >Kategori<input
                         v-model="serviceForm.category"
-                        type="text"
-                        list="service-category-options"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                    />
-                    <datalist id="service-category-options">
+                        list="service-categories"
+                        class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                        required /><datalist id="service-categories">
                         <option
-                            v-for="category in categories"
-                            :key="category"
-                            :value="category"
-                        ></option>
-                    </datalist>
-                    <InputError
-                        class="mt-1"
-                        :message="serviceForm.errors.category"
-                    />
-                </div>
-                <div>
-                    <label
-                        for="service-price"
-                        class="text-xs font-medium text-slate-600"
-                        >Harga (Rp)</label
+                            v-for="option in categoryOptions"
+                            :key="option"
+                            :value="option"
+                        /></datalist
+                    ><InputError :message="serviceForm.errors.category"
+                /></label>
+                <label class="space-y-1 text-xs font-medium text-slate-600"
+                    >Icon<select
+                        v-model="serviceForm.icon"
+                        class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
                     >
-                    <input
-                        id="service-price"
-                        v-model.number="serviceForm.price"
-                        type="number"
-                        min="0"
-                        step="1000"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
-                    />
-                    <InputError
-                        class="mt-1"
-                        :message="serviceForm.errors.price"
-                    />
-                </div>
-                <div>
-                    <label
-                        for="service-stamps"
-                        class="text-xs font-medium text-slate-600"
-                        >Stempel didapat</label
-                    >
-                    <input
-                        id="service-stamps"
+                        <option
+                            v-for="icon in icons"
+                            :key="icon.value"
+                            :value="icon.value"
+                        >
+                            {{ icon.label }}
+                        </option>
+                    </select></label
+                >
+                <label class="space-y-1 text-xs font-medium text-slate-600"
+                    >Stempel<input
                         v-model.number="serviceForm.stamps"
                         type="number"
                         min="0"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
-                    />
-                    <InputError
-                        class="mt-1"
-                        :message="serviceForm.errors.stamps"
-                    />
-                </div>
+                        max="999"
+                        class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
+                /></label>
             </div>
-
-            <div>
-                <label
-                    for="service-description"
-                    class="text-xs font-medium text-slate-600"
-                    >Deskripsi</label
-                >
-                <textarea
-                    id="service-description"
+            <label class="block space-y-1 text-xs font-medium text-slate-600"
+                >Deskripsi<textarea
                     v-model="serviceForm.description"
-                    rows="3"
-                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                ></textarea>
-                <InputError
-                    class="mt-1"
-                    :message="serviceForm.errors.description"
+                    rows="2"
+                    class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm"
                 />
-            </div>
-
-            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <label
-                    class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700"
-                >
-                    <input
+            </label>
+            <div class="flex flex-wrap gap-4">
+                <label class="flex items-center gap-2 text-sm text-slate-700"
+                    ><input
                         v-model="serviceForm.is_active"
                         type="checkbox"
-                        class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
-                    />
-                    Layanan aktif
-                </label>
-                <label
-                    class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-sm text-slate-700"
-                >
-                    <input
+                        class="rounded border-slate-300 text-cyan-600"
+                    />Layanan aktif</label
+                ><label class="flex items-center gap-2 text-sm text-slate-700"
+                    ><input
                         v-model="serviceForm.is_popular"
                         type="checkbox"
-                        class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
-                    />
-                    Tandai sebagai populer
-                </label>
+                        class="rounded border-slate-300 text-cyan-600"
+                    />Layanan populer</label
+                >
             </div>
+
+            <section class="rounded-2xl border border-slate-200 p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Jenis variation
+                        </h3>
+                        <p class="text-xs text-slate-500">
+                            Kosongkan untuk layanan dengan satu harga default.
+                        </p>
+                    </div>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1 rounded-lg border border-cyan-200 px-3 py-2 text-xs font-semibold text-cyan-700"
+                        @click="addAttribute"
+                    >
+                        <Plus class="h-3.5 w-3.5" />Tambah jenis
+                    </button>
+                </div>
+                <div class="mt-4 space-y-3">
+                    <div
+                        v-for="(
+                            attribute, attributeIndex
+                        ) in variationAttributes"
+                        :key="attributeIndex"
+                        class="rounded-xl bg-slate-50 p-3"
+                    >
+                        <div class="flex gap-2">
+                            <input
+                                v-model="attribute.name"
+                                class="min-w-0 flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                                placeholder="Contoh: Ukuran"
+                                @input="regenerateVariations"
+                            /><button
+                                type="button"
+                                class="rounded-lg p-2 text-rose-500"
+                                @click="removeAttribute(attributeIndex)"
+                            >
+                                <Trash2 class="h-4 w-4" />
+                            </button>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-2">
+                            <div
+                                v-for="(_, valueIndex) in attribute.values"
+                                :key="valueIndex"
+                                class="flex items-center rounded-lg border border-slate-300 bg-white"
+                            >
+                                <input
+                                    v-model="attribute.values[valueIndex]"
+                                    class="w-28 px-2.5 py-1.5 text-sm focus:outline-none"
+                                    placeholder="Nilai"
+                                    @input="regenerateVariations"
+                                /><button
+                                    type="button"
+                                    class="p-1.5 text-slate-400 hover:text-rose-500"
+                                    @click="
+                                        removeValue(attributeIndex, valueIndex)
+                                    "
+                                >
+                                    <X class="h-3.5 w-3.5" />
+                                </button>
+                            </div>
+                            <button
+                                type="button"
+                                class="rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-xs text-slate-500"
+                                @click="addValue(attributeIndex)"
+                            >
+                                + Nilai
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section>
+                <h3 class="text-sm font-semibold text-slate-900">
+                    Kombinasi dan harga
+                </h3>
+                <div
+                    class="mt-2 overflow-x-auto rounded-xl border border-slate-200"
+                >
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 text-slate-500">
+                            <tr>
+                                <th class="px-3 py-2.5">Kombinasi</th>
+                                <th class="px-3 py-2.5">Harga</th>
+                                <th class="px-3 py-2.5">Aktif</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100">
+                            <tr
+                                v-for="(
+                                    variation, index
+                                ) in serviceForm.service_variations"
+                                :key="
+                                    variation.id ??
+                                    signature(variation.variations)
+                                "
+                            >
+                                <td
+                                    class="px-3 py-3 font-medium text-slate-800"
+                                >
+                                    {{ variationLabel(variation.variations) }}
+                                </td>
+                                <td class="px-3 py-3">
+                                    <input
+                                        v-model.number="variation.price"
+                                        type="number"
+                                        min="0"
+                                        max="999999999"
+                                        class="w-40 rounded-lg border border-slate-300 px-2.5 py-2 text-sm"
+                                        required
+                                    />
+                                </td>
+                                <td class="px-3 py-3">
+                                    <input
+                                        v-model="variation.is_active"
+                                        type="checkbox"
+                                        class="rounded border-slate-300 text-cyan-600"
+                                    /><InputError
+                                        :message="
+                                            serviceForm.errors[
+                                                `service_variations.${index}.price`
+                                            ]
+                                        "
+                                    />
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <InputError
+                    class="mt-1"
+                    :message="serviceForm.errors.service_variations"
+                />
+            </section>
         </form>
-        <template #footer>
-            <button
+        <template #footer
+            ><button
                 type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                @click="isServiceFormOpen = false"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600"
+                @click="isFormOpen = false"
             >
-                Batal
-            </button>
-            <button
-                form="master-service-form"
-                type="submit"
-                class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                Batal</button
+            ><button
+                form="service-form"
                 :disabled="serviceForm.processing"
+                class="flex-1 rounded-xl bg-cyan-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
             >
                 {{ serviceForm.processing ? 'Menyimpan...' : 'Simpan layanan' }}
-            </button>
-        </template>
-    </ModalDialog>
-
-    <ModalDialog
-        :open="isServiceGroupFormOpen"
-        :title="
-            editingServiceGroupId === null
-                ? 'Tambah group layanan'
-                : 'Edit group layanan'
-        "
-        caption="Group merangkum beberapa pilihan layanan dalam satu card."
-        size="sm"
-        @close="isServiceGroupFormOpen = false"
-    >
-        <form id="service-group-form" @submit.prevent="submitServiceGroup">
-            <label
-                for="service-group-name"
-                class="text-xs font-medium text-slate-600"
-            >
-                Nama group
-            </label>
-            <input
-                id="service-group-name"
-                v-model="serviceGroupForm.name"
-                type="text"
-                class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-            />
-            <InputError class="mt-1" :message="serviceGroupForm.errors.name" />
-        </form>
-        <template #footer>
-            <button
-                type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                @click="isServiceGroupFormOpen = false"
-            >
-                Batal
-            </button>
-            <button
-                form="service-group-form"
-                type="submit"
-                class="flex-1 rounded-xl bg-cyan-600 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="serviceGroupForm.processing"
-            >
-                {{
-                    serviceGroupForm.processing
-                        ? 'Menyimpan...'
-                        : 'Simpan group'
-                }}
-            </button>
-        </template>
-    </ModalDialog>
-
-    <ModalDialog
-        :open="deletingServiceGroup !== null"
-        title="Hapus group layanan"
-        caption="Layanan di dalamnya tetap tersimpan tanpa group."
-        size="sm"
-        @close="deletingServiceGroup = null"
-    >
-        <p v-if="deletingServiceGroup" class="text-sm text-slate-600">
-            Yakin ingin menghapus group
-            <span class="font-semibold text-slate-900">
-                {{ deletingServiceGroup.name }}
-            </span>
-            ?
-        </p>
-        <template #footer>
-            <button
-                type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
-                @click="deletingServiceGroup = null"
-            >
-                Batal
-            </button>
-            <button
-                type="button"
-                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:opacity-60"
-                :disabled="serviceGroupDeleteForm.processing"
-                @click="confirmDeleteServiceGroup"
-            >
-                {{
-                    serviceGroupDeleteForm.processing
-                        ? 'Menghapus...'
-                        : 'Hapus group'
-                }}
-            </button>
-        </template>
+            </button></template
+        >
     </ModalDialog>
 
     <ModalDialog
         :open="deletingService !== null"
-        title="Hapus layanan"
-        caption="Layanan yang dihapus tidak dapat dikembalikan."
+        title="Hapus layanan?"
         size="sm"
         @close="deletingService = null"
-    >
-        <p v-if="deletingService" class="text-sm text-slate-600">
-            Yakin ingin menghapus
-            <span class="font-semibold text-slate-900">{{
-                deletingService.name
-            }}</span>
-            dari master layanan?
+        ><p class="text-sm text-slate-600">
+            Layanan <strong>{{ deletingService?.name }}</strong> hanya dapat
+            dihapus jika belum pernah dipakai order.
         </p>
-        <InputError class="mt-2" :message="deleteError" />
-        <template #footer>
-            <button
+        <template #footer
+            ><button
                 type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm"
                 @click="deletingService = null"
             >
-                Batal
-            </button>
-            <button
+                Batal</button
+            ><button
                 type="button"
-                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
                 :disabled="deleteForm.processing"
-                @click="confirmDeleteService"
+                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white"
+                @click="confirmDelete"
             >
-                {{ deleteForm.processing ? 'Menghapus...' : 'Hapus layanan' }}
-            </button>
-        </template>
-    </ModalDialog>
+                Hapus
+            </button></template
+        ></ModalDialog
+    >
 </template>

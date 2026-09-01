@@ -63,10 +63,14 @@ function paidOrder(Admin $cashier, int $amount = 150000): Order
         'status' => 'selesai',
         'service_date' => now()->toDateString(),
     ]);
+    $variation = $service->serviceVariations()->firstOrFail();
 
-    $order->services()->attach($service->id, [
+    $order->serviceVariations()->attach($variation->id, [
         'service_name' => $service->name,
+        'variations' => null,
         'unit_price' => $service->price,
+        'quantity' => 1,
+        'total_price' => $service->price,
         'stamps' => 1,
     ]);
 

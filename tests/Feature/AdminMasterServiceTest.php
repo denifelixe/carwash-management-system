@@ -5,12 +5,11 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\Order;
 use App\Models\Service;
-use App\Models\ServiceGroup;
+use App\Models\ServiceVariation;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia;
 
-/**
- * @param  array<string, bool>  $abilities
- */
+/** @param array<string, bool> $abilities */
 function serviceStaff(array $abilities): Admin
 {
     $role = AdminRole::query()->create([
@@ -19,7 +18,6 @@ function serviceStaff(array $abilities): Admin
         'description' => 'Role uji akses master layanan.',
         'is_active' => true,
     ]);
-
     $role->modules()->attach(
         AdminModule::query()->where('key', 'master_services')->firstOrFail(),
         [
@@ -33,16 +31,19 @@ function serviceStaff(array $abilities): Admin
     return Admin::factory()->create(['role_id' => $role->id]);
 }
 
-/**
- * @return array<string, mixed>
- */
+/** @return array<string, mixed> */
 function servicePayload(array $overrides = []): array
 {
-    return array_merge([
-        'service_group_id' => null,
+    return array_replace_recursive([
         'name' => 'Cuci Kilat',
         'category' => 'Cuci Mobil',
-        'price' => 55000,
+        'variations' => null,
+        'service_variations' => [[
+            'id' => null,
+            'variations' => null,
+            'price' => 55000,
+            'is_active' => true,
+        ]],
         'stamps' => 1,
         'icon' => '🚿',
         'description' => 'Cuci cepat 1 kali proses.',
@@ -51,365 +52,237 @@ function servicePayload(array $overrides = []): array
     ], $overrides);
 }
 
+function attachVariation(Order $order, ServiceVariation $variation, int $quantity = 1): void
+{
+    $service = $variation->service;
+    $order->serviceVariations()->attach($variation, [
+        'service_name' => $service->name,
+        'variations' => $variation->variations === null ? null : json_encode($variation->variations),
+        'unit_price' => $variation->price,
+        'quantity' => $quantity,
+        'total_price' => $variation->price * $quantity,
+        'stamps' => $service->stamps,
+    ]);
+}
+
 test('guests cannot open the master service module', function () {
-    $this->get(route('admin.master.services.index'))
-        ->assertRedirect(route('admin.login'));
+    $this->get(route('admin.master.services.index'))->assertRedirect(route('admin.login'));
 });
 
-test('an owner sees the service list and an expandable master sidebar group', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $serviceGroup = ServiceGroup::factory()->create();
-    Service::factory()->count(3)->for($serviceGroup)->create();
+test('the final schema stores prices only on service variations', function () {
+    expect(Schema::hasColumn('services', 'variations'))->toBeTrue()
+        ->and(Schema::hasColumn('services', 'price'))->toBeFalse()
+        ->and(Schema::hasTable('service_variations'))->toBeTrue()
+        ->and(Schema::hasColumn('order_services', 'service_variation_id'))->toBeTrue()
+        ->and(Schema::hasColumn('order_services', 'service_id'))->toBeFalse()
+        ->and(Schema::hasTable('service_groups'))->toBeFalse();
+});
 
-    $this->actingAs($owner, 'admin')
-        ->get(route('admin.master.services.index'))
+test('an owner sees logical services and their variation matrix', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create([
+        'name' => 'Coating Lite',
+        'variations' => ['Ukuran' => ['Small', 'Large']],
+    ]);
+    $default = $service->serviceVariations()->firstOrFail();
+    $default->update(['variations' => ['Ukuran' => 'Small'], 'price' => 800000]);
+    ServiceVariation::factory()->for($service)->create([
+        'variations' => ['Ukuran' => 'Large'],
+        'price' => 1100000,
+    ]);
+
+    $this->actingAs($owner, 'admin')->get(route('admin.master.services.index'))
         ->assertOk()
-        ->assertInertia(
-            fn (AssertableInertia $page) => $page
-                ->component('admin/master/Services')
-                ->where('mode', 'live')
-                ->has('services', 3)
-                ->where('services.0.service_group_id', $serviceGroup->id)
-                ->has('serviceGroups')
-                ->has('services.0.sort_order')
-                ->has('categories')
-                ->where('capabilities.create', true)
-                ->where('capabilities.update', true)
-                ->where('capabilities.delete', true)
-                ->where('modules.10.key', 'master')
-                ->where('modules.10.href', null)
-                ->where('modules.10.active', true)
-                ->where('modules.10.children.0.key', 'master_services')
-                ->where('modules.10.children.0.enabled', true)
-                ->where('modules.10.children.0.active', true)
-                ->where('modules.10.children.0.href', route('admin.master.services.index', absolute: false)),
-        );
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->component('admin/master/Services')
+            ->where('mode', 'live')
+            ->has('services', 1)
+            ->where('services.0.name', 'Coating Lite')
+            ->where('services.0.variations.Ukuran.0', 'Small')
+            ->has('services.0.service_variations', 2)
+            ->where('capabilities.create', true)
+            ->where('modules.10.children.0.key', 'master_services'));
 });
 
-test('an owner can create a service', function () {
+test('an owner can create a service without variation axes and it still gets one price row', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
 
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload())
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload())
+        ->assertRedirect(route('admin.master.services.index'))->assertSessionHasNoErrors();
 
     $service = Service::query()->where('name', 'Cuci Kilat')->firstOrFail();
+    $variation = $service->serviceVariations()->sole();
 
-    expect($service)
-        ->service_group_id->toBeNull()
-        ->category->toBe('Cuci Mobil')
-        ->price->toBe(55000)
-        ->stamps->toBe(1)
-        ->icon->toBe('🚿')
-        ->is_popular->toBeFalse()
-        ->is_active->toBeTrue();
+    expect($service->variations)->toBeNull()
+        ->and($variation->variations)->toBeNull()
+        ->and($variation->price)->toBe(55000);
 });
 
-test('an owner can create and assign a service group', function () {
+test('an owner can create a complete multi attribute variation matrix', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
+    $configuration = ['Ukuran' => ['Small', 'Large'], 'Paket' => ['A', 'B']];
+    $rows = collect(['Small', 'Large'])->crossJoin(['A', 'B'])->values()->map(
+        fn (array $values, int $index): array => [
+            'id' => null,
+            'variations' => ['Ukuran' => $values[0], 'Paket' => $values[1]],
+            'price' => 100000 + ($index * 10000),
+            'is_active' => true,
+        ],
+    )->all();
 
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.service-groups.store'), ['name' => 'Wash Premium'])
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'name' => 'Detailing Matrix',
+        'variations' => $configuration,
+        'service_variations' => $rows,
+    ]))->assertSessionHasNoErrors();
 
-    $serviceGroup = ServiceGroup::query()->where('name', 'Wash Premium')->firstOrFail();
-
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload([
-            'service_group_id' => $serviceGroup->id,
-        ]))
-        ->assertSessionHasNoErrors();
-
-    expect(Service::query()->where('name', 'Cuci Kilat')->firstOrFail())
-        ->service_group_id->toBe($serviceGroup->id)
-        ->and($serviceGroup->services()->count())->toBe(1);
+    $service = Service::query()->where('name', 'Detailing Matrix')->firstOrFail();
+    expect($service->variations)->toBe($configuration)
+        ->and($service->serviceVariations()->count())->toBe(4);
 });
 
-test('an owner can rename a service group and names stay unique', function () {
+test('incomplete duplicate and foreign variation combinations are rejected', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    ServiceGroup::factory()->create(['name' => 'Group Existing']);
-    $serviceGroup = ServiceGroup::factory()->create(['name' => 'Group Lama']);
+    $otherVariation = Service::factory()->create()->serviceVariations()->firstOrFail();
 
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.master.service-groups.update', $serviceGroup), [
-            'name' => 'Group Existing',
-        ])
-        ->assertSessionHasErrors('name');
-
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.master.service-groups.update', $serviceGroup), [
-            'name' => 'Group Baru',
-        ])
-        ->assertSessionHasNoErrors();
-
-    expect($serviceGroup->refresh()->name)->toBe('Group Baru');
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'variations' => ['Ukuran' => ['Small', 'Large']],
+        'service_variations' => [
+            ['id' => $otherVariation->id, 'variations' => ['Ukuran' => 'Small'], 'price' => 1, 'is_active' => true],
+            ['id' => null, 'variations' => ['Ukuran' => 'Small'], 'price' => 2, 'is_active' => true],
+        ],
+    ]))->assertSessionHasErrors('service_variations');
 });
 
-test('deleting a service group keeps its services and order history', function () {
+test('an active service needs an active variation', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $serviceGroup = ServiceGroup::factory()->create();
-    $service = Service::factory()->for($serviceGroup)->create();
-    $order = Order::factory()->create();
-    $order->services()->attach($service, [
-        'service_name' => $service->name,
-        'unit_price' => $service->price,
-        'stamps' => $service->stamps,
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'service_variations' => [[
+            'id' => null, 'variations' => null, 'price' => 55000, 'is_active' => false,
+        ]],
+    ]))->assertSessionHasErrors('service_variations');
+});
+
+test('updating a service preserves matching variation ids and retires used removed rows', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['variations' => ['Ukuran' => ['Small', 'Large']]]);
+    $small = $service->serviceVariations()->firstOrFail();
+    $small->update(['variations' => ['Ukuran' => 'Small'], 'price' => 50000]);
+    $large = ServiceVariation::factory()->for($service)->create([
+        'variations' => ['Ukuran' => 'Large'], 'price' => 75000,
     ]);
+    attachVariation(Order::factory()->create(), $large);
 
-    $this->actingAs($owner, 'admin')
-        ->delete(route('admin.master.service-groups.destroy', $serviceGroup))
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')->patch(route('admin.master.services.update', $service), servicePayload([
+        'name' => $service->name,
+        'variations' => ['Ukuran' => ['Small']],
+        'service_variations' => [[
+            'id' => $small->id, 'variations' => ['Ukuran' => 'Small'], 'price' => 60000, 'is_active' => true,
+        ]],
+    ]))->assertSessionHasNoErrors();
 
-    expect($service->refresh()->service_group_id)->toBeNull()
-        ->and($order->services()->whereKey($service->id)->exists())->toBeTrue();
+    expect($small->refresh()->price)->toBe(60000)
+        ->and($large->refresh()->is_active)->toBeFalse();
 });
 
-test('service group assignment must reference an existing group', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload([
-            'service_group_id' => 999999,
-        ]))
-        ->assertSessionHasErrors('service_group_id');
-});
-
-test('the catalog size families are backfilled into ten service groups', function () {
-    $migration = require database_path('migrations/2026_08_31_213316_backfill_service_groups.php');
-    $migration->down();
-
-    Service::factory()->create(['name' => 'Coating Lite - Small']);
-    Service::factory()->create(['name' => 'Coating Lite - Extra Large']);
-    Service::factory()->create(['name' => 'Complete Detailing Motor - Medium']);
-
-    $migration->up();
-
-    expect(ServiceGroup::query()->count())->toBe(10)
-        ->and(Service::query()->where('name', 'Coating Lite - Small')->firstOrFail()->serviceGroup?->name)->toBe('Coating Lite')
-        ->and(Service::query()->where('name', 'Coating Lite - Extra Large')->firstOrFail()->serviceGroup?->name)->toBe('Coating Lite')
-        ->and(Service::query()->where('name', 'Complete Detailing Motor - Medium')->firstOrFail()->serviceGroup?->name)->toBe('Complete Detailing Motor');
-});
-
-test('an owner can update a service and deactivate it', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $service = Service::factory()->create(['name' => 'Cuci Lama', 'is_active' => true]);
-
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.master.services.update', $service), servicePayload([
-            'name' => 'Cuci Baru',
-            'price' => 75000,
-            'is_active' => false,
-            'is_popular' => true,
-        ]))
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasNoErrors();
-
-    expect($service->refresh())
-        ->name->toBe('Cuci Baru')
-        ->price->toBe(75000)
-        ->is_active->toBeFalse()
-        ->is_popular->toBeTrue();
-});
-
-test('service names stay unique', function () {
+test('service names stay unique and icons use the shared picker list', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     Service::factory()->create(['name' => 'Cuci Kilat']);
-
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload())
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload())
         ->assertSessionHasErrors('name');
-
-    expect(Service::query()->where('name', 'Cuci Kilat')->count())->toBe(1);
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'name' => 'Nama Lain', 'icon' => '🍕',
+    ]))->assertSessionHasErrors('icon');
 });
 
-test('only icons from the shared picker list are accepted', function () {
+test('a service can only be deleted before any variation is ordered', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
+    $unused = Service::factory()->create();
+    $used = Service::factory()->create();
+    attachVariation(Order::factory()->create(), $used->serviceVariations()->firstOrFail());
 
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload(['icon' => '🍕']))
-        ->assertSessionHasErrors('icon');
-
-    expect(Service::query()->where('name', 'Cuci Kilat')->exists())->toBeFalse();
-});
-
-test('an owner can delete a service that no order uses', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $service = Service::factory()->create();
-
-    $this->actingAs($owner, 'admin')
-        ->delete(route('admin.master.services.destroy', $service))
-        ->assertRedirect(route('admin.master.services.index'))
+    $this->actingAs($owner, 'admin')->delete(route('admin.master.services.destroy', $unused))
         ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')->from(route('admin.master.services.index'))
+        ->delete(route('admin.master.services.destroy', $used))->assertSessionHasErrors('service');
 
-    expect(Service::query()->find($service->id))->toBeNull();
+    expect($unused->fresh())->toBeNull()->and($used->fresh())->not->toBeNull();
 });
 
-test('a service already used by an order cannot be deleted', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $service = Service::factory()->create();
-    $order = Order::factory()->create();
-    $order->services()->attach($service, [
-        'service_name' => $service->name,
-        'unit_price' => $service->price,
-        'stamps' => $service->stamps,
-    ]);
-
-    $this->actingAs($owner, 'admin')
-        ->from(route('admin.master.services.index'))
-        ->delete(route('admin.master.services.destroy', $service))
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasErrors('service');
-
-    expect(Service::query()->find($service->id))->not->toBeNull();
-});
-
-test('staff without the master service module cannot open it', function () {
-    $staff = serviceStaff(['read' => false]);
-
-    $this->actingAs($staff, 'admin')
-        ->get(route('admin.master.services.index'))
-        ->assertForbidden();
-});
-
-test('read only staff see the list without write capabilities', function () {
-    $staff = serviceStaff(['read' => true]);
+test('master service permissions protect read and write operations', function () {
+    $blocked = serviceStaff(['read' => false]);
+    $reader = serviceStaff(['read' => true]);
     $service = Service::factory()->create();
 
-    $this->actingAs($staff, 'admin')
-        ->get(route('admin.master.services.index'))
-        ->assertOk()
-        ->assertInertia(
-            fn (AssertableInertia $page) => $page
-                ->component('admin/master/Services')
-                ->where('capabilities.create', false)
-                ->where('capabilities.update', false)
-                ->where('capabilities.delete', false),
-        );
-
-    $this->actingAs($staff, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload())
-        ->assertForbidden();
-
-    $this->actingAs($staff, 'admin')
-        ->patch(route('admin.master.services.update', $service), servicePayload())
-        ->assertForbidden();
-
-    $this->actingAs($staff, 'admin')
-        ->delete(route('admin.master.services.destroy', $service))
-        ->assertForbidden();
-
-    $serviceGroup = ServiceGroup::factory()->create();
-
-    $this->actingAs($staff, 'admin')
-        ->post(route('admin.master.service-groups.store'), ['name' => 'Ditolak'])
-        ->assertForbidden();
-
-    $this->actingAs($staff, 'admin')
-        ->patch(route('admin.master.service-groups.update', $serviceGroup), ['name' => 'Ditolak'])
-        ->assertForbidden();
-
-    $this->actingAs($staff, 'admin')
-        ->delete(route('admin.master.service-groups.destroy', $serviceGroup))
-        ->assertForbidden();
+    $this->actingAs($blocked, 'admin')->get(route('admin.master.services.index'))->assertForbidden();
+    $this->actingAs($reader, 'admin')->get(route('admin.master.services.index'))->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('capabilities.create', false)->where('capabilities.update', false)->where('capabilities.delete', false));
+    $this->actingAs($reader, 'admin')->post(route('admin.master.services.store'), servicePayload())->assertForbidden();
+    $this->actingAs($reader, 'admin')->patch(route('admin.master.services.update', $service), servicePayload())->assertForbidden();
+    $this->actingAs($reader, 'admin')->delete(route('admin.master.services.destroy', $service))->assertForbidden();
 });
 
-test('an owner can drag services into a new order', function () {
+test('services retain a flat configurable catalog order', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $first = Service::factory()->create(['name' => 'Cuci A', 'sort_order' => 1]);
     $second = Service::factory()->create(['name' => 'Cuci B', 'sort_order' => 2]);
     $third = Service::factory()->create(['name' => 'Cuci C', 'sort_order' => 3]);
 
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.master.services.order.update'), [
-            'ids' => [$third->id, $first->id, $second->id],
-        ])
-        ->assertRedirect(route('admin.master.services.index'))
-        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')->patch(route('admin.master.services.order.update'), [
+        'ids' => [$third->id, $first->id, $second->id],
+    ])->assertSessionHasNoErrors();
 
     expect($third->refresh()->sort_order)->toBe(1)
         ->and($first->refresh()->sort_order)->toBe(2)
         ->and($second->refresh()->sort_order)->toBe(3);
-
-    $this->actingAs($owner, 'admin')
-        ->get(route('admin.master.services.index'))
-        ->assertInertia(
-            fn (AssertableInertia $page) => $page
-                ->where('services.0.id', $third->id)
-                ->where('services.0.sort_order', 1)
-                ->where('services.1.id', $first->id)
-                ->where('services.2.id', $second->id),
-        );
 });
 
-test('a partial order list is rejected so no service is left unnumbered', function () {
+test('partial service ordering is rejected and new services append to the end', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $first = Service::factory()->create(['sort_order' => 1]);
-    $second = Service::factory()->create(['sort_order' => 2]);
-    Service::factory()->create(['sort_order' => 3]);
-
-    $this->actingAs($owner, 'admin')
-        ->from(route('admin.master.services.index'))
-        ->patch(route('admin.master.services.order.update'), [
-            'ids' => [$second->id, $first->id],
-        ])
-        ->assertSessionHasErrors('ids');
-
-    expect($first->refresh()->sort_order)->toBe(1)
-        ->and($second->refresh()->sort_order)->toBe(2);
-});
-
-test('read only staff cannot reorder services', function () {
-    $staff = serviceStaff(['read' => true]);
-    $service = Service::factory()->create(['sort_order' => 1]);
-
-    $this->actingAs($staff, 'admin')
-        ->patch(route('admin.master.services.order.update'), ['ids' => [$service->id]])
-        ->assertForbidden();
-
-    expect($service->refresh()->sort_order)->toBe(1);
-});
-
-test('a new service is appended to the end of the order', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    Service::factory()->create(['sort_order' => 1]);
     Service::factory()->create(['sort_order' => 7]);
-
-    $this->actingAs($owner, 'admin')
-        ->post(route('admin.master.services.store'), servicePayload())
+    $this->actingAs($owner, 'admin')->patch(route('admin.master.services.order.update'), ['ids' => [$first->id]])
+        ->assertSessionHasErrors('ids');
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload())
         ->assertSessionHasNoErrors();
-
     expect(Service::query()->where('name', 'Cuci Kilat')->firstOrFail()->sort_order)->toBe(8);
 });
 
-test('the shared order catalog follows the master service order', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $last = Service::factory()->create(['name' => 'Paling Bawah', 'sort_order' => 9]);
-    $firstService = Service::factory()->create(['name' => 'Paling Atas', 'sort_order' => 1]);
-
-    $this->actingAs($owner, 'admin')
-        ->get(route('admin.orders.index'))
-        ->assertOk()
-        ->assertInertia(
-            fn (AssertableInertia $page) => $page
-                ->where('services.0.id', $firstService->id)
-                ->where('services.1.id', $last->id),
-        );
+test('the master page contains variation accordion and matrix controls', function () {
+    $source = file_get_contents(resource_path('js/pages/admin/master/Services.vue'));
+    expect($source)->toContain('service_variations')
+        ->toContain('regenerateVariations')
+        ->toContain('cloneVariationConfiguration')
+        ->not->toContain('structuredClone')
+        ->toContain('Jenis variation')
+        ->toContain('toggleExpanded(service.id)')
+        ->toContain('Ubah urutan');
 });
 
-test('the master service page renders group management and accordion controls', function () {
-    $servicesPage = file_get_contents(
-        resource_path('js/pages/admin/master/Services.vue'),
-    );
+test('the master page reorders services by dragging a row behind a floating save bar', function () {
+    $source = file_get_contents(resource_path('js/pages/admin/master/Services.vue'));
 
-    expect($servicesPage)
-        ->toContain('Tambah Group')
-        ->toContain('v-model="serviceForm.service_group_id"')
-        ->toContain('v-for="entry in visibleCatalogEntries"')
-        ->toContain('toggleServiceGroup(entry.group.id)')
-        ->toContain('Layanan di dalamnya tetap tersimpan tanpa group.')
-        ->toContain('isReorderMode.value')
-        ->toContain('serviceList.value.map((service) => ({');
+    expect($source)
+        ->toContain('data-service-row')
+        ->toContain('@pointerdown="startDrag(service, $event)"')
+        ->toContain('<GripVertical class="h-4 w-4" />')
+        ->toContain('window.scrollBy(')
+        ->toContain('requestAnimationFrame(stepDrag)')
+        ->toContain('function cancelSorting(): void')
+        ->toContain('Simpan urutan')
+        ->toContain(':disabled="orderForm.processing || !isOrderDirty"')
+        ->toContain('<Teleport to="body">');
+});
+
+test('the master page filters services with multi select category chips', function () {
+    $source = file_get_contents(resource_path('js/pages/admin/master/Services.vue'));
+
+    expect($source)
+        ->toContain('const selectedCategories = ref<string[]>([])')
+        ->toContain('function toggleCategory(option: string): void')
+        ->toContain('selectedCategories.value.includes(service.category)')
+        ->toContain('@click="selectedCategories = []"')
+        ->not->toContain('Layanan populer"')
+        ->not->toContain('Harga rata-rata');
 });

@@ -159,7 +159,9 @@ function submitTimezone(): void {
                             >
                                 {{ zone.code }}
                             </p>
-                            <p class="text-xs text-slate-500">{{ zone.name }}</p>
+                            <p class="text-xs text-slate-500">
+                                {{ zone.name }}
+                            </p>
                         </div>
                         <span
                             v-if="timezoneForm.timezone === zone.id"

@@ -47,10 +47,14 @@ class Operations
             ];
         }, self::recordedOrders());
 
-        return array_map(
-            self::withTransactionShifts(...),
-            [...self::bookingOrders(), ...$orders],
-        );
+        return array_map(function (array $order): array {
+            $order = self::withTransactionShifts($order);
+
+            return [
+                ...$order,
+                'serviceItems' => self::serviceItems($order['serviceIds']),
+            ];
+        }, [...self::bookingOrders(), ...$orders]);
     }
 
     /**
@@ -381,7 +385,7 @@ class Operations
      */
     public static function bookings(): array
     {
-        return [
+        $bookings = [
             ['id' => 1, 'code' => self::bookingCode(0, 1), 'customerId' => 3, 'customer' => 'Budi Santoso', 'phone' => '0812-3456-7890', 'vehicle' => 'Toyota Avanza', 'plate' => 'B 1234 CDE', 'service' => 'Cuci Mobil + Wax', 'serviceIds' => [2], 'date' => self::date(0), 'bookingDate' => self::date(-1), 'estimate' => 85000, 'notes' => 'Minta lap ekstra di bagasi.'],
             ['id' => 2, 'code' => self::bookingCode(0, 2), 'customerId' => 1, 'customer' => 'Hendra Gunawan', 'phone' => '0812-1100-2255', 'vehicle' => 'Mazda CX-5', 'plate' => 'B 5150 AB', 'service' => 'Nano Ceramic Coating', 'serviceIds' => [7], 'date' => self::date(0), 'bookingDate' => self::date(0), 'estimate' => 1500000, 'notes' => 'Pembayaran sebagian 50% via transfer.'],
             ['id' => 3, 'code' => self::bookingCode(0, 3), 'customerId' => 4, 'customer' => 'Maya Kusuma', 'phone' => '0857-2210-8890', 'vehicle' => 'Mitsubishi Xpander', 'plate' => 'B 4412 ZX', 'service' => 'Deep Clean Interior', 'serviceIds' => [9], 'date' => self::date(0), 'bookingDate' => self::date(0), 'estimate' => 150000, 'notes' => 'Ada noda kopi di karpet depan.'],
@@ -392,6 +396,35 @@ class Operations
             ['id' => 8, 'code' => self::bookingCode(-1, 7), 'customerId' => 9, 'customer' => 'Dewi Lestari', 'phone' => '0813-2233-5566', 'vehicle' => 'Daihatsu Ayla', 'plate' => 'B 3311 QW', 'service' => 'Cuci Mobil Reguler', 'serviceIds' => [1], 'date' => self::date(-1), 'bookingDate' => self::date(-1), 'estimate' => 45000, 'notes' => '—'],
             ['id' => 9, 'code' => self::bookingCode(-1, 6), 'customerId' => 11, 'customer' => 'Gilang Ramadhan', 'phone' => '0817-8899-1010', 'vehicle' => 'Wuling Almaz', 'plate' => 'B 9021 HH', 'service' => 'Snow Wash Premium', 'serviceIds' => [3], 'date' => self::date(-1), 'bookingDate' => self::date(-2), 'estimate' => 120000, 'notes' => 'Pelanggan membatalkan via WhatsApp.'],
         ];
+
+        return array_map(fn (array $booking): array => [
+            ...$booking,
+            'serviceItems' => self::serviceItems($booking['serviceIds']),
+        ], $bookings);
+    }
+
+    /** @param list<int> $serviceIds
+     * @return list<array{serviceVariationId: int, serviceId: int, serviceName: string, variations: array<string, string>|null, quantity: int, unitPrice: int, totalPrice: int, label: string}>
+     */
+    private static function serviceItems(array $serviceIds): array
+    {
+        $services = collect(Catalog::services())->keyBy('id');
+
+        return collect($serviceIds)->map(function (int $serviceId) use ($services): array {
+            $service = $services->get($serviceId);
+            $variation = $service['serviceVariations'][0];
+
+            return [
+                'serviceVariationId' => $variation['id'],
+                'serviceId' => $service['id'],
+                'serviceName' => $service['name'],
+                'variations' => $variation['variations'],
+                'quantity' => 1,
+                'unitPrice' => $variation['price'],
+                'totalPrice' => $variation['price'],
+                'label' => $service['name'],
+            ];
+        })->all();
     }
 
     /**

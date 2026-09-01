@@ -376,7 +376,7 @@ test('finance transaction summary exposes permitted editing and the recorded shi
         ->toContain("selectedTransactionEntry.shift ?? 'Tanpa shift'");
 });
 
-test('finance transaction toolbar shows a wide search and category chips', function () {
+test('finance transaction toolbar supports selecting multiple category chips', function () {
     $financePage = file_get_contents(
         resource_path('js/pages/admin/Finance.vue'),
     );
@@ -385,17 +385,23 @@ test('finance transaction toolbar shows a wide search and category chips', funct
         ->toContain('placeholder="Cari transaksi / order / plat"')
         ->toContain('const filterOptions = computed<string[]>(() => [')
         ->toContain('new Set(activeEntries.value.map((entry) => entry.category))')
-        ->toContain("const categoryFilter = ref<string>('Semua')")
+        ->toContain("const categoryFilters = ref<string[]>(['Semua'])")
+        ->toContain('categoryFilters.value.includes(entry.category)')
+        ->toContain('function toggleCategoryFilter(category: string): void')
+        ->toContain("categoryFilters.value = ['Semua']")
         ->toContain(':filters="filterOptions"')
-        ->toContain(':active-filter="categoryFilter"')
+        ->toContain(':active-filter="categoryFilters"')
         ->toContain('wide-search')
-        ->toContain('@filter="categoryFilter = $event"');
+        ->toContain('@filter="toggleCategoryFilter"');
 
     $toolbar = file_get_contents(
         resource_path('js/components/demo/DataToolbar.vue'),
     );
 
     expect($toolbar)
+        ->toContain('activeFilter?: string | string[]')
+        ->toContain('activeFilter.includes(filter)')
+        ->toContain(':aria-pressed="isFilterActive(activeFilter, filter)"')
         ->toContain('wideSearch?: boolean')
         ->toContain("wideSearch ? 'w-full sm:w-96' : undefined");
 });

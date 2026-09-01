@@ -7,7 +7,6 @@ use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FinanceController;
 use App\Http\Controllers\Admin\Master\AppSettingController;
 use App\Http\Controllers\Admin\Master\ServiceController;
-use App\Http\Controllers\Admin\Master\ServiceGroupController;
 use App\Http\Controllers\Admin\Master\TimezoneController;
 use App\Http\Controllers\Admin\Master\WorkShiftController;
 use App\Http\Controllers\Admin\MemberController;
@@ -88,9 +87,6 @@ Route::domain((string) config('domains.admin'))
             Route::patch('master/layanan/urutan', [ServiceController::class, 'updateOrder'])->name('master.services.order.update');
             Route::patch('master/layanan/{service}', [ServiceController::class, 'update'])->name('master.services.update');
             Route::delete('master/layanan/{service}', [ServiceController::class, 'destroy'])->name('master.services.destroy');
-            Route::post('master/group-layanan', [ServiceGroupController::class, 'store'])->name('master.service-groups.store');
-            Route::patch('master/group-layanan/{serviceGroup}', [ServiceGroupController::class, 'update'])->name('master.service-groups.update');
-            Route::delete('master/group-layanan/{serviceGroup}', [ServiceGroupController::class, 'destroy'])->name('master.service-groups.destroy');
             Route::get('master/shift', [WorkShiftController::class, 'index'])->name('master.work-shifts.index');
             Route::post('master/shift', [WorkShiftController::class, 'store'])->name('master.work-shifts.store');
             Route::patch('master/shift/{workShift}', [WorkShiftController::class, 'update'])->name('master.work-shifts.update');

@@ -5,7 +5,7 @@ namespace App\Actions\Admin;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
-use App\Models\Service;
+use App\Models\ServiceVariation;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -26,8 +26,23 @@ class SaveBooking
                 );
             }
 
-            /** @var Collection<int, Service> $services */
-            $services = Service::query()->whereKey($data['service_ids'])->lockForUpdate()->get();
+            $quantities = collect($data['items'])->mapWithKeys(
+                fn (array $item): array => [(int) $item['service_variation_id'] => (int) $item['quantity']],
+            );
+            /** @var Collection<int, ServiceVariation> $variations */
+            $variations = ServiceVariation::query()->with('service')->whereKey($quantities->keys())
+                ->lockForUpdate()->get();
+
+            abort_if($variations->count() !== $quantities->count(), 422, 'Pilihan layanan tidak lagi tersedia.');
+            $existingVariationIds = $booking?->serviceVariations()->pluck('service_variations.id')->all() ?? [];
+            abort_if(
+                $variations->contains(
+                    fn (ServiceVariation $variation): bool => (! $variation->is_active || ! $variation->service->is_active)
+                        && ! in_array($variation->id, $existingVariationIds, true),
+                ),
+                422,
+                'Pilihan layanan tidak lagi tersedia.',
+            );
             $member = null;
             $vehicle = null;
 
@@ -42,7 +57,9 @@ class SaveBooking
             $customerPhone = $member?->phone ?? ($data['customer_phone'] ?? '');
             $vehicleName = $vehicle?->name ?? Str::squish($data['vehicle_name'] ?? '');
             $vehiclePlate = $vehicle?->plate ?? ($data['vehicle_plate'] ?? '');
-            $subtotal = (int) $services->sum('price');
+            $subtotal = (int) $variations->sum(
+                fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
+            );
             $discount = (int) ($booking?->discount ?? 0);
 
             $values = [
@@ -57,7 +74,9 @@ class SaveBooking
                 'status' => 'booking',
                 'subtotal' => $subtotal,
                 'total' => max(0, $subtotal - $discount),
-                'stamps_earned' => $member === null ? 0 : (int) $services->sum('stamps'),
+                'stamps_earned' => $member === null ? 0 : (int) $variations->sum(
+                    fn (ServiceVariation $variation): int => $variation->service->stamps * $quantities[$variation->id],
+                ),
             ];
 
             if ($booking === null) {
@@ -72,11 +91,16 @@ class SaveBooking
                 $booking->update($values);
             }
 
-            $booking->services()->sync($services->mapWithKeys(fn (Service $service): array => [
-                $service->id => [
-                    'service_name' => $service->name,
-                    'unit_price' => $service->price,
-                    'stamps' => $service->stamps,
+            $booking->serviceVariations()->sync($variations->mapWithKeys(fn (ServiceVariation $variation): array => [
+                $variation->id => [
+                    'service_name' => $variation->service->name,
+                    'variations' => $variation->variations === null
+                        ? null
+                        : json_encode($variation->variations, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                    'unit_price' => $variation->price,
+                    'quantity' => $quantities[$variation->id],
+                    'total_price' => $variation->price * $quantities[$variation->id],
+                    'stamps' => $variation->service->stamps,
                 ],
             ])->all());
 

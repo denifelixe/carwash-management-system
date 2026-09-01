@@ -44,7 +44,7 @@ class FinancePresenter
             'date' => $paidAt->toDateString(),
             'time' => $time,
             'category' => $category,
-            'description' => $order->services->pluck('pivot.service_name')->join(', '),
+            'description' => $order->serviceVariations->pluck('pivot.service_name')->join(', '),
             'amount' => (int) $transaction->amount,
             'method' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
             'channelBreakdown' => $transaction->channel_breakdown,

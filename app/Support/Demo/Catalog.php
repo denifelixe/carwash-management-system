@@ -10,11 +10,11 @@ class Catalog
     /**
      * Services shared by the POS grid, order builder, and customer catalog.
      *
-     * @return list<array{id: int, name: string, category: string, price: int, stamps: int, icon: string, description: string, popular: bool, isActive: bool, serviceGroup?: array{id: int, name: string}}>
+     * @return list<array{id: int, name: string, category: string, price: int, variations: array<string, list<string>>|null, serviceVariations: list<array{id: int, variations: array<string, string>|null, price: int, isActive: bool}>, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
      */
     public static function services(): array
     {
-        return [
+        $services = [
             ['id' => 1, 'name' => 'Cuci Mobil Reguler', 'category' => 'Cuci Mobil', 'price' => 45000, 'stamps' => 1, 'icon' => '🚗', 'description' => 'Cuci body, sela ban, dan lap kering menyeluruh.', 'popular' => true, 'isActive' => true],
             ['id' => 2, 'name' => 'Cuci Mobil + Wax', 'category' => 'Cuci Mobil', 'price' => 85000, 'stamps' => 1, 'icon' => '✨', 'description' => 'Cuci reguler plus lapisan wax agar cat lebih berkilau.', 'popular' => true, 'isActive' => true],
             ['id' => 3, 'name' => 'Snow Wash Premium', 'category' => 'Cuci Mobil', 'price' => 120000, 'stamps' => 2, 'icon' => '❄️', 'description' => 'Busa salju pH netral, aman untuk cat dan lapisan coating.', 'popular' => true, 'isActive' => true],
@@ -27,11 +27,42 @@ class Catalog
             ['id' => 10, 'name' => 'Salon Jok & Karpet', 'category' => 'Interior', 'price' => 350000, 'stamps' => 3, 'icon' => '🪑', 'description' => 'Cuci jok, karpet, dan plafon dengan mesin extractor.', 'popular' => false, 'isActive' => true],
             ['id' => 11, 'name' => 'Parfum & Anti Jamur Kaca', 'category' => 'Add-on', 'price' => 60000, 'stamps' => 0, 'icon' => '💨', 'description' => 'Wangi kabin tahan lama plus kaca bebas jamur.', 'popular' => false, 'isActive' => true],
             ['id' => 12, 'name' => 'Semir Ban Premium', 'category' => 'Add-on', 'price' => 25000, 'stamps' => 0, 'icon' => '⚫', 'description' => 'Ban hitam pekat mengkilap tahan hingga 2 minggu.', 'popular' => false, 'isActive' => true],
-            ['id' => 13, 'name' => 'Coating Lite - Small', 'category' => 'Coating Mobil', 'price' => 800000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran small.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
-            ['id' => 14, 'name' => 'Coating Lite - Medium', 'category' => 'Coating Mobil', 'price' => 950000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran medium.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
-            ['id' => 15, 'name' => 'Coating Lite - Large', 'category' => 'Coating Mobil', 'price' => 1100000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran large.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
-            ['id' => 16, 'name' => 'Coating Lite - Extra Large', 'category' => 'Coating Mobil', 'price' => 1250000, 'stamps' => 0, 'icon' => '🛡️', 'description' => 'Coating Lite untuk kendaraan ukuran extra large.', 'popular' => false, 'isActive' => true, 'serviceGroup' => ['id' => 1, 'name' => 'Coating Lite']],
+            [
+                'id' => 13,
+                'name' => 'Coating Lite',
+                'category' => 'Coating Mobil',
+                'price' => 800000,
+                'variations' => ['Ukuran' => ['Small', 'Medium', 'Large', 'Extra Large']],
+                'serviceVariations' => [
+                    ['id' => 13, 'variations' => ['Ukuran' => 'Small'], 'price' => 800000, 'isActive' => true],
+                    ['id' => 14, 'variations' => ['Ukuran' => 'Medium'], 'price' => 950000, 'isActive' => true],
+                    ['id' => 15, 'variations' => ['Ukuran' => 'Large'], 'price' => 1100000, 'isActive' => true],
+                    ['id' => 16, 'variations' => ['Ukuran' => 'Extra Large'], 'price' => 1250000, 'isActive' => true],
+                ],
+                'stamps' => 0,
+                'icon' => '🛡️',
+                'description' => 'Coating Lite untuk perlindungan cat kendaraan.',
+                'popular' => false,
+                'isActive' => true,
+            ],
         ];
+
+        return array_map(function (array $service): array {
+            if (isset($service['serviceVariations'])) {
+                return $service;
+            }
+
+            return [
+                ...$service,
+                'variations' => null,
+                'serviceVariations' => [[
+                    'id' => $service['id'],
+                    'variations' => null,
+                    'price' => $service['price'],
+                    'isActive' => $service['isActive'],
+                ]],
+            ];
+        }, $services);
     }
 
     /**

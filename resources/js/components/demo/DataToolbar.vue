@@ -4,7 +4,7 @@ import { Search } from '@lucide/vue';
 defineProps<{
     placeholder?: string;
     filters?: string[];
-    activeFilter?: string;
+    activeFilter?: string | string[];
     wideSearch?: boolean;
 }>();
 
@@ -13,6 +13,15 @@ const search = defineModel<string>('search', { default: '' });
 const emit = defineEmits<{
     filter: [value: string];
 }>();
+
+function isFilterActive(
+    activeFilter: string | string[] | undefined,
+    filter: string,
+): boolean {
+    return Array.isArray(activeFilter)
+        ? activeFilter.includes(filter)
+        : activeFilter === filter;
+}
 </script>
 
 <template>
@@ -37,8 +46,9 @@ const emit = defineEmits<{
                 :key="filter"
                 type="button"
                 class="rounded-full px-3 py-1.5 text-xs font-medium capitalize transition"
+                :aria-pressed="isFilterActive(activeFilter, filter)"
                 :class="
-                    activeFilter === filter
+                    isFilterActive(activeFilter, filter)
                         ? 'bg-slate-900 text-white'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                 "

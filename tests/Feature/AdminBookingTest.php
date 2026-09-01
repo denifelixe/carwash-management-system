@@ -15,6 +15,7 @@ test('guests cannot open the live booking module', function () {
 test('the live booking page uses the shared component and database records', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create(['name' => 'Premium Wash']);
+    $variation = $service->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'number' => 'ORD-BK-TEST-001',
         'source' => 'booking',
@@ -23,9 +24,12 @@ test('the live booking page uses the shared component and database records', fun
         'arrived_at' => null,
         'booking_date' => now()->toDateString(),
     ]);
-    $booking->services()->attach($service, [
+    $booking->serviceVariations()->attach($variation, [
         'service_name' => $service->name,
+        'variations' => null,
         'unit_price' => $service->price,
+        'quantity' => 1,
+        'total_price' => $service->price,
         'stamps' => $service->stamps,
     ]);
 
@@ -55,6 +59,7 @@ test('an owner can create a member booking at database prices', function () {
         ['price' => 45000, 'stamps' => 1],
         ['price' => 25000, 'stamps' => 2],
     )->create();
+    $variations = $services->map(fn (Service $service) => $service->serviceVariations()->firstOrFail());
     $serviceDate = now()->addDays(2)->toDateString();
 
     $this->actingAs($owner, 'admin')
@@ -62,7 +67,10 @@ test('an owner can create a member booking at database prices', function () {
             'customer_mode' => 'existing',
             'member_id' => $member->id,
             'member_vehicle_id' => $vehicle->id,
-            'service_ids' => $services->modelKeys(),
+            'items' => $variations->map(fn ($variation): array => [
+                'service_variation_id' => $variation->id,
+                'quantity' => 1,
+            ])->all(),
             'service_date' => $serviceDate,
         ])
         ->assertRedirect(route('admin.bookings.index'))
@@ -81,13 +89,15 @@ test('an owner can create a member booking at database prices', function () {
         ->subtotal->toBe(70000)
         ->total->toBe(70000)
         ->stamps_earned->toBe(3)
-        ->and($booking->services()->count())->toBe(2);
+        ->and($booking->serviceVariations()->count())->toBe(2);
 });
 
 test('an owner can update a booking that has not entered processing', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $oldService = Service::factory()->create(['price' => 45000]);
     $newService = Service::factory()->create(['price' => 80000]);
+    $oldVariation = $oldService->serviceVariations()->firstOrFail();
+    $newVariation = $newService->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'source' => 'booking',
         'status' => 'booking',
@@ -95,9 +105,12 @@ test('an owner can update a booking that has not entered processing', function (
         'arrived_at' => null,
         'booking_date' => now()->toDateString(),
     ]);
-    $booking->services()->attach($oldService, [
+    $booking->serviceVariations()->attach($oldVariation, [
         'service_name' => $oldService->name,
+        'variations' => null,
         'unit_price' => $oldService->price,
+        'quantity' => 1,
+        'total_price' => $oldService->price,
         'stamps' => $oldService->stamps,
     ]);
     $newDate = now()->addDays(3)->toDateString();
@@ -109,7 +122,7 @@ test('an owner can update a booking that has not entered processing', function (
             'customer_phone' => '081234567890',
             'vehicle_name' => 'Toyota Calya',
             'vehicle_plate' => 'b 9876 abc',
-            'service_ids' => [$newService->id],
+            'items' => [['service_variation_id' => $newVariation->id, 'quantity' => 1]],
             'service_date' => $newDate,
         ])
         ->assertRedirect(route('admin.bookings.index'))
@@ -120,12 +133,36 @@ test('an owner can update a booking that has not entered processing', function (
         ->vehicle_plate->toBe('B9876ABC')
         ->service_date->toDateString()->toBe($newDate)
         ->total->toBe(80000)
-        ->and($booking->services()->sole()->is($newService))->toBeTrue();
+        ->and($booking->serviceVariations()->sole()->is($newVariation))->toBeTrue();
+});
+
+test('booking totals include variation quantity and preserve its snapshots', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['name' => 'Salon', 'stamps' => 3]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $variation->update(['price' => 125000]);
+
+    $this->actingAs($owner, 'admin')->post(route('admin.bookings.store'), [
+        'customer_mode' => 'walk-in',
+        'customer_name' => 'Booking Qty',
+        'customer_phone' => '08123',
+        'vehicle_name' => 'Avanza',
+        'vehicle_plate' => 'B1234QQ',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 3]],
+        'service_date' => now()->addDay()->toDateString(),
+    ])->assertSessionHasNoErrors();
+
+    $booking = Order::query()->latest('id')->firstOrFail();
+    $pivot = $booking->serviceVariations()->firstOrFail()->pivot;
+    expect($booking->subtotal)->toBe(375000)
+        ->and((int) $pivot->quantity)->toBe(3)
+        ->and((int) $pivot->total_price)->toBe(375000);
 });
 
 test('a booking cannot be moved to the past or edited after processing starts', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'source' => 'booking',
         'status' => 'booking',
@@ -138,7 +175,7 @@ test('a booking cannot be moved to the past or edited after processing starts', 
         'customer_phone' => '081234567890',
         'vehicle_name' => 'Toyota Calya',
         'vehicle_plate' => 'B1234ABC',
-        'service_ids' => [$service->id],
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
         'service_date' => now()->subDay()->toDateString(),
     ];
 

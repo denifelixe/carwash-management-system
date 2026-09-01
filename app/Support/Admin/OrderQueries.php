@@ -77,10 +77,13 @@ class OrderQueries
     public static function servicesFor(Collection $orders): Collection
     {
         return Service::query()
-            ->with('serviceGroup:id,name')
+            ->with(['serviceVariations' => fn ($query) => $query->orderBy('id')])
             ->where(fn ($query) => $query
                 ->where('is_active', true)
-                ->orWhereHas('orders', fn ($orderQuery) => $orderQuery->whereKey($orders->modelKeys())))
+                ->orWhereHas(
+                    'serviceVariations.orders',
+                    fn ($orderQuery) => $orderQuery->whereKey($orders->modelKeys()),
+                ))
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -175,7 +178,8 @@ class OrderQueries
     private static function baseQuery(): Builder
     {
         return Order::query()->with([
-            'services:id,name',
+            'serviceVariations:id,service_id',
+            'serviceVariations.service:id,name',
             'transactions.recordedBy:id,name',
             'crew:id,name',
         ]);

@@ -4,18 +4,17 @@ namespace App\Models;
 
 use Database\Factories\ServiceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
 /**
  * @property int $id
- * @property int|null $service_group_id
  * @property string $name
  * @property string $category
- * @property int $price
+ * @property array<string, list<string>>|null $variations
  * @property int $stamps
  * @property string $icon
  * @property string|null $description
@@ -23,27 +22,41 @@ use Illuminate\Support\Carbon;
  * @property bool $is_active
  * @property int $sort_order
  * @property-read int|null $orders_count
- * @property-read ServiceGroup|null $serviceGroup
+ * @property-read Collection<int, ServiceVariation> $serviceVariations
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['service_group_id', 'name', 'category', 'price', 'stamps', 'icon', 'description', 'is_popular', 'is_active', 'sort_order'])]
+#[Fillable(['name', 'category', 'variations', 'stamps', 'icon', 'description', 'is_popular', 'is_active', 'sort_order'])]
 class Service extends Model
 {
     /** @use HasFactory<ServiceFactory> */
     use HasFactory;
 
-    /** @return BelongsTo<ServiceGroup, $this> */
-    public function serviceGroup(): BelongsTo
+    private int $pendingVariationPrice = 0;
+
+    public function setPriceAttribute(int $price): void
     {
-        return $this->belongsTo(ServiceGroup::class);
+        $this->pendingVariationPrice = $price;
     }
 
-    /** @return BelongsToMany<Order, $this> */
-    public function orders(): BelongsToMany
+    public function getPriceAttribute(): int
     {
-        return $this->belongsToMany(Order::class, 'order_services')
-            ->withPivot(['service_name', 'unit_price', 'stamps']);
+        $variation = $this->relationLoaded('serviceVariations')
+            ? $this->serviceVariations->first()
+            : $this->serviceVariations()->orderBy('id')->first();
+
+        return (int) ($variation?->price ?? $this->pendingVariationPrice);
+    }
+
+    public function pendingVariationPrice(): int
+    {
+        return $this->pendingVariationPrice;
+    }
+
+    /** @return HasMany<ServiceVariation, $this> */
+    public function serviceVariations(): HasMany
+    {
+        return $this->hasMany(ServiceVariation::class);
     }
 
     /** @return array<string, string> */
@@ -53,6 +66,7 @@ class Service extends Model
             'is_popular' => 'boolean',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'variations' => 'array',
         ];
     }
 }

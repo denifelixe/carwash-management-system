@@ -53,15 +53,37 @@ export interface CarwashService {
     name: string;
     category: string;
     price: number;
+    variations: Record<string, string[]> | null;
+    serviceVariations: CarwashServiceVariation[];
     stamps: number;
     icon: string;
     description: string;
     popular: boolean;
     isActive: boolean;
-    serviceGroup?: {
-        id: number;
-        name: string;
-    } | null;
+}
+
+export interface CarwashServiceVariation {
+    id: number;
+    variations: Record<string, string> | null;
+    price: number;
+    isActive: boolean;
+}
+
+export interface CarwashServiceItem {
+    serviceVariationId: number;
+    serviceId: number;
+    serviceName: string;
+    variations: Record<string, string> | null;
+    quantity: number;
+    unitPrice: number;
+    totalPrice: number;
+    label: string;
+}
+
+export interface CarwashCartItem {
+    serviceVariationId: number;
+    serviceId: number;
+    quantity: number;
 }
 
 export interface CarwashReward {
@@ -237,6 +259,7 @@ export interface CarwashOrder {
     plate: string;
     items: string;
     serviceIds: number[];
+    serviceItems: CarwashServiceItem[];
     /** Current bill total after any discount applied by the cashier. */
     total: number;
     discount: number;
@@ -276,6 +299,7 @@ export interface CarwashBooking {
     plate: string;
     service: string;
     serviceIds: number[];
+    serviceItems: CarwashServiceItem[];
     /** ISO date the customer is expected. */
     date: string;
     /** ISO date the booking was first recorded. */

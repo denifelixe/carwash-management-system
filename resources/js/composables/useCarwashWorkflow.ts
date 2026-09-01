@@ -18,6 +18,10 @@ function cloneOrder(order: CarwashOrder): CarwashOrder {
     return {
         ...order,
         serviceIds: [...order.serviceIds],
+        serviceItems: order.serviceItems.map((item) => ({
+            ...item,
+            variations: item.variations ? { ...item.variations } : null,
+        })),
         transactions: order.transactions.map((transaction) => ({
             ...transaction,
             channelBreakdown: transaction.channelBreakdown.map((channel) => ({

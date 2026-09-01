@@ -1,33 +1,27 @@
 -- =============================================================================
--- Katalog layanan Speedtuner Cibinong (Jl. Raya Sukahati No. 15, Sukahati)
--- Sumber: flyer "Our Menu & Special Package", "Coating Lite", "Supreme Wash",
---         "Our Coating & Detailing Package" (mobil dan motor).
---
--- Target : MySQL 8 / utf8mb4, tabel `services`.
--- Jalankan: mysql -u root -p carwash_management_system < database/sql/services_speedtuner_cibinong.sql
---
--- Catatan penerjemahan menu -> tabel:
---  1. Tabel `services` hanya punya satu kolom `price`, sedangkan flyer memakai
---     harga per ukuran kendaraan (Small/Medium/Large/Extra Large). Tiap ukuran
---     karena itu ditulis sebagai baris tersendiri dengan sufiks ukuran pada nama
---     (kolom `name` unik). Kalau nanti ukuran mau jadi dimensi sendiri, skema
---     perlu tabel varian harga, bukan penambahan baris seperti ini.
---  2. `stamps` = 1 untuk layanan yang mencakup Regular Wash (mengikuti promo
---     "Get 1 Free after 5x Regular Wash"); Express Wash, add-on, coating, dan
---     detailing diberi 0. Sesuaikan kalau aturan stempelnya berbeda.
---  3. `is_popular` hanya ditandai pada Regular Wash dan tiga Paket Hemat yang
---     ditonjolkan di flyer.
---  4. Statement memakai ON DUPLICATE KEY UPDATE (kunci: `name`), jadi file ini
---     aman dijalankan ulang untuk memperbarui harga/deskripsi.
---  5. Menghapus baris contoh bawaan seeder tidak dilakukan di sini karena
---     `order_services` memakai foreign key RESTRICT. Hapus manual bila perlu:
---       DELETE FROM services WHERE name IN ('Cuci Mobil Reguler','Cuci Mobil + Wax','Snow Wash Premium','Cuci Motor Reguler','Deep Clean Interior');
+-- Katalog layanan Speedtuner Cibinong untuk skema parent + service variations.
+-- Target: MySQL 8 / utf8mb4. File ini idempotent berdasarkan nama service dan
+-- kombinasi variation. Harga hanya disimpan pada service_variations.
 -- =============================================================================
 
 SET NAMES utf8mb4;
 
-INSERT INTO `services`
-    (`name`, `category`, `price`, `stamps`, `icon`, `description`, `is_popular`, `is_active`, `created_at`, `updated_at`)
+DROP TEMPORARY TABLE IF EXISTS service_catalog_import;
+CREATE TEMPORARY TABLE service_catalog_import (
+    name VARCHAR(255) NOT NULL,
+    category VARCHAR(255) NOT NULL,
+    price BIGINT UNSIGNED NOT NULL,
+    stamps SMALLINT UNSIGNED NOT NULL,
+    icon VARCHAR(255) NOT NULL,
+    description TEXT NULL,
+    is_popular TINYINT(1) NOT NULL,
+    is_active TINYINT(1) NOT NULL,
+    created_at DATETIME NOT NULL,
+    updated_at DATETIME NOT NULL
+);
+
+INSERT INTO service_catalog_import
+    (name, category, price, stamps, icon, description, is_popular, is_active, created_at, updated_at)
 VALUES
 -- ---------------------------------------------------------------- Cuci Mobil
 ('Express Wash', 'Cuci Mobil', 45000, 0, '🚿', 'Cuci cepat bagian luar bodi. Tidak termasuk garansi hujan.', 0, 1, NOW(), NOW()),
@@ -115,46 +109,111 @@ VALUES
 ('Complete Detailing Motor - Small', 'Detailing Motor', 250000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran small.', 0, 1, NOW(), NOW()),
 ('Complete Detailing Motor - Medium', 'Detailing Motor', 350000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran medium.', 0, 1, NOW(), NOW()),
 ('Complete Detailing Motor - Large', 'Detailing Motor', 700000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran large.', 0, 1, NOW(), NOW()),
-('Complete Detailing Motor - Extra Large', 'Detailing Motor', 1000000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran extra large.', 0, 1, NOW(), NOW())
+('Complete Detailing Motor - Extra Large', 'Detailing Motor', 1000000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran extra large.', 0, 1, NOW(), NOW());
 
+DROP TEMPORARY TABLE IF EXISTS service_catalog_normalized;
+CREATE TEMPORARY TABLE service_catalog_normalized AS
+SELECT
+    CASE
+        WHEN name REGEXP ' - (Small|Medium|Large|Extra Large)$'
+            THEN REGEXP_REPLACE(name, ' - (Small|Medium|Large|Extra Large)$', '')
+        ELSE name
+    END AS logical_name,
+    category,
+    price,
+    stamps,
+    icon,
+    CASE
+        WHEN name REGEXP ' - (Small|Medium|Large|Extra Large)$'
+            THEN REGEXP_REPLACE(description, ' Ukuran (small|medium|large|extra large)\\.$', '')
+        ELSE description
+    END AS description,
+    is_popular,
+    is_active,
+    CASE
+        WHEN name REGEXP ' - Extra Large$' THEN 'Extra Large'
+        WHEN name REGEXP ' - Large$' THEN 'Large'
+        WHEN name REGEXP ' - Medium$' THEN 'Medium'
+        WHEN name REGEXP ' - Small$' THEN 'Small'
+        ELSE NULL
+    END AS size_value,
+    CASE
+        WHEN name REGEXP ' - Small$' THEN 1
+        WHEN name REGEXP ' - Medium$' THEN 2
+        WHEN name REGEXP ' - Large$' THEN 3
+        WHEN name REGEXP ' - Extra Large$' THEN 4
+        ELSE 0
+    END AS size_rank
+FROM service_catalog_import;
+
+INSERT INTO services
+    (name, category, variations, stamps, icon, description, is_popular, is_active, created_at, updated_at)
+SELECT
+    logical_name,
+    MAX(CASE WHEN size_rank IN (0, 1) THEN category END),
+    CASE
+        WHEN MAX(size_rank) > 0
+            THEN JSON_OBJECT('Ukuran', JSON_ARRAY('Small', 'Medium', 'Large', 'Extra Large'))
+        ELSE NULL
+    END,
+    MAX(CASE WHEN size_rank IN (0, 1) THEN stamps END),
+    MAX(CASE WHEN size_rank IN (0, 1) THEN icon END),
+    MAX(CASE WHEN size_rank IN (0, 1) THEN description END),
+    MAX(is_popular),
+    MAX(is_active),
+    NOW(),
+    NOW()
+FROM service_catalog_normalized
+GROUP BY logical_name
 ON DUPLICATE KEY UPDATE
-    `category` = VALUES(`category`),
-    `price` = VALUES(`price`),
-    `stamps` = VALUES(`stamps`),
-    `icon` = VALUES(`icon`),
-    `description` = VALUES(`description`),
-    `is_popular` = VALUES(`is_popular`),
-    `is_active` = VALUES(`is_active`),
-    `updated_at` = NOW();
+    category = VALUES(category),
+    variations = VALUES(variations),
+    stamps = VALUES(stamps),
+    icon = VALUES(icon),
+    description = VALUES(description),
+    is_popular = VALUES(is_popular),
+    is_active = VALUES(is_active),
+    updated_at = NOW();
 
-INSERT INTO `service_groups` (`name`, `created_at`, `updated_at`)
-VALUES
-    ('Coating Lite', NOW(), NOW()),
-    ('Coating Mobil', NOW(), NOW()),
-    ('Supreme Wash', NOW(), NOW()),
-    ('Interior Detailing', NOW(), NOW()),
-    ('Exterior Detailing', NOW(), NOW()),
-    ('Complete Detailing', NOW(), NOW()),
-    ('Express Polish', NOW(), NOW()),
-    ('Seat Remove Interior Detailing', NOW(), NOW()),
-    ('Coating Motor', NOW(), NOW()),
-    ('Complete Detailing Motor', NOW(), NOW())
-ON DUPLICATE KEY UPDATE `updated_at` = VALUES(`updated_at`);
+UPDATE service_variations AS variation
+INNER JOIN services AS service
+    ON service.id = variation.service_id
+INNER JOIN service_catalog_normalized AS catalog
+    ON catalog.logical_name COLLATE utf8mb4_unicode_ci = service.name
+    AND (
+        (catalog.size_value IS NULL AND variation.variations IS NULL)
+        OR JSON_UNQUOTE(JSON_EXTRACT(variation.variations, '$.Ukuran')) = catalog.size_value
+    )
+SET
+    variation.price = catalog.price,
+    variation.is_active = catalog.is_active,
+    variation.updated_at = NOW()
+WHERE variation.service_id = service.id;
 
-UPDATE `services` AS `service`
-INNER JOIN `service_groups` AS `service_group`
-    ON `service_group`.`name` = SUBSTRING_INDEX(`service`.`name`, ' - ', 1)
-SET `service`.`service_group_id` = `service_group`.`id`
-WHERE `service_group`.`name` IN (
-    'Coating Lite',
-    'Coating Mobil',
-    'Supreme Wash',
-    'Interior Detailing',
-    'Exterior Detailing',
-    'Complete Detailing',
-    'Express Polish',
-    'Seat Remove Interior Detailing',
-    'Coating Motor',
-    'Complete Detailing Motor'
-)
-AND `service`.`name` REGEXP ' - (Small|Medium|Large|Extra Large)$';
+INSERT INTO service_variations
+    (service_id, variations, price, is_active, created_at, updated_at)
+SELECT
+    service.id,
+    CASE
+        WHEN catalog.size_value IS NULL THEN NULL
+        ELSE JSON_OBJECT('Ukuran', catalog.size_value)
+    END,
+    catalog.price,
+    catalog.is_active,
+    NOW(),
+    NOW()
+FROM service_catalog_normalized AS catalog
+INNER JOIN services AS service
+    ON service.name = catalog.logical_name COLLATE utf8mb4_unicode_ci
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM service_variations AS variation
+    WHERE variation.service_id = service.id
+      AND (
+          (catalog.size_value IS NULL AND variation.variations IS NULL)
+          OR JSON_UNQUOTE(JSON_EXTRACT(variation.variations, '$.Ukuran')) = catalog.size_value
+      )
+);
+
+DROP TEMPORARY TABLE service_catalog_normalized;
+DROP TEMPORARY TABLE service_catalog_import;

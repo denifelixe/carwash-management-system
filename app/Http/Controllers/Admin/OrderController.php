@@ -9,7 +9,7 @@ use App\Models\Admin;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
-use App\Models\Service;
+use App\Models\ServiceVariation;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
@@ -50,7 +50,7 @@ class OrderController extends Controller
             'orderStatuses' => self::STATUSES,
             'editableOrderStatuses' => self::EDITABLE_STATUSES,
             'upcoming' => [],
-            'services' => $services->map(fn (Service $service): array => OrderPresenter::service($service))->all(),
+            'services' => $services->map(fn ($service): array => OrderPresenter::service($service))->all(),
             'serviceCategories' => $services->where('is_active', true)->pluck('category')->unique()->values()->all(),
             'customers' => OrderQueries::customers()
                 ->map(fn (Member $member): array => OrderPresenter::customer($member))->all(),
@@ -75,8 +75,15 @@ class OrderController extends Controller
         $data = $request->validated();
 
         DB::transaction(function () use ($data, $request): void {
-            /** @var Collection<int, Service> $services */
-            $services = Service::query()->whereKey($data['service_ids'])->where('is_active', true)->lockForUpdate()->get();
+            $quantities = collect($data['items'])->mapWithKeys(
+                fn (array $item): array => [(int) $item['service_variation_id'] => (int) $item['quantity']],
+            );
+            /** @var Collection<int, ServiceVariation> $variations */
+            $variations = ServiceVariation::query()->with('service')->whereKey($quantities->keys())
+                ->where('is_active', true)->whereHas('service', fn ($query) => $query->where('is_active', true))
+                ->lockForUpdate()->get();
+
+            abort_if($variations->count() !== $quantities->count(), 422, 'Pilihan layanan tidak lagi tersedia.');
             $member = null;
             $vehicle = null;
 
@@ -94,7 +101,9 @@ class OrderController extends Controller
                 $vehiclePlate = $data['vehicle_plate'] ?? '';
             }
 
-            $subtotal = (int) $services->sum('price');
+            $subtotal = (int) $variations->sum(
+                fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
+            );
 
             $order = Order::query()->create([
                 'number' => 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
@@ -112,14 +121,21 @@ class OrderController extends Controller
                 'status' => 'menunggu',
                 'subtotal' => $subtotal,
                 'total' => $subtotal,
-                'stamps_earned' => $member === null ? 0 : (int) $services->sum('stamps'),
+                'stamps_earned' => $member === null ? 0 : (int) $variations->sum(
+                    fn (ServiceVariation $variation): int => $variation->service->stamps * $quantities[$variation->id],
+                ),
             ]);
 
-            $order->services()->attach($services->mapWithKeys(fn (Service $service): array => [
-                $service->id => [
-                    'service_name' => $service->name,
-                    'unit_price' => $service->price,
-                    'stamps' => $service->stamps,
+            $order->serviceVariations()->attach($variations->mapWithKeys(fn (ServiceVariation $variation): array => [
+                $variation->id => [
+                    'service_name' => $variation->service->name,
+                    'variations' => $variation->variations === null
+                        ? null
+                        : json_encode($variation->variations, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE),
+                    'unit_price' => $variation->price,
+                    'quantity' => $quantities[$variation->id],
+                    'total_price' => $variation->price * $quantities[$variation->id],
+                    'stamps' => $variation->service->stamps,
                 ],
             ])->all());
         });

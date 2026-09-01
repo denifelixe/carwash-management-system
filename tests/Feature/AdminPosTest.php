@@ -20,9 +20,12 @@ test('the live cashier page uses the shared component and database records', fun
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create(['name' => 'Premium Wash']);
     $order = Order::factory()->create(['number' => 'ORD-TEST-001', 'status' => 'pelunasan']);
-    $order->services()->attach($service, [
+    $variation = $service->serviceVariations()->firstOrFail();
+    $order->serviceVariations()->attach($variation, [
         'service_name' => $service->name,
         'unit_price' => $service->price,
+        'quantity' => 1,
+        'total_price' => $service->price,
         'stamps' => $service->stamps,
     ]);
 
@@ -276,9 +279,12 @@ test('the cashier can sign the walk in behind an order up as a member', function
         'customer_name' => 'Tamu Walk In',
         'stamps_earned' => 0,
     ]);
-    $order->services()->attach($service, [
+    $variation = $service->serviceVariations()->firstOrFail();
+    $order->serviceVariations()->attach($variation, [
         'service_name' => $service->name,
         'unit_price' => $service->price,
+        'quantity' => 1,
+        'total_price' => $service->price,
         'stamps' => $service->stamps,
     ]);
 

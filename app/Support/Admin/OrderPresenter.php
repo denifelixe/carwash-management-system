@@ -25,21 +25,24 @@ class OrderPresenter
      */
     public static function booking(Order $booking): array
     {
+        $serviceItems = self::serviceItems($booking);
+
         return [
             'id' => $booking->id,
             'code' => $booking->number,
             'customerId' => $booking->member_id,
             'customer' => $booking->customer_name,
-            'phone' => $booking->customer_phone !== '' ? $booking->customer_phone : 'â€”',
+            'phone' => $booking->customer_phone !== '' ? $booking->customer_phone : '—',
             'vehicle' => $booking->vehicle_name,
             'plate' => $booking->vehicle_plate,
-            'service' => $booking->services->pluck('pivot.service_name')->join(', '),
-            'serviceIds' => $booking->services->pluck('id')->all(),
+            'service' => collect($serviceItems)->pluck('label')->join(', '),
+            'serviceItems' => $serviceItems,
+            'serviceIds' => collect($serviceItems)->pluck('serviceId')->unique()->values()->all(),
             'date' => $booking->service_date->toDateString(),
             'bookingDate' => $booking->booking_date?->toDateString() ?? $booking->created_at?->toDateString(),
             'orderStatus' => $booking->status,
             'estimate' => (int) $booking->total,
-            'notes' => $booking->notes ?? 'â€”',
+            'notes' => $booking->notes ?? '—',
         ];
     }
 
@@ -51,6 +54,7 @@ class OrderPresenter
         $paidAmount = (int) $order->paid_amount;
         $total = (int) $order->total;
         $crew = $order->getRelation('crew');
+        $serviceItems = self::serviceItems($order);
 
         return [
             'id' => $order->id,
@@ -64,8 +68,9 @@ class OrderPresenter
             'phone' => $order->customer_phone,
             'vehicle' => $order->vehicle_name,
             'plate' => $order->vehicle_plate,
-            'items' => $order->services->pluck('pivot.service_name')->join(', '),
-            'serviceIds' => $order->services->pluck('id')->all(),
+            'items' => collect($serviceItems)->pluck('label')->join(', '),
+            'serviceItems' => $serviceItems,
+            'serviceIds' => collect($serviceItems)->pluck('serviceId')->unique()->values()->all(),
             'total' => $total,
             'discount' => (int) $order->discount,
             'reward' => $order->reward_name ?? '—',
@@ -131,17 +136,54 @@ class OrderPresenter
             'id' => $service->id,
             'name' => $service->name,
             'category' => $service->category,
-            'price' => (int) $service->price,
+            'variations' => $service->variations,
+            'serviceVariations' => $service->serviceVariations->map(fn ($variation): array => [
+                'id' => $variation->id,
+                'variations' => $variation->variations,
+                'price' => (int) $variation->price,
+                'isActive' => $variation->is_active,
+            ])->all(),
+            'price' => (int) ($service->serviceVariations->where('is_active', true)->min('price')
+                ?? $service->serviceVariations->min('price')
+                ?? 0),
             'stamps' => (int) $service->stamps,
             'icon' => $service->icon,
             'description' => $service->description ?? '',
             'popular' => $service->is_popular,
             'isActive' => $service->is_active,
-            'serviceGroup' => $service->serviceGroup === null ? null : [
-                'id' => $service->serviceGroup->id,
-                'name' => $service->serviceGroup->name,
-            ],
         ];
+    }
+
+    /** @return list<array{serviceVariationId: int, serviceId: int, serviceName: string, variations: array<string, string>|null, quantity: int, unitPrice: int, totalPrice: int, label: string}> */
+    private static function serviceItems(Order $order): array
+    {
+        return $order->serviceVariations->map(function ($variation): array {
+            $pivotVariations = $variation->pivot->variations;
+            $variations = is_string($pivotVariations)
+                ? json_decode($pivotVariations, true, flags: JSON_THROW_ON_ERROR)
+                : $pivotVariations;
+            $variationLabel = collect($variations ?? [])->map(
+                fn (string $value, string $attribute): string => "$attribute: $value",
+            )->join(', ');
+            $quantity = (int) $variation->pivot->quantity;
+            $name = (string) $variation->pivot->service_name;
+            $label = $variationLabel === '' ? $name : "$name ($variationLabel)";
+
+            if ($quantity > 1) {
+                $label .= " x$quantity";
+            }
+
+            return [
+                'serviceVariationId' => $variation->id,
+                'serviceId' => $variation->service_id,
+                'serviceName' => $name,
+                'variations' => $variations,
+                'quantity' => $quantity,
+                'unitPrice' => (int) $variation->pivot->unit_price,
+                'totalPrice' => (int) $variation->pivot->total_price,
+                'label' => $label,
+            ];
+        })->all();
     }
 
     /**

@@ -17,20 +17,42 @@ test('new orders defer crew assignment and payment to their dedicated workflows'
         ->toContain('Order berhasil disimpan');
 });
 
-test('the order form summary lists services without cashier totals', function () {
+test('the order form uses a variation cart with quantity priced from the selected combination', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
+    $picker = file_get_contents(
+        resource_path('js/components/admin/ServiceCartPicker.vue'),
+    );
 
     expect($ordersPage)
-        // Prices remain visible on the selectable service items.
-        ->toContain('{{ formatCurrency(service.price) }}')
-        // The lower summary is operational: names only, without totals or stamps.
-        ->toContain('v-for="service in draftServices"')
-        ->toContain('{{ service.name }}')
-        ->toContain('Belum ada layanan dipilih')
+        ->toContain('<ServiceCartPicker')
+        ->toContain('v-model="draft.serviceItems"')
         ->not->toContain('{{ formatCurrency(draftTotal) }}')
         ->not->toContain('+{{ draftStamps }} stempel');
+
+    expect($picker)
+        ->toContain('Keranjang layanan')
+        ->toContain('cartDetails(item)!.variation.price')
+        ->toContain('item.quantity')
+        ->toContain('Belum ada layanan di keranjang.');
+});
+
+test('the service picker keeps its catalog compact behind an internal scroll', function () {
+    $picker = file_get_contents(
+        resource_path('js/components/admin/ServiceCartPicker.vue'),
+    );
+
+    expect($picker)
+        ->toContain('class="grid max-h-64 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"')
+        // A round chevron button hints at the overflow and hides at the bottom.
+        ->toContain('@scroll="syncScrollHint"')
+        ->toContain('v-if="canScrollDown"')
+        ->toContain('<ChevronDown class="h-4 w-4" />')
+        ->toContain('@click="scrollCatalogDown"')
+        ->toContain(
+            'element.scrollHeight - element.scrollTop - element.clientHeight > 8',
+        );
 });
 
 test('the order list omits totals while detail only references service prices', function () {
@@ -50,9 +72,10 @@ test('the order list omits totals while detail only references service prices', 
         ->not->toContain('{{ detailOrder.invoice }}')
         ->not->toContain('<dt class="text-slate-500">Stempel diberikan</dt>')
         ->not->toContain('+{{ detailOrder.stampsEarned }}')
-        // Prices remain as references on service choices and detail items.
-        ->toContain('{{ formatCurrency(service.price) }}')
-        ->toContain(')?.price ?? 0,');
+        // Detail reads immutable line-item snapshots, not current catalog prices.
+        ->toContain('{{ formatCurrency(item.unitPrice) }}')
+        ->toContain('{{ formatCurrency(item.totalPrice) }}')
+        ->not->toContain(')?.price ?? 0,');
 });
 
 test('the order detail leads with its date and highlighted vehicle information', function () {
@@ -446,24 +469,68 @@ test('the card in force wears its own colour, not just an outline', function () 
     }
 });
 
-test('the order form filters its service list from a search field', function () {
-    $ordersPage = file_get_contents(
-        resource_path('js/pages/admin/Orders.vue'),
-    );
+test('the order form uses the shared variation and quantity cart picker', function () {
+    $ordersPage = file_get_contents(resource_path('js/pages/admin/Orders.vue'));
+    $picker = file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue'));
 
     expect($ordersPage)
-        // The field itself, bound to the query the list reads.
-        ->toContain('v-model="serviceQuery"')
-        ->toContain('placeholder="Cari layanan"')
-        // Every token has to land across both group names and child services.
-        ->toContain('const visibleServiceEntries = computed<ServicePickerEntry[]>')
+        ->toContain('<ServiceCartPicker')
+        ->toContain('v-model="draft.serviceItems"')
+        ->toContain('service_variation_id: item.serviceVariationId')
+        ->toContain('quantity: item.quantity');
+
+    expect($picker)
+        ->toContain('placeholder="Cari layanan, kategori, atau variasi"')
         ->toContain('tokens.every((token) => haystack.includes(token))')
-        // The grid renders one card per service or group and opens a nested picker.
-        ->toContain('v-for="entry in visibleServiceEntries"')
-        ->toContain('v-if="visibleServiceEntries.length > 0"')
-        ->toContain('activeServiceGroupId = entry.group.id')
-        ->toContain('caption="Pilih satu atau beberapa layanan"')
-        ->toContain('Layanan tidak ditemukan.')
-        // A cleared draft starts the next order with the full list.
-        ->toContain("serviceQuery.value = '';");
+        ->toContain('service.serviceVariations')
+        ->toContain('variation.variations?.[attribute]')
+        ->toContain('item.quantity + quantity.value')
+        ->toContain('Tambah ke Keranjang')
+        ->toContain('Layanan tidak ditemukan.');
+});
+
+test('the cart picker filters the catalog with multi select category tabs above the search', function () {
+    $picker = file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue'));
+
+    expect($picker)
+        ->toContain('const selectedCategories = ref<string[]>([])')
+        ->toContain('function toggleCategory(option: string): void')
+        ->toContain('selectedCategories.value.includes(service.category)')
+        ->toContain('@click="selectedCategories = []"')
+        ->toContain('v-for="option in categoryOptions"')
+        ->toContain('service.serviceVariations.some((variation) => variation.isActive)');
+
+    expect(strpos($picker, 'v-if="categoryOptions.length > 1"'))
+        ->toBeLessThan(strpos($picker, 'placeholder="Cari layanan, kategori, atau variasi"'));
+});
+
+test('the cart picker folds the catalog and the cart into one open panel on phones', function () {
+    $picker = file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue'));
+
+    expect($picker)
+        // One panel at a time, catalog first, and both can be collapsed.
+        ->toContain("const openPanel = ref<'services' | 'cart' | null>('services')")
+        ->toContain("function togglePanel(panel: 'services' | 'cart'): void")
+        ->toContain('openPanel.value = openPanel.value === panel ? null : panel')
+        ->toContain('@click="togglePanel(\'services\')"')
+        ->toContain('@click="togglePanel(\'cart\')"')
+        ->toContain(':aria-expanded="openPanel === \'services\'"')
+        ->toContain(':aria-expanded="openPanel === \'cart\'"')
+        // Collapsing only applies below sm: tablets and desktops keep both panels open.
+        ->toContain('openPanel === \'services\' ? \'\' : \'hidden sm:block\'')
+        ->toContain('openPanel === \'cart\' ? \'\' : \'hidden sm:block\'')
+        ->toContain('sm:pointer-events-none')
+        // Each header carries its own count so a collapsed panel still reports state.
+        ->toContain('{{ visibleServices.length }} layanan')
+        ->toContain('{{ modelValue.length }} item');
+
+    expect(strpos($picker, "togglePanel('services')"))
+        ->toBeLessThan(strpos($picker, "togglePanel('cart')"));
+});
+
+test('the order and booking forms drop their services label on phones so the picker owns the header', function () {
+    foreach (['Orders', 'Bookings'] as $page) {
+        expect(file_get_contents(resource_path("js/pages/admin/{$page}.vue")))
+            ->toContain('class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"');
+    }
 });

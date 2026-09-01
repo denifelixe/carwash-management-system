@@ -4,7 +4,6 @@ import {
     Ban,
     CalendarClock,
     Car,
-    ChevronDown,
     CircleCheck,
     ClipboardList,
     Hourglass,
@@ -21,6 +20,7 @@ import {
     store as storeOrder,
     updateStatus as updateOrderStatus,
 } from '@/actions/App/Http/Controllers/Admin/OrderController';
+import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
 import CollapsibleSummary from '@/components/demo/CollapsibleSummary.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -41,10 +41,12 @@ import type {
     CarwashDateFilter,
     CarwashBooking,
     CarwashBrand,
+    CarwashCartItem,
     CarwashCrewMember,
     CarwashCustomer,
     CarwashOrder,
     CarwashService,
+    CarwashServiceItem,
     CarwashVehicle,
 } from '@/types/demo';
 
@@ -91,20 +93,6 @@ type CreatedOrderAlert = {
     orderNo: string;
     customer: string;
 };
-
-type ServicePickerEntry =
-    | {
-          key: string;
-          kind: 'service';
-          service: CarwashService;
-          services: CarwashService[];
-      }
-    | {
-          key: string;
-          kind: 'group';
-          group: { id: number; name: string };
-          services: CarwashService[];
-      };
 
 const customerTabs: { key: CustomerMode; label: string }[] = [
     { key: 'existing', label: 'Member' },
@@ -155,8 +143,6 @@ const detailOrderId = ref<number | null>(null);
 const isCreateOpen = ref<boolean>(false);
 const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
-const serviceQuery = ref<string>('');
-const activeServiceGroupId = ref<number | null>(null);
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
 
@@ -166,7 +152,7 @@ const draft = ref({
     customerPhone: '',
     vehicle: '',
     plate: '',
-    serviceIds: [] as number[],
+    serviceItems: [] as CarwashCartItem[],
 });
 
 const bookingStatusLabel = 'Booking - Belum Datang';
@@ -379,85 +365,24 @@ const draftCustomer = computed<CarwashCustomer | null>(
         ) ?? null,
 );
 
-const selectableServices = computed<CarwashService[]>(() =>
-    props.services.filter((service) => service.isActive),
-);
+const draftLineItems = computed(() =>
+    draft.value.serviceItems.flatMap((item) => {
+        const service = props.services.find(
+            (candidate) => candidate.id === item.serviceId,
+        );
+        const variation = service?.serviceVariations.find(
+            (candidate) => candidate.id === item.serviceVariationId,
+        );
 
-const servicePickerEntries = computed<ServicePickerEntry[]>(() => {
-    const entries: ServicePickerEntry[] = [];
-    const groupedServices = new Map<number, CarwashService[]>();
-
-    for (const service of selectableServices.value) {
-        const group = service.serviceGroup;
-
-        if (!group) {
-            entries.push({
-                key: `service-${service.id}`,
-                kind: 'service',
-                service,
-                services: [service],
-            });
-
-            continue;
-        }
-
-        const services = groupedServices.get(group.id);
-
-        if (services) {
-            services.push(service);
-        } else {
-            const groupedEntry: ServicePickerEntry = {
-                key: `group-${group.id}`,
-                kind: 'group',
-                group,
-                services: [service],
-            };
-
-            groupedServices.set(group.id, groupedEntry.services);
-            entries.push(groupedEntry);
-        }
-    }
-
-    return entries;
-});
-
-/** Every token must land somewhere, including group names and child services. */
-const visibleServiceEntries = computed<ServicePickerEntry[]>(() => {
-    const tokens = serviceQuery.value
-        .toLowerCase()
-        .split(/\s+/)
-        .filter((token) => token !== '');
-
-    if (tokens.length === 0) {
-        return servicePickerEntries.value;
-    }
-
-    return servicePickerEntries.value.filter((entry) => {
-        const groupName = entry.kind === 'group' ? entry.group.name : '';
-        const haystack = `${groupName} ${entry.services
-            .map((service) => `${service.name} ${service.category}`)
-            .join(' ')}`.toLowerCase();
-
-        return tokens.every((token) => haystack.includes(token));
-    });
-});
-
-const activeServiceGroup = computed(() =>
-    servicePickerEntries.value.find(
-        (entry) =>
-            entry.kind === 'group' &&
-            entry.group.id === activeServiceGroupId.value,
-    ),
-);
-
-const draftServices = computed<CarwashService[]>(() =>
-    selectableServices.value.filter((service) =>
-        draft.value.serviceIds.includes(service.id),
-    ),
+        return service && variation ? [{ item, service, variation }] : [];
+    }),
 );
 
 const draftSubtotal = computed<number>(() =>
-    draftServices.value.reduce((total, service) => total + service.price, 0),
+    draftLineItems.value.reduce(
+        (total, line) => total + line.variation.price * line.item.quantity,
+        0,
+    ),
 );
 
 const draftTotal = computed<number>(() => draftSubtotal.value);
@@ -465,8 +390,8 @@ const draftTotal = computed<number>(() => draftSubtotal.value);
 const draftStamps = computed<number>(() =>
     draft.value.customerId === null
         ? 0
-        : draftServices.value.reduce(
-              (total, service) => total + service.stamps,
+        : draftLineItems.value.reduce(
+              (total, line) => total + line.service.stamps * line.item.quantity,
               0,
           ),
 );
@@ -505,7 +430,7 @@ const plateOwner = computed<CarwashCustomer | null>(() => {
 
 const canCreate = computed<boolean>(
     () =>
-        draftServices.value.length > 0 &&
+        draftLineItems.value.length > 0 &&
         draft.value.plate.trim() !== '' &&
         plateOwner.value === null &&
         hasCustomer.value,
@@ -615,28 +540,6 @@ function selectCustomerMode(mode: CustomerMode): void {
     clearCustomer();
 }
 
-function toggleDraftService(serviceId: number): void {
-    draft.value.serviceIds = draft.value.serviceIds.includes(serviceId)
-        ? draft.value.serviceIds.filter((id) => id !== serviceId)
-        : [...draft.value.serviceIds, serviceId];
-}
-
-function selectedServiceCount(services: CarwashService[]): number {
-    return services.filter((service) =>
-        draft.value.serviceIds.includes(service.id),
-    ).length;
-}
-
-function servicePriceRange(services: CarwashService[]): string {
-    const prices = services.map((service) => service.price);
-    const minimum = Math.min(...prices);
-    const maximum = Math.max(...prices);
-
-    return minimum === maximum
-        ? formatCurrency(minimum)
-        : `${formatCurrency(minimum)}–${formatCurrency(maximum)}`;
-}
-
 function resetDraft(): void {
     draft.value = {
         customerId: null,
@@ -644,11 +547,9 @@ function resetDraft(): void {
         customerPhone: '',
         vehicle: '',
         plate: '',
-        serviceIds: [],
+        serviceItems: [],
     };
     customerQuery.value = '';
-    serviceQuery.value = '';
-    activeServiceGroupId.value = null;
     customerMode.value = 'existing';
     selectedCustomerOption.value = null;
 }
@@ -669,7 +570,10 @@ function createOrder(): void {
         orderForm.customer_phone = draft.value.customerPhone.trim();
         orderForm.vehicle_name = draft.value.vehicle.trim();
         orderForm.vehicle_plate = draft.value.plate.trim();
-        orderForm.service_ids = [...draft.value.serviceIds];
+        orderForm.items = draft.value.serviceItems.map((item) => ({
+            service_variation_id: item.serviceVariationId,
+            quantity: item.quantity,
+        }));
         orderForm.submit(storeOrder(), {
             preserveScroll: true,
             onSuccess: () => {
@@ -694,6 +598,27 @@ function createOrder(): void {
     const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
     const customerName =
         customer?.name ?? `${draft.value.walkInName.trim()}${walkInLabel}`;
+    const createdServiceItems: CarwashServiceItem[] = draftLineItems.value.map(
+        ({ item, service, variation }) => {
+            const variationLabel = Object.entries(variation.variations ?? {})
+                .map(([attribute, value]) => `${attribute}: ${value}`)
+                .join(', ');
+            const label = variationLabel
+                ? `${service.name} (${variationLabel})`
+                : service.name;
+
+            return {
+                serviceVariationId: variation.id,
+                serviceId: service.id,
+                serviceName: service.name,
+                variations: variation.variations,
+                quantity: item.quantity,
+                unitPrice: variation.price,
+                totalPrice: variation.price * item.quantity,
+                label: item.quantity > 1 ? `${label} x${item.quantity}` : label,
+            };
+        },
+    );
 
     workflow.addOrder({
         id: sequence,
@@ -707,8 +632,11 @@ function createOrder(): void {
         phone: customer?.phone ?? draft.value.customerPhone.trim(),
         vehicle: draft.value.vehicle || '—',
         plate: draft.value.plate.toUpperCase(),
-        items: draftServices.value.map((service) => service.name).join(', '),
-        serviceIds: [...draft.value.serviceIds],
+        items: createdServiceItems.map((item) => item.label).join(', '),
+        serviceIds: [
+            ...new Set(createdServiceItems.map((item) => item.serviceId)),
+        ],
+        serviceItems: createdServiceItems,
         total: draftTotal.value,
         discount: 0,
         reward: '—',
@@ -745,7 +673,7 @@ const orderForm = useForm({
     customer_phone: '',
     vehicle_name: '',
     vehicle_plate: '',
-    service_ids: [] as number[],
+    items: [] as { service_variation_id: number; quantity: number }[],
 });
 
 const statusForm = useForm({ status: '' });
@@ -1031,34 +959,43 @@ const statusForm = useForm({ status: '' });
                 </p>
                 <ul class="mt-2 space-y-2">
                     <li
-                        v-for="serviceId in detailOrder.serviceIds"
-                        :key="serviceId"
+                        v-for="item in detailOrder.serviceItems"
+                        :key="item.serviceVariationId"
                         class="flex items-center gap-3 rounded-xl border border-slate-200 p-3"
                     >
                         <span class="text-lg">
                             {{
                                 services.find(
-                                    (service) => service.id === serviceId,
+                                    (service) => service.id === item.serviceId,
                                 )?.icon
                             }}
                         </span>
-                        <span class="min-w-0 flex-1 text-sm text-slate-800">
-                            {{
-                                services.find(
-                                    (service) => service.id === serviceId,
-                                )?.name
-                            }}
+                        <span class="min-w-0 flex-1">
+                            <span class="block text-sm text-slate-800">{{
+                                item.serviceName
+                            }}</span>
+                            <span
+                                v-if="item.variations"
+                                class="block text-xs text-slate-500"
+                            >
+                                {{
+                                    Object.entries(item.variations)
+                                        .map(
+                                            ([key, value]) =>
+                                                `${key}: ${value}`,
+                                        )
+                                        .join(' · ')
+                                }}
+                            </span>
+                            <span class="block text-xs text-slate-400"
+                                >{{ item.quantity }} ×
+                                {{ formatCurrency(item.unitPrice) }}</span
+                            >
                         </span>
                         <span
                             class="shrink-0 text-sm font-medium text-slate-700 tabular-nums"
                         >
-                            {{
-                                formatCurrency(
-                                    services.find(
-                                        (service) => service.id === serviceId,
-                                    )?.price ?? 0,
-                                )
-                            }}
+                            {{ formatCurrency(item.totalPrice) }}
                         </span>
                     </li>
                 </ul>
@@ -1407,128 +1344,14 @@ const statusForm = useForm({ status: '' });
             <!-- Services -->
             <div>
                 <p
-                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                    class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"
                 >
                     Layanan
                 </p>
-                <div
-                    class="mt-2 flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 shadow-sm transition focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100"
-                >
-                    <Search class="h-4 w-4 shrink-0 text-slate-500" />
-                    <input
-                        v-model="serviceQuery"
-                        type="search"
-                        placeholder="Cari layanan"
-                        class="min-w-0 flex-1 bg-transparent text-sm text-slate-800 placeholder:text-slate-500 focus:outline-none"
-                    />
-                </div>
-                <div
-                    v-if="visibleServiceEntries.length > 0"
-                    class="mt-2 grid max-h-56 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto sm:grid-cols-2"
-                >
-                    <template
-                        v-for="entry in visibleServiceEntries"
-                        :key="entry.key"
-                    >
-                        <button
-                            v-if="entry.kind === 'service'"
-                            type="button"
-                            class="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                            :class="
-                                draft.serviceIds.includes(entry.service.id)
-                                    ? 'border-cyan-400 bg-cyan-50/60'
-                                    : 'border-slate-200 hover:border-slate-300'
-                            "
-                            @click="toggleDraftService(entry.service.id)"
-                        >
-                            <span class="text-lg">{{
-                                entry.service.icon
-                            }}</span>
-                            <span class="min-w-0 flex-1 leading-tight">
-                                <span
-                                    class="block truncate text-xs font-medium text-slate-800"
-                                >
-                                    {{ entry.service.name }}
-                                </span>
-                                <span class="block text-[10px] text-slate-500">
-                                    {{ formatCurrency(entry.service.price) }} •
-                                    +{{ entry.service.stamps }} stempel
-                                </span>
-                            </span>
-                            <CircleCheck
-                                v-if="
-                                    draft.serviceIds.includes(entry.service.id)
-                                "
-                                class="h-4 w-4 shrink-0 text-cyan-600"
-                            />
-                        </button>
-                        <button
-                            v-else
-                            type="button"
-                            class="flex items-center gap-2 rounded-xl border p-2.5 text-left transition"
-                            :class="
-                                selectedServiceCount(entry.services) > 0
-                                    ? 'border-cyan-400 bg-cyan-50/60'
-                                    : 'border-slate-200 hover:border-slate-300'
-                            "
-                            @click="activeServiceGroupId = entry.group.id"
-                        >
-                            <span class="text-lg">{{
-                                entry.services[0]?.icon
-                            }}</span>
-                            <span class="min-w-0 flex-1 leading-tight">
-                                <span
-                                    class="block truncate text-xs font-semibold text-slate-800"
-                                >
-                                    {{ entry.group.name }}
-                                </span>
-                                <span class="block text-[10px] text-slate-500">
-                                    {{ entry.services.length }} pilihan •
-                                    {{ servicePriceRange(entry.services) }}
-                                </span>
-                            </span>
-                            <span
-                                v-if="selectedServiceCount(entry.services) > 0"
-                                class="rounded-full bg-cyan-600 px-2 py-0.5 text-[10px] font-semibold text-white"
-                            >
-                                {{ selectedServiceCount(entry.services) }}
-                                dipilih
-                            </span>
-                            <ChevronDown
-                                v-else
-                                class="h-4 w-4 shrink-0 text-slate-400"
-                            />
-                        </button>
-                    </template>
-                </div>
-                <p
-                    v-else
-                    class="mt-2 rounded-xl border border-dashed border-slate-200 px-3 py-4 text-center text-xs text-slate-400"
-                >
-                    Layanan tidak ditemukan.
-                </p>
-            </div>
-
-            <!-- Selected services -->
-            <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-[11px] font-medium text-slate-500">
-                    {{ draftServices.length }} layanan dipilih
-                </p>
-                <ul
-                    v-if="draftServices.length > 0"
-                    class="mt-2 flex flex-wrap gap-2"
-                >
-                    <li
-                        v-for="service in draftServices"
-                        :key="service.id"
-                        class="rounded-lg bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200"
-                    >
-                        {{ service.name }}
-                    </li>
-                </ul>
-                <p v-else class="mt-1 text-sm text-slate-400">
-                    Belum ada layanan dipilih
-                </p>
+                <ServiceCartPicker
+                    v-model="draft.serviceItems"
+                    :services="services"
+                />
             </div>
         </div>
 
@@ -1547,63 +1370,6 @@ const statusForm = useForm({ status: '' });
                 @click="createOrder"
             >
                 {{ orderForm.processing ? 'Menyimpan...' : 'Simpan order' }}
-            </button>
-        </template>
-    </ModalDialog>
-
-    <ModalDialog
-        :open="activeServiceGroup !== undefined"
-        :title="
-            activeServiceGroup?.kind === 'group'
-                ? activeServiceGroup.group.name
-                : ''
-        "
-        caption="Pilih satu atau beberapa layanan"
-        size="md"
-        layer="nested"
-        @close="activeServiceGroupId = null"
-    >
-        <div
-            v-if="activeServiceGroup?.kind === 'group'"
-            class="grid grid-cols-1 gap-2 sm:grid-cols-2"
-        >
-            <button
-                v-for="service in activeServiceGroup.services"
-                :key="service.id"
-                type="button"
-                class="flex items-center gap-3 rounded-xl border p-3 text-left transition"
-                :class="
-                    draft.serviceIds.includes(service.id)
-                        ? 'border-cyan-400 bg-cyan-50/60'
-                        : 'border-slate-200 hover:border-slate-300'
-                "
-                @click="toggleDraftService(service.id)"
-            >
-                <span class="text-xl">{{ service.icon }}</span>
-                <span class="min-w-0 flex-1">
-                    <span class="block text-sm font-medium text-slate-800">
-                        {{ service.name }}
-                    </span>
-                    <span class="mt-0.5 block text-xs text-slate-500">
-                        {{ formatCurrency(service.price) }} • +{{
-                            service.stamps
-                        }}
-                        stempel
-                    </span>
-                </span>
-                <CircleCheck
-                    v-if="draft.serviceIds.includes(service.id)"
-                    class="h-5 w-5 shrink-0 text-cyan-600"
-                />
-            </button>
-        </div>
-        <template #footer>
-            <button
-                type="button"
-                class="w-full rounded-xl bg-cyan-600 py-2.5 text-sm font-semibold text-white transition hover:bg-cyan-700"
-                @click="activeServiceGroupId = null"
-            >
-                Selesai
             </button>
         </template>
     </ModalDialog>

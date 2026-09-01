@@ -5,7 +5,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
-use App\Models\Service;
+use App\Models\ServiceVariation;
 use App\Support\VehiclePlate;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -32,8 +32,8 @@ class StoreBookingRequest extends FormRequest
     public function rules(): array
     {
         $booking = $this->route('order');
-        $existingServiceIds = $booking instanceof Order
-            ? $booking->services()->pluck((new Service)->qualifyColumn('id'))->all()
+        $existingVariationIds = $booking instanceof Order
+            ? $booking->serviceVariations()->pluck((new ServiceVariation)->qualifyColumn('id'))->all()
             : [];
 
         return [
@@ -59,18 +59,23 @@ class StoreBookingRequest extends FormRequest
                     [Rule::unique(MemberVehicle::class, 'plate')],
                 ),
             ],
-            'service_ids' => ['required', 'array', 'min:1'],
-            'service_ids.*' => [
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.service_variation_id' => [
+                'required',
                 'integer',
                 'distinct',
-                Rule::exists(Service::class, 'id')->where(
+                Rule::exists(ServiceVariation::class, 'id')->where(
                     fn ($query) => $query->where(
                         fn ($availableQuery) => $availableQuery
                             ->where('is_active', true)
-                            ->when($existingServiceIds !== [], fn ($serviceQuery) => $serviceQuery->orWhereIn('id', $existingServiceIds)),
+                            ->when(
+                                $existingVariationIds !== [],
+                                fn ($variationQuery) => $variationQuery->orWhereIn('id', $existingVariationIds),
+                            ),
                     ),
                 ),
             ],
+            'items.*.quantity' => ['required', 'integer', 'min:1', 'max:999'],
             'service_date' => ['required', 'date_format:Y-m-d', 'after_or_equal:today'],
         ];
     }
@@ -83,18 +88,40 @@ class StoreBookingRequest extends FormRequest
         return [function (Validator $validator): void {
             $booking = $this->route('order');
 
-            if (! $booking instanceof Order || $validator->errors()->isNotEmpty()) {
+            if ($validator->errors()->isNotEmpty()) {
                 return;
             }
 
-            $subtotal = (int) Service::query()
-                ->whereKey($this->input('service_ids', []))
-                ->sum('price');
+            $existingVariationIds = $booking instanceof Order
+                ? $booking->serviceVariations()->pluck((new ServiceVariation)->qualifyColumn('id'))->all()
+                : [];
+
+            $quantities = collect($this->input('items', []))->mapWithKeys(
+                fn (array $item): array => [(int) $item['service_variation_id'] => (int) $item['quantity']],
+            );
+            $variations = ServiceVariation::query()->with('service')->whereKey($quantities->keys())->get();
+
+            if ($variations->contains(
+                fn (ServiceVariation $variation): bool => ! $variation->service->is_active
+                    && ! in_array($variation->id, $existingVariationIds, true),
+            )) {
+                $validator->errors()->add('items', 'Pilihan layanan tidak lagi tersedia.');
+
+                return;
+            }
+
+            if (! $booking instanceof Order) {
+                return;
+            }
+
+            $subtotal = (int) $variations->sum(
+                fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
+            );
             $total = max(0, $subtotal - (int) $booking->discount);
 
             if ($total < (int) $booking->paid_amount) {
                 $validator->errors()->add(
-                    'service_ids',
+                    'items',
                     'Total layanan tidak boleh lebih kecil dari pembayaran yang sudah diterima.',
                 );
             }
