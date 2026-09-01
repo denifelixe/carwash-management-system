@@ -77,7 +77,7 @@ test('booking rows and details follow the order information hierarchy', function
     );
 
     foreach ([
-        '{{ booking.plate }}',
+        '{{ formatPlate(booking.plate) }}',
         '{{ booking.vehicle }}',
         '{{ booking.customer }}',
         '{{ bookingCustomerType(booking) }}',
@@ -90,7 +90,7 @@ test('booking rows and details follow the order information hierarchy', function
 
         expect(mb_strpos($bookingRow, $field))->toBeGreaterThan(
             mb_strpos($bookingRow, [
-                '{{ booking.plate }}',
+                '{{ formatPlate(booking.plate) }}',
                 '{{ booking.vehicle }}',
                 '{{ booking.customer }}',
                 '{{ bookingCustomerType(booking) }}',
@@ -101,14 +101,14 @@ test('booking rows and details follow the order information hierarchy', function
     }
 
     expect($bookingDetail)
-        ->toContain('{{ detailBooking.plate }}')
+        ->toContain('{{ formatPlate(detailBooking.plate) }}')
         ->toContain('{{ detailBooking.vehicle }}')
         ->toContain('{{ detailBooking.customer }}')
         ->toContain('{{ bookingCustomerType(detailBooking) }}')
         ->toContain('{{ detailBooking.phone }}')
         ->toContain('{{ detailBooking.service }}');
 
-    expect(mb_strpos($bookingDetail, '{{ detailBooking.plate }}'))
+    expect(mb_strpos($bookingDetail, '{{ formatPlate(detailBooking.plate) }}'))
         ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.vehicle }}'));
     expect(mb_strpos($bookingDetail, '{{ detailBooking.vehicle }}'))
         ->toBeLessThan(mb_strpos($bookingDetail, '{{ detailBooking.customer }}'));

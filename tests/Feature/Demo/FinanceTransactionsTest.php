@@ -277,7 +277,8 @@ test('finance page exposes and displays related order details', function () {
         ->toContain('highlightedTransactionId')
         ->toContain('before:inset-y-2 before:left-0 before:w-1')
         ->not->toContain('bg-cyan-50 ring-2 ring-cyan-300 ring-inset')
-        ->toContain('{{ entry.vehicle }} · {{ entry.plate }}')
+        ->toContain('{{ entry.vehicle }} ·')
+        ->toContain('{{ formatPlate(entry.plate) }}')
         ->toContain('Tidak terkait order')
         ->toContain('entry.orderNo?.toLowerCase().includes(query)')
         ->toContain('placeholder="Cari transaksi / order / plat"');

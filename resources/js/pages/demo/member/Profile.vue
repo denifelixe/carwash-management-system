@@ -15,6 +15,7 @@ import {
     formatNumber,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
+import { formatPlate } from '@/lib/vehiclePlate';
 import { home } from '@/routes/demo';
 import type {
     CarwashBrand,
@@ -148,7 +149,8 @@ function copyReferralCode(): void {
                             {{ vehicle.name }}
                         </p>
                         <p class="text-[11px] text-slate-500">
-                            {{ vehicle.plate }} • {{ vehicle.type }}
+                            {{ formatPlate(vehicle.plate) }} •
+                            {{ vehicle.type }}
                         </p>
                     </div>
                     <span

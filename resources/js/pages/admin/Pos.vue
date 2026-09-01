@@ -45,7 +45,7 @@ import type {
 } from '@/lib/posReceipt';
 import { openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
-import { normalizePlate } from '@/lib/vehiclePlate';
+import { formatPlate, normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -2281,7 +2281,9 @@ const memberForm = useForm({
                                             class="mt-0.5 text-xs text-slate-500"
                                         >
                                             {{ detail.order.vehicle }} ·
-                                            {{ detail.order.plate }}
+                                            {{
+                                                formatPlate(detail.order.plate)
+                                            }}
                                         </p>
                                         <p
                                             class="mt-0.5 text-xs text-slate-500"
@@ -2333,7 +2335,12 @@ const memberForm = useForm({
                                                 class="mt-1 text-xs text-slate-600"
                                             >
                                                 {{ detail.order.vehicle }} ·
-                                                {{ detail.order.plate }} ·
+                                                {{
+                                                    formatPlate(
+                                                        detail.order.plate,
+                                                    )
+                                                }}
+                                                ·
                                                 {{
                                                     orderTypeLabel(detail.order)
                                                 }}
@@ -2761,7 +2768,11 @@ const memberForm = useForm({
                         <span class="mt-0.5 block text-xs text-slate-600">
                             {{ selectedPaymentRecapTransaction.order.vehicle }}
                             ·
-                            {{ selectedPaymentRecapTransaction.order.plate }}
+                            {{
+                                formatPlate(
+                                    selectedPaymentRecapTransaction.order.plate,
+                                )
+                            }}
                         </span>
                     </span>
                     <span class="shrink-0 text-lg text-cyan-700">→</span>
@@ -2819,7 +2830,7 @@ const memberForm = useForm({
                                     <p
                                         class="mt-1 text-xl font-bold tracking-wide text-slate-950"
                                     >
-                                        {{ order.plate }}
+                                        {{ formatPlate(order.plate) }}
                                     </p>
                                     <p
                                         class="mt-0.5 text-sm font-medium text-slate-700"
@@ -2950,7 +2961,7 @@ const memberForm = useForm({
                                     <p
                                         class="mt-1 text-xl font-bold tracking-wide text-slate-950"
                                     >
-                                        {{ order.plate }}
+                                        {{ formatPlate(order.plate) }}
                                     </p>
                                     <p
                                         class="mt-0.5 text-sm font-medium text-slate-700"
@@ -3069,7 +3080,7 @@ const memberForm = useForm({
                                 <p
                                     class="mt-1 text-xl font-bold tracking-wide text-slate-950"
                                 >
-                                    {{ order.plate }}
+                                    {{ formatPlate(order.plate) }}
                                 </p>
                                 <p
                                     class="mt-0.5 text-sm font-medium text-slate-700"
@@ -3156,7 +3167,7 @@ const memberForm = useForm({
                 title="Pembayaran"
                 :caption="
                     selectedOrder
-                        ? `${selectedOrder.orderNo} · ${selectedOrder.customer} · ${selectedOrder.plate}`
+                        ? `${selectedOrder.orderNo} · ${selectedOrder.customer} · ${formatPlate(selectedOrder.plate)}`
                         : undefined
                 "
                 size="xl"

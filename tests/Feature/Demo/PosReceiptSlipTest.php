@@ -60,7 +60,7 @@ test('the slip carries everything the customer needs to reconcile the payment', 
     expect(posReceiptModule())
         ->toContain("metaRow('Ref.', receipt.reference)")
         ->toContain("metaRow('Kasir', receipt.cashier)")
-        ->toContain("metaRow('Plat', receipt.plate)")
+        ->toContain("metaRow('Plat', formatPlate(receipt.plate))")
         ->toContain("amountRow('TOTAL', receipt.total, 'grand')")
         ->toContain("amountRow('Sisa tagihan', receipt.dueAfter, 'strong')")
         ->toContain("'STRUK PEMBAYARAN'")

@@ -36,7 +36,7 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
-import { normalizePlate } from '@/lib/vehiclePlate';
+import { formatPlate, normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -785,7 +785,7 @@ const statusForm = useForm({ status: '' });
                                 <p
                                     class="text-xl font-bold tracking-wide text-slate-900"
                                 >
-                                    {{ order.plate }}
+                                    {{ formatPlate(order.plate) }}
                                 </p>
                                 <p class="mt-0.5 text-xs text-slate-600">
                                     {{ order.vehicle }}
@@ -936,7 +936,7 @@ const statusForm = useForm({ status: '' });
             <div class="rounded-xl bg-slate-50 p-3">
                 <p class="text-[11px] text-slate-500">Info Pelanggan</p>
                 <p class="mt-1 text-xl font-bold tracking-wide text-slate-900">
-                    {{ detailOrder.plate }}
+                    {{ formatPlate(detailOrder.plate) }}
                 </p>
                 <p class="mt-0.5 text-sm text-slate-600">
                     {{ detailOrder.vehicle }}
@@ -1152,7 +1152,7 @@ const statusForm = useForm({ status: '' });
                                 <span
                                     class="font-bold tracking-wide text-slate-950"
                                 >
-                                    {{ option.vehicle.plate }}
+                                    {{ formatPlate(option.vehicle.plate) }}
                                 </span>
                                 · {{ option.vehicle.name }} —
                                 {{ option.customer.name }}
@@ -1166,7 +1166,7 @@ const statusForm = useForm({ status: '' });
                                     <p
                                         class="text-base font-bold tracking-wide text-slate-950"
                                     >
-                                        {{ option.vehicle.plate }}
+                                        {{ formatPlate(option.vehicle.plate) }}
                                     </p>
                                     <p
                                         class="truncate text-xs font-medium text-slate-600"
@@ -1249,7 +1249,12 @@ const statusForm = useForm({ status: '' });
                                 <span
                                     class="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm"
                                 >
-                                    {{ selectedCustomerOption.vehicle.plate }}
+                                    {{
+                                        formatPlate(
+                                            selectedCustomerOption.vehicle
+                                                .plate,
+                                        )
+                                    }}
                                 </span>
                                 <span class="text-xs text-slate-600">
                                     {{ selectedCustomerOption.vehicle.name }}

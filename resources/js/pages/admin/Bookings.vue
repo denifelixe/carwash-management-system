@@ -24,6 +24,7 @@ import SlideOver from '@/components/demo/SlideOver.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import { formatDate, formatDateCode } from '@/composables/useCarwashFormat';
+import { formatPlate } from '@/lib/vehiclePlate';
 import type {
     CarwashBooking,
     CarwashBrand,
@@ -597,7 +598,7 @@ function saveBooking(): void {
                         <p
                             class="text-xl font-bold tracking-wide text-slate-900"
                         >
-                            {{ booking.plate }}
+                            {{ formatPlate(booking.plate) }}
                         </p>
                         <p class="mt-0.5 text-xs text-slate-600">
                             {{ booking.vehicle }}
@@ -664,7 +665,7 @@ function saveBooking(): void {
 
             <div class="rounded-2xl bg-slate-50 p-4">
                 <p class="text-2xl font-bold tracking-wide text-slate-900">
-                    {{ detailBooking.plate }}
+                    {{ formatPlate(detailBooking.plate) }}
                 </p>
                 <p class="mt-0.5 text-sm text-slate-600">
                     {{ detailBooking.vehicle }}
@@ -809,7 +810,7 @@ function saveBooking(): void {
                                 <span
                                     class="font-bold tracking-wide text-slate-950"
                                 >
-                                    {{ option.vehicle.plate }}
+                                    {{ formatPlate(option.vehicle.plate) }}
                                 </span>
                                 · {{ option.vehicle.name }} —
                                 {{ option.customer.name }}
@@ -823,7 +824,7 @@ function saveBooking(): void {
                                     <p
                                         class="text-base font-bold tracking-wide text-slate-950"
                                     >
-                                        {{ option.vehicle.plate }}
+                                        {{ formatPlate(option.vehicle.plate) }}
                                     </p>
                                     <p
                                         class="truncate text-xs font-medium text-slate-600"
@@ -909,7 +910,12 @@ function saveBooking(): void {
                                 <span
                                     class="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm"
                                 >
-                                    {{ selectedCustomerOption.vehicle.plate }}
+                                    {{
+                                        formatPlate(
+                                            selectedCustomerOption.vehicle
+                                                .plate,
+                                        )
+                                    }}
                                 </span>
                                 <span class="text-xs text-slate-600">
                                     {{ selectedCustomerOption.vehicle.name }}

@@ -40,6 +40,7 @@ import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import { matchingTransactionShifts } from '@/composables/useTransactionShift';
 import { openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
+import { formatPlate } from '@/lib/vehiclePlate';
 import admin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -1270,7 +1271,8 @@ function applyDate(date: string): void {
                                         {{ entry.customer }}
                                     </p>
                                     <p class="text-[11px] text-slate-500">
-                                        {{ entry.vehicle }} · {{ entry.plate }}
+                                        {{ entry.vehicle }} ·
+                                        {{ formatPlate(entry.plate) }}
                                     </p>
                                 </template>
                                 <span v-else class="text-xs text-slate-400">
@@ -1544,7 +1546,7 @@ function applyDate(date: string): void {
                     </span>
                     <span class="mt-0.5 block text-xs text-slate-600">
                         {{ selectedTransactionEntry.vehicle }} ·
-                        {{ selectedTransactionEntry.plate }}
+                        {{ formatPlate(selectedTransactionEntry.plate) }}
                     </span>
                 </span>
                 <span class="shrink-0 text-lg text-cyan-700">→</span>
@@ -1605,7 +1607,8 @@ function applyDate(date: string): void {
                     {{ selectedOrder.orderNo }} · {{ selectedOrder.customer }}
                 </h3>
                 <p class="mt-1 text-xs text-slate-600">
-                    {{ selectedOrder.vehicle }} · {{ selectedOrder.plate }} ·
+                    {{ selectedOrder.vehicle }} ·
+                    {{ formatPlate(selectedOrder.plate) }} ·
                     {{
                         selectedOrder.source === 'booking'
                             ? 'Booking'

@@ -5,6 +5,7 @@ import {
     escapeHtml,
     printedAt,
 } from '@/lib/printDocument';
+import { formatPlate } from '@/lib/vehiclePlate';
 import type { CarwashBrand } from '@/types/demo';
 
 /**
@@ -254,7 +255,7 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
 <section class="block">
     ${metaRow('Customer', receipt.customer)}
     ${metaRow('Kendaraan', receipt.vehicle)}
-    ${metaRow('Plat', receipt.plate)}
+    ${metaRow('Plat', formatPlate(receipt.plate))}
 </section>
 <section class="block">
     <p class="heading">Rincian layanan</p>

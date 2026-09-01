@@ -216,7 +216,7 @@ test('order cards lead with the plate and classify the customer source', functio
         ->toContain("return 'Booking'")
         ->toContain("'Walk-in non-customer'")
         ->toContain("'Walk-in customer'")
-        ->toContain('{{ order.plate }}')
+        ->toContain('{{ formatPlate(order.plate) }}')
         ->toContain('{{ order.vehicle }}')
         ->toContain('{{ orderTypeLabel(order) }}')
         ->and(substr_count($posPage, 'No. order {{ order.orderNo }}'))

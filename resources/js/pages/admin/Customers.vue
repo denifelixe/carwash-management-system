@@ -34,6 +34,7 @@ import {
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
+import { formatPlate } from '@/lib/vehiclePlate';
 import admin from '@/routes/demo/admin';
 import type {
     CarwashBrand,
@@ -612,7 +613,7 @@ function stampToneClass(type: string): string {
                                             <p
                                                 class="text-[11px] text-slate-500"
                                             >
-                                                {{ vehicle.plate }}
+                                                {{ formatPlate(vehicle.plate) }}
                                             </p>
                                         </div>
                                         <span
@@ -836,7 +837,8 @@ function stampToneClass(type: string): string {
                                     {{ vehicle.name }}
                                 </p>
                                 <p class="text-[11px] text-slate-500">
-                                    {{ vehicle.plate }} · {{ vehicle.type }}
+                                    {{ formatPlate(vehicle.plate) }} ·
+                                    {{ vehicle.type }}
                                 </p>
                             </div>
                             <span
