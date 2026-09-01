@@ -38,7 +38,7 @@ test('the slip is laid out at the printable width of the 80mm roll', function ()
 test('the slip opens in its own window instead of inside the SPA', function () {
     expect(posReceiptModule())
         ->toContain('export function openPosReceiptWindow(')
-        ->toContain("window.open(\n        '',")
+        ->toContain("window.open(\n        receipt.publicUrl ?? '',")
         ->toContain('`popup=yes,width=${WINDOW_WIDTH},height=${WINDOW_HEIGHT},scrollbars=yes,resizable=yes`')
         ->toContain('receiptWindow.print()')
         // A blocked window is reported back rather than swallowed.

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ReceiptController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -20,7 +21,10 @@ if ($generateAllRoutes || in_array($applicationType, ['LIVE', 'STAGING', 'ALL'],
         ? 'live.invalid'
         : (string) config('domains.app');
 
-    Route::domain($appDomain)
-        ->get('/', fn (): RedirectResponse => to_route('member.home'))
-        ->name('home');
+    Route::domain($appDomain)->group(function (): void {
+        Route::get('/', fn (): RedirectResponse => to_route('member.home'))->name('home');
+        Route::get('struk/{orderTransaction}', ReceiptController::class)
+            ->middleware('signed')
+            ->name('receipts.show');
+    });
 }

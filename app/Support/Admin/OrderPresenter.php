@@ -9,9 +9,15 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Support\AppSettings;
 use App\Support\Demo\Brand;
 use App\Support\Demo\DateFilter;
+use BaconQrCode\Renderer\Image\SvgImageBackEnd;
+use BaconQrCode\Renderer\ImageRenderer;
+use BaconQrCode\Renderer\RendererStyle\RendererStyle;
+use BaconQrCode\Writer;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 
 /**
@@ -120,6 +126,78 @@ class OrderPresenter
             'channelBreakdown' => $transaction->channel_breakdown,
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : null,
             'shift' => $transaction->shift_name,
+            'receiptUrl' => URL::signedRoute('receipts.show', $transaction),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public static function receipt(OrderTransaction $transaction): array
+    {
+        $order = $transaction->order;
+        $transactions = $order->transactions->values();
+        $transactionIndex = $transactions->search(
+            fn (OrderTransaction $candidate): bool => $candidate->is($transaction),
+        );
+        $index = $transactionIndex === false ? $transactions->count() - 1 : $transactionIndex;
+        $history = $transactions->take($index);
+        $previouslyPaid = (int) $history->sum('amount');
+        $paidTotal = $previouslyPaid + (int) $transaction->amount;
+        $receiptUrl = URL::signedRoute('receipts.show', $transaction);
+        $qrCode = new Writer(new ImageRenderer(
+            new RendererStyle(196, 2),
+            new SvgImageBackEnd,
+        ));
+        $serviceItems = self::serviceItems($order);
+
+        return [
+            'orderNo' => $order->number,
+            'invoice' => $order->invoice_number ?? '—',
+            'reference' => $transaction->reference,
+            'date' => $transaction->paid_at->toDateString(),
+            'time' => $transaction->paid_at->format('H.i'),
+            'cashier' => $transaction->recordedBy?->name ?? '—',
+            'shift' => $transaction->shift_name ?? 'Tanpa Shift',
+            'customer' => $order->customer_name,
+            'vehicle' => $order->vehicle_name,
+            'plate' => $order->vehicle_plate,
+            'items' => collect($serviceItems)->pluck('label')->join(', '),
+            'lines' => collect($serviceItems)->map(fn (array $item): array => [
+                'name' => $item['label'],
+                'price' => $item['totalPrice'],
+            ])->all(),
+            'subtotal' => (int) $order->subtotal,
+            'priorDiscount' => 0,
+            'rewardDiscount' => 0,
+            'cashierDiscount' => (int) $order->discount,
+            'total' => (int) $order->total,
+            'tenderedTotal' => (int) $transaction->amount,
+            'change' => 0,
+            'history' => $history->map(fn (OrderTransaction $entry): array => [
+                'date' => $entry->paid_at->toDateString(),
+                'time' => $entry->paid_at->format('H.i'),
+                'type' => $entry->type,
+                'channels' => collect($entry->channel_breakdown)->pluck('label')->join(' + '),
+                'cashier' => $entry->recordedBy?->name ?? '—',
+                'amount' => (int) $entry->amount,
+            ])->all(),
+            'previouslyPaid' => $previouslyPaid,
+            'paidTotal' => $paidTotal,
+            'dueAfter' => max((int) $order->total - $paidTotal, 0),
+            'isSettled' => $transaction->type === 'Pembayaran Lunas',
+            'isReprint' => false,
+            'timezone' => AppSettings::timezone(),
+            'payment' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
+            'paymentBreakdown' => collect($transaction->channel_breakdown)->map(fn (array $channel): array => [
+                'method' => $channel['label'],
+                'amount' => (int) $channel['amount'],
+                'provider' => '',
+                'reference' => $channel['reference'] ?? '',
+            ])->all(),
+            'reward' => $order->reward_name ?? '—',
+            'publicUrl' => $receiptUrl,
+            'verificationQr' => 'data:image/svg+xml;base64,'.base64_encode($qrCode->writeString($receiptUrl)),
         ];
     }
 

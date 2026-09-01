@@ -94,6 +94,10 @@ export interface PosReceipt {
     paymentBreakdown: PosPaymentBreakdown[];
     /** Redeemed by the cashier, shown here so the customer sees it on the slip. */
     reward: string;
+    /** Signed guest URL used to view and verify a live receipt. */
+    publicUrl: string | null;
+    /** Server-generated QR data URL for the signed verification link. */
+    verificationQr: string;
 }
 
 export function paymentChannelLabel(payment: PosPaymentBreakdown): string {
@@ -270,41 +274,136 @@ ${outstandingBlock(receipt)}
     <p>Terima kasih atas kunjungan Anda.</p>
     <p class="fineprint">Struk ini adalah bukti pembayaran yang sah.</p>
     ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(printedAt(receipt.timezone))}.</p>` : ''}
+    ${verificationBlock(receipt)}
 </footer>`;
+}
+
+/**
+ * Printed copies only. On screen the slip is already being read at its own
+ * verification URL, and the PDF spells the link out in text, so the QR would be
+ * a third copy of the same address — it earns its space only on paper, which
+ * cannot be tapped. Hidden by stylesheet rather than left out of the markup so
+ * a plain Ctrl+P still prints it.
+ */
+function verificationBlock(receipt: PosReceipt): string {
+    if (receipt.publicUrl === null || receipt.verificationQr === '') {
+        return '';
+    }
+
+    return `<div class="verification">
+    <img class="verification-qr-image" src="${escapeHtml(receipt.verificationQr)}" alt="QR verifikasi struk">
+    <p class="verification-caption">Pindai untuk memeriksa keabsahan struk</p>
+</div>`;
 }
 
 function receiptStyles(): string {
     return `:root { color-scheme: light; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
-    background: #e2e8f0;
+    background: #eef2f7;
     color: #0f172a;
     font-family: 'Consolas', 'Courier New', ui-monospace, monospace;
     font-size: 11px;
     line-height: 1.45;
-    padding: 12px 0 28px;
+    padding: 14px 0 28px;
 }
 .toolbar {
+    background: #ffffff;
+    border: 1px solid rgba(15, 23, 42, 0.07);
+    border-radius: 14px;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.05),
+        0 10px 26px -12px rgba(15, 23, 42, 0.28);
     display: flex;
-    gap: 6px;
-    margin: 0 auto 12px;
+    gap: 2px;
+    margin: 0 auto 14px;
+    padding: 5px;
     width: ${PAPER_WIDTH};
 }
 .toolbar button {
-    background: #0284c7;
+    align-items: center;
+    background: transparent;
     border: 0;
-    border-radius: 6px;
-    color: #ffffff;
+    border-radius: 10px;
+    color: #475569;
     cursor: pointer;
+    display: flex;
     flex: 1;
-    font: inherit;
-    font-weight: 700;
-    padding: 8px 0;
+    flex-direction: column;
+    font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+    font-size: 9.5px;
+    font-weight: 600;
+    gap: 4px;
+    letter-spacing: 0.01em;
+    line-height: 1;
+    min-width: 0;
+    padding: 7px 2px 6px;
+    transition: background-color 140ms ease, color 140ms ease;
 }
-.toolbar button.secondary { background: #475569; }
+.toolbar button svg {
+    fill: none;
+    height: 15px;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.7;
+    width: 15px;
+}
+.toolbar button span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    width: 100%;
+}
+.toolbar button:hover { background: #f1f5f9; color: #0f172a; }
+.toolbar button:active { background: #e2e8f0; }
+.toolbar button:focus-visible { outline: 2px solid #0f172a; outline-offset: -1px; }
+.toolbar button.primary { background: #0f172a; color: #ffffff; }
+.toolbar button.primary:hover { background: #1e293b; }
+.toolbar button.primary:active { background: #334155; }
+.toolbar button.copied, .toolbar button.copied:hover { color: #059669; }
+.toolbar button:disabled { background: transparent; color: #cbd5e1; cursor: not-allowed; }
+/* Feedback for actions that leave no trace on the page, e.g. the copied link. */
+.toast {
+    align-items: center;
+    background: #0f172a;
+    border-radius: 10px;
+    box-shadow: 0 10px 26px -10px rgba(15, 23, 42, 0.45);
+    color: #ffffff;
+    display: flex;
+    font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    gap: 7px;
+    opacity: 0;
+    padding: 9px 12px;
+    pointer-events: none;
+    position: fixed;
+    right: 14px;
+    top: 14px;
+    transform: translateY(-8px);
+    transition: opacity 180ms ease, transform 180ms ease;
+    z-index: 10;
+}
+.toast.visible { opacity: 1; transform: translateY(0); }
+.toast.error { background: #b91c1c; }
+.toast.error svg { stroke: #fecaca; }
+.toast svg {
+    fill: none;
+    flex: 0 0 auto;
+    height: 14px;
+    stroke: #4ade80;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.2;
+    width: 14px;
+}
 .paper {
     background: #ffffff;
-    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+    border-radius: 3px;
+    box-shadow:
+        0 1px 2px rgba(15, 23, 42, 0.06),
+        0 18px 40px -18px rgba(15, 23, 42, 0.35);
     margin: 0 auto;
     padding: 14px 10px 18px;
     width: ${PAPER_WIDTH};
@@ -392,12 +491,42 @@ body {
     margin-bottom: 4px;
 }
 .fineprint { color: #64748b; font-size: 9px; margin-top: 6px; }
+.verification { border-top: 1px dashed #94a3b8; display: none; margin-top: 8px; padding-top: 8px; }
+.verification-qr-image { display: block; height: 30mm; margin: 0 auto 3px; width: 30mm; }
+.verification-caption { color: #64748b; font-size: 9px; }
 @page { margin: 0; size: ${PAPER_WIDTH} auto; }
 @media print {
     body { background: #ffffff; padding: 0; }
-    .toolbar { display: none; }
+    .toolbar, .toast { display: none; }
     .paper { box-shadow: none; padding: 0 3mm 6mm; }
+    /* The QR is worth its space only on paper, which cannot be tapped. */
+    .verification { display: block; }
 }`;
+}
+
+/**
+ * Toolbar glyphs. They ship as markup rather than a font so the slip stays a
+ * single self-contained document with nothing left to fetch.
+ */
+const toolbarIcons = {
+    print: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 8V3h10v5"/><path d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1.5"/></svg>',
+    download:
+        '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7.5 10.5 4.5 4.5 4.5-4.5"/><path d="M4 20h16"/></svg>',
+    link: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.8 14.2 4.4-4.4"/><path d="M11.3 6.6 13 4.9a4.1 4.1 0 0 1 5.8 5.8l-1.7 1.7"/><path d="m12.7 17.4-1.7 1.7a4.1 4.1 0 0 1-5.8-5.8l1.7-1.7"/></svg>',
+    check: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg>',
+    close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5 17.5 17.5"/><path d="M17.5 6.5 6.5 17.5"/></svg>',
+};
+
+function toolbarButton(
+    attribute: string,
+    icon: string,
+    label: string,
+    modifier = '',
+    disabled = false,
+): string {
+    const className = modifier === '' ? '' : ` class="${modifier}"`;
+
+    return `<button type="button"${className} ${attribute}${disabled ? ' disabled' : ''} title="${escapeHtml(label)}">${icon}<span>${escapeHtml(label)}</span></button>`;
 }
 
 /**
@@ -421,9 +550,12 @@ export function renderPosReceiptDocument(
 </head>
 <body>
 <div class="toolbar">
-    <button type="button" data-receipt-print>Cetak</button>
-    <button type="button" class="secondary" data-receipt-close>Tutup</button>
+    ${toolbarButton('data-receipt-print', toolbarIcons.print, 'Cetak', 'primary')}
+    ${toolbarButton('data-receipt-download', toolbarIcons.download, 'Unduh PDF')}
+    ${toolbarButton('data-receipt-copy', toolbarIcons.link, 'Salin Link', '', receipt.publicUrl === null)}
+    ${toolbarButton('data-receipt-close', toolbarIcons.close, 'Tutup')}
 </div>
+<div class="toast" role="status" aria-live="polite" data-receipt-toast>${toolbarIcons.check}<span data-receipt-toast-message></span></div>
 <main class="paper">${receiptBody(receipt, brand)}</main>
 </body>
 </html>`;
@@ -439,7 +571,7 @@ export function openPosReceiptWindow(
     brand: CarwashBrand,
 ): Window | null {
     const receiptWindow = window.open(
-        '',
+        receipt.publicUrl ?? '',
         `pos-receipt-${receipt.orderNo}`,
         `popup=yes,width=${WINDOW_WIDTH},height=${WINDOW_HEIGHT},scrollbars=yes,resizable=yes`,
     );
@@ -448,18 +580,206 @@ export function openPosReceiptWindow(
         return null;
     }
 
-    receiptWindow.document.open();
-    receiptWindow.document.write(renderPosReceiptDocument(receipt, brand));
-    receiptWindow.document.close();
-
-    receiptWindow.document
-        .querySelector('[data-receipt-print]')
-        ?.addEventListener('click', () => receiptWindow.print());
-    receiptWindow.document
-        .querySelector('[data-receipt-close]')
-        ?.addEventListener('click', () => receiptWindow.close());
+    if (receipt.publicUrl === null) {
+        mountPosReceiptDocument(receiptWindow, receipt, brand);
+    }
 
     receiptWindow.focus();
 
     return receiptWindow;
+}
+
+/**
+ * Turns one of the static toolbar glyphs into nodes so the copy button can
+ * swap its icon. Only the constants above are ever passed in, so no user value
+ * reaches innerHTML here.
+ */
+function parseIcon(receiptWindow: Window, icon: string): ChildNode[] {
+    const template = receiptWindow.document.createElement('template');
+    template.innerHTML = icon;
+
+    return [...template.content.childNodes];
+}
+
+/** How long a toast stays up before it fades back out. */
+const TOAST_DURATION = 2400;
+
+let toastTimer = 0;
+
+/**
+ * Confirms an action that leaves nothing behind on the slip. The document is
+ * written outside the SPA, so it cannot reach the app's toaster and carries its
+ * own.
+ */
+function showReceiptToast(
+    receiptWindow: Window,
+    message: string,
+    tone: 'success' | 'error' = 'success',
+): void {
+    const toast = receiptWindow.document.querySelector<HTMLElement>(
+        '[data-receipt-toast]',
+    );
+    const label = toast?.querySelector('[data-receipt-toast-message]');
+
+    if (!toast || !label) {
+        return;
+    }
+
+    label.textContent = message;
+    toast.classList.toggle('error', tone === 'error');
+    toast.classList.add('visible');
+
+    receiptWindow.clearTimeout(toastTimer);
+    toastTimer = receiptWindow.setTimeout(() => {
+        toast.classList.remove('visible');
+    }, TOAST_DURATION);
+}
+
+/**
+ * Puts the signed link on the clipboard, reporting whether it landed so the
+ * slip can say so either way.
+ *
+ * `navigator.clipboard` only exists on a secure origin, and an outlet served
+ * over plain http has none, so the selection-based copy stands behind it rather
+ * than the button silently doing nothing.
+ */
+async function copyReceiptLink(
+    receiptWindow: Window,
+    url: string,
+): Promise<boolean> {
+    if (receiptWindow.isSecureContext && receiptWindow.navigator.clipboard) {
+        try {
+            await receiptWindow.navigator.clipboard.writeText(url);
+
+            return true;
+        } catch {
+            /* A denied permission or an unfocused window falls through. */
+        }
+    }
+
+    const field = receiptWindow.document.createElement('textarea');
+
+    field.value = url;
+    field.setAttribute('readonly', '');
+    field.style.left = '-9999px';
+    field.style.position = 'fixed';
+    receiptWindow.document.body.append(field);
+    field.select();
+
+    try {
+        return receiptWindow.document.execCommand('copy');
+    } catch {
+        return false;
+    } finally {
+        field.remove();
+    }
+}
+
+/**
+ * The PDF writer is fetched on the click rather than imported at the top, so
+ * the POS bundle never carries jsPDF for a button most sessions do not press.
+ */
+async function downloadPosReceiptPdf(
+    receiptWindow: Window,
+    receipt: PosReceipt,
+    brand: CarwashBrand,
+): Promise<void> {
+    const { downloadPosReceiptPdf: writePdf } =
+        await import('@/lib/posReceiptPdf');
+
+    await writePdf(receiptWindow, receipt, brand);
+}
+
+export function mountPosReceiptDocument(
+    receiptWindow: Window,
+    receipt: PosReceipt,
+    brand: CarwashBrand,
+): void {
+    receiptWindow.document.open();
+    receiptWindow.document.write(renderPosReceiptDocument(receipt, brand));
+    receiptWindow.document.close();
+
+    /*
+     * Nothing is staged before printing: what only belongs on paper — the
+     * toolbar's absence, the QR's presence — is decided by @media print, so a
+     * plain Ctrl+P produces the same sheet as the button.
+     */
+    receiptWindow.document
+        .querySelector('[data-receipt-print]')
+        ?.addEventListener('click', () => receiptWindow.print());
+
+    const downloadButton =
+        receiptWindow.document.querySelector<HTMLButtonElement>(
+            '[data-receipt-download]',
+        );
+
+    downloadButton?.addEventListener('click', async () => {
+        const downloadLabel = downloadButton.querySelector('span');
+
+        downloadButton.disabled = true;
+
+        if (downloadLabel !== null) {
+            downloadLabel.textContent = 'Membuat…';
+        }
+
+        try {
+            await downloadPosReceiptPdf(receiptWindow, receipt, brand);
+        } finally {
+            downloadButton.disabled = false;
+
+            if (downloadLabel !== null) {
+                downloadLabel.textContent = 'Unduh PDF';
+            }
+        }
+    });
+
+    /*
+     * The button is read here rather than from the event: the handler awaits the
+     * clipboard first, and by the time it resumes the click has finished
+     * dispatching and `event.currentTarget` is already null.
+     */
+    const copyButton = receiptWindow.document.querySelector<HTMLButtonElement>(
+        '[data-receipt-copy]',
+    );
+
+    copyButton?.addEventListener('click', async () => {
+        if (receipt.publicUrl === null) {
+            return;
+        }
+
+        const copyLabel = copyButton.querySelector('span');
+        const copied = await copyReceiptLink(receiptWindow, receipt.publicUrl);
+
+        if (!copied) {
+            showReceiptToast(receiptWindow, 'Link gagal disalin', 'error');
+
+            return;
+        }
+
+        showReceiptToast(receiptWindow, 'Link struk disalin');
+        copyButton.classList.add('copied');
+        copyButton
+            .querySelector('svg')
+            ?.replaceWith(...parseIcon(receiptWindow, toolbarIcons.check));
+
+        if (copyLabel !== null) {
+            copyLabel.textContent = 'Tersalin';
+        }
+
+        /* Falls back to the idle state so the button can be used again. */
+        receiptWindow.setTimeout(() => {
+            copyButton.classList.remove('copied');
+            copyButton
+                .querySelector('svg')
+                ?.replaceWith(...parseIcon(receiptWindow, toolbarIcons.link));
+
+            if (copyLabel !== null) {
+                copyLabel.textContent = 'Salin Link';
+            }
+        }, TOAST_DURATION);
+    });
+
+    receiptWindow.document
+        .querySelector('[data-receipt-close]')
+        ?.addEventListener('click', () => receiptWindow.close());
 }

@@ -22,6 +22,8 @@ createInertiaApp({
             // The under construction notice stands alone, without the member shell.
             case name === 'member/UnderConstruction':
                 return null;
+            case name.startsWith('receipts/'):
+                return null;
             case name.startsWith('demo/member/'):
                 return DemoMemberLayout;
             case name.startsWith('member/'):

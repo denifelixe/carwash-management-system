@@ -1532,6 +1532,8 @@ function settledReceipt(
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         reward: order.reward,
+        publicUrl: transaction?.receiptUrl ?? null,
+        verificationQr: '',
     };
 }
 
@@ -1679,6 +1681,8 @@ function applyDemoPayment(
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         reward: order.reward,
+        publicUrl: null,
+        verificationQr: '',
     };
 }
 
@@ -1782,6 +1786,8 @@ function transactionReceipt(
                 reference: '',
             })) ?? [],
         reward: order.reward,
+        publicUrl: settlement?.receiptUrl ?? null,
+        verificationQr: '',
     };
 }
 
@@ -3220,7 +3226,7 @@ const memberForm = useForm({
                                     class="flex items-center gap-3 rounded-xl bg-white px-3 py-2.5 ring-1 ring-slate-200"
                                 >
                                     <span
-                                        class="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-sm"
+                                        class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-sm"
                                     >
                                         {{ service.icon }}
                                     </span>

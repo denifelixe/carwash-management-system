@@ -807,16 +807,16 @@ function saveOrder(): void {
                             >
                                 <ChevronDown
                                     v-if="expandedIds.includes(service.id)"
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 shrink-0 text-slate-400"
                                 /><ChevronRight
                                     v-else-if="!isSorting"
-                                    class="h-4 w-4 text-slate-400"
+                                    class="h-4 w-4 shrink-0 text-slate-400"
                                 />
                                 <span
-                                    class="flex h-10 w-10 items-center justify-center rounded-xl bg-cyan-50 text-xl"
+                                    class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-xl"
                                     >{{ service.icon }}</span
                                 >
-                                <span class="min-w-0"
+                                <span class="min-w-0 flex-1"
                                     ><span
                                         class="block truncate text-sm font-semibold text-slate-900"
                                         >{{ service.name }}</span

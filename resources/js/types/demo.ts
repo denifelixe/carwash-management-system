@@ -227,6 +227,8 @@ export interface CarwashTransaction {
     /** User and shift that accepted the payment in this browser session. */
     recordedBy?: string | null;
     shift?: string | null;
+    /** Guest-accessible, signed verification link for a live receipt. */
+    receiptUrl?: string | null;
 }
 
 export interface CarwashWorkShift {
