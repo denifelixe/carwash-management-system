@@ -4,17 +4,59 @@ use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
 
-test('new orders defer crew assignment and payment to their dedicated workflows', function () {
+test('new orders keep account crew separate while accepting a manual handler', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
         ->not->toContain('v-model="draft.crew"')
+        ->toContain('v-model="draft.handledBy"')
+        ->toContain('draft.value.handledByAdminId === props.persona.id')
+        ->toContain('@click="toggleCreateHandlerAdmin"')
+        ->toContain('Saya')
+        ->toContain('{{ persona.name }}')
+        ->toContain('Dihandle oleh')
+        ->toContain('Diinput oleh')
         ->not->toContain('v-model="draft.paymentStatus"')
         ->not->toContain('Bayar nanti di kasir')
         ->toContain('createdOrderAlert.value = { orderNo, customer: customerName }')
         ->toContain('Order berhasil disimpan');
+});
+
+test('the order form folds the staff panel away behind a summary', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('const isStaffOpen = ref<boolean>(false);')
+        ->toContain('@click="isStaffOpen = !isStaffOpen"')
+        ->toContain(':aria-expanded="isStaffOpen"')
+        ->toContain('aria-controls="order-staff-fields"')
+        ->toContain('v-show="isStaffOpen"')
+        ->toContain('{{ staffSummary }}')
+        ->toContain('isStaffOpen.value = false;');
+});
+
+test('claiming the order as handler replaces the free-text field', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('v-if="!isCreateHandlerSelf"')
+        ->toContain('v-if="!isDetailHandlerSelf"')
+        ->toContain(':aria-pressed="isCreateHandlerSelf"')
+        ->toContain(':aria-pressed="isDetailHandlerSelf"')
+        ->toContain('void nextTick(() => createHandlerInput.value?.focus());')
+        ->toContain('void nextTick(() => detailHandlerInput.value?.focus());')
+        ->toContain('v-if="isCreateHandlerSelf"')
+        ->toContain('v-if="isDetailHandlerSelf"')
+        ->toContain('aria-label="Isi nama petugas lain"')
+        ->toContain('<Pencil class="h-4 w-4" />')
+        ->toContain('Jika kosong, otomatis mengikuti Diinput oleh.')
+        ->not->toContain('Klik Saya lagi untuk isi nama petugas lain.');
 });
 
 test('the order form uses a variation cart with quantity priced from the selected combination', function () {
@@ -115,6 +157,34 @@ test('the order detail shows transaction history and a full width close button',
         ->toContain('Belum ada transaksi')
         ->not->toContain('stempel sudah masuk ke akun customer')
         ->toContain('class="w-full rounded-xl bg-slate-900');
+});
+
+test('the order list and detail expose who input and handled the order', function () {
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($ordersPage)
+        ->toContain('{{ order.inputBy ?? \'—\' }}')
+        ->toContain('{{ order.handledBy ?? \'—\' }}')
+        ->toContain('{{ detailOrder.inputBy ?? \'—\' }}')
+        ->toContain('v-model="handlerDraft"')
+        ->toContain('@click="toggleDetailHandlerAdmin"')
+        ->toContain('@input="handlerAdminIdDraft = null"')
+        ->toContain('handlerForm.submit(updateOrderHandler(detailOrder.value.id)')
+        ->toContain('handledBy ?? detailOrder.value.inputBy')
+        ->toContain('handledByAdminId: draft.value.handledByAdminId')
+        ->toContain('handledByManual: draft.value.handledBy.trim() || null');
+
+    foreach (Operations::orders() as $order) {
+        expect($order)->toHaveKeys([
+            'inputBy',
+            'handledByAdminId',
+            'handledByManual',
+            'handledBy',
+        ]);
+        expect($order['handledBy'])->not->toBeNull();
+    }
 });
 
 test('the order lifecycle starts on booking and ends in selesai or batal', function () {
@@ -317,7 +387,7 @@ test('the narrow order list keeps only vehicle, services, and status', function 
         // The customer repeats inside the vehicle cell for that layout.
         ->toContain('<div class="mt-1 lg:hidden">')
         // Nothing forces a horizontal scroll before the wide layout.
-        ->toContain('min-w-[340px] text-sm lg:min-w-[900px]');
+        ->toContain('min-w-[340px] text-sm lg:min-w-[1100px]');
 });
 
 /*

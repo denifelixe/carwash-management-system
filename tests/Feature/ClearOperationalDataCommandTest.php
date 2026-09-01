@@ -5,6 +5,7 @@ use App\Models\AdminShift;
 use App\Models\AppSetting;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
+use App\Models\DailyBalance;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -97,6 +98,7 @@ test('it clears operational data while preserving users roles and masters', func
     OrderTransaction::factory()->for($order)->create(['recorded_by_admin_id' => $admin->id]);
     $cashEntry = CashEntry::factory()->create(['recorded_by_admin_id' => $admin->id]);
     CashEntryAttachment::factory()->for($cashEntry)->create();
+    DailyBalance::factory()->create();
 
     DB::table('admin_password_reset_tokens')->insert([
         'email' => $admin->email,
@@ -166,6 +168,7 @@ test('it clears operational data while preserving users roles and masters', func
             ->assertSuccessful();
 
         foreach ([
+            'daily_balance',
             'cash_entry_attachments',
             'cash_entries',
             'order_transactions',

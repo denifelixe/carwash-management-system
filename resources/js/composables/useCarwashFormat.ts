@@ -12,6 +12,12 @@ const dateFormatter = new Intl.DateTimeFormat('id-ID', {
     year: 'numeric',
 });
 
+const longDateFormatter = new Intl.DateTimeFormat('id-ID', {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+});
+
 export function formatCurrency(value: number): string {
     return currencyFormatter.format(value);
 }
@@ -28,6 +34,11 @@ export function formatDateCode(date: string): string {
 /** ISO "2026-08-05" the way the modules spell a date: "5 Agu 2026". */
 export function formatDate(date: string): string {
     return dateFormatter.format(new Date(`${date}T00:00:00`));
+}
+
+/** ISO "2026-09-01" spelled out in full: "01 September 2026". */
+export function formatLongDate(date: string): string {
+    return longDateFormatter.format(new Date(`${date}T00:00:00`));
 }
 
 /** Compact rupiah for dense cards and chart axes: "Rp 1,2 jt", "Rp 450 rb". */
@@ -49,6 +60,7 @@ export function useCarwashFormat() {
         formatNumber,
         formatDate,
         formatDateCode,
+        formatLongDate,
         formatShortCurrency,
         formatPercent,
     };

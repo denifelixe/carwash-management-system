@@ -5,6 +5,7 @@ namespace App\Support\Admin;
 use App\Models\Admin;
 use App\Models\AdminShift;
 use App\Models\CashEntry;
+use App\Models\DailyBalance;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use Carbon\CarbonImmutable;
@@ -19,6 +20,9 @@ class FinanceQueries
 {
     /** The bucket for ledger rows that match no active shift, as Finance.vue and Pos.vue key it. */
     public const UNASSIGNED_SHIFT_KEY = 'tanpa-shift';
+
+    /** How many daily snapshots the balance card hands its history dialog. */
+    public const BALANCE_HISTORY_DAYS = 30;
 
     /**
      * One day of the ledger, ready to hand to a page. Both the finance module
@@ -81,7 +85,7 @@ class FinanceQueries
     public static function cashEntriesForDate(string $date, string $direction): Collection
     {
         return CashEntry::query()
-            ->with(['recordedBy:id,name', 'attachments'])
+            ->with(['recordedBy:id,name', 'updatedBy:id,name', 'attachments'])
             ->whereDate('entry_date', $date)
             ->where('direction', $direction)
             ->orderByDesc('occurred_at')
@@ -100,7 +104,13 @@ class FinanceQueries
         $dayStart = CarbonImmutable::parse($date)->startOfDay();
 
         return Order::query()
-            ->with(['serviceVariations:id,service_id', 'transactions.recordedBy:id,name', 'crew:id,name'])
+            ->with([
+                'serviceVariations:id,service_id',
+                'transactions.recordedBy:id,name',
+                'createdBy:id,name',
+                'handledByAdmin:id,name',
+                'crew:id,name',
+            ])
             ->whereHas('transactions', fn ($query) => $query
                 ->where('paid_at', '>=', $dayStart)
                 ->where('paid_at', '<', $dayStart->addDay()))
@@ -174,6 +184,46 @@ class FinanceQueries
             'closingBalance' => $todayIn - $todayOut,
             'pendingPayments' => self::outstandingTotal(),
         ];
+    }
+
+    /** @return array{cash: int, nonCash: int} */
+    public static function dailyBalance(string $date): array
+    {
+        $dailyBalance = DailyBalance::query()
+            ->whereDate('date', '<=', $date)
+            ->latest('date')
+            ->first(['cash_balance', 'non_cash_balance']);
+
+        return [
+            'cash' => $dailyBalance?->cash_balance ?? 0,
+            'nonCash' => $dailyBalance?->non_cash_balance ?? 0,
+        ];
+    }
+
+    /**
+     * The days behind that balance, newest first: what each one moved and the
+     * accumulated balance it closed on. Days that moved no money hold no
+     * snapshot, so they are absent rather than repeated as a flat line.
+     *
+     * @return list<array{date: string, cashIncome: int, cashExpense: int, cashBalance: int, nonCashIncome: int, nonCashExpense: int, nonCashBalance: int}>
+     */
+    public static function dailyBalanceHistory(string $date, int $limit = self::BALANCE_HISTORY_DAYS): array
+    {
+        return DailyBalance::query()
+            ->whereDate('date', '<=', $date)
+            ->latest('date')
+            ->limit($limit)
+            ->get()
+            ->map(fn (DailyBalance $snapshot): array => [
+                'date' => $snapshot->date->toDateString(),
+                'cashIncome' => $snapshot->cash_income,
+                'cashExpense' => $snapshot->cash_expense,
+                'cashBalance' => $snapshot->cash_balance,
+                'nonCashIncome' => $snapshot->non_cash_income,
+                'nonCashExpense' => $snapshot->non_cash_expense,
+                'nonCashBalance' => $snapshot->non_cash_balance,
+            ])
+            ->all();
     }
 
     /** Money still owed on every order that is neither settled nor cancelled. */

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreOrderRequest;
+use App\Http\Requests\Admin\UpdateOrderHandlerRequest;
 use App\Http\Requests\Admin\UpdateOrderStatusRequest;
 use App\Models\Admin;
 use App\Models\Member;
@@ -110,6 +111,8 @@ class OrderController extends Controller
                 'member_id' => $member?->id,
                 'member_vehicle_id' => $vehicle?->id,
                 'created_by_admin_id' => $request->user('admin')?->getAuthIdentifier(),
+                'handled_by_admin_id' => $data['handled_by_admin_id'],
+                'handled_by' => $data['handled_by'],
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
                 'vehicle_name' => $vehicleName,
@@ -141,6 +144,13 @@ class OrderController extends Controller
         });
 
         return to_route('admin.orders.index')->with('success', 'Order berhasil disimpan.');
+    }
+
+    public function updateHandler(UpdateOrderHandlerRequest $request, Order $order): RedirectResponse
+    {
+        $order->update($request->validated());
+
+        return back()->with('success', 'Handler order berhasil diperbarui.');
     }
 
     public function updateStatus(UpdateOrderStatusRequest $request, Order $order): RedirectResponse

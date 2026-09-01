@@ -3,6 +3,9 @@ import type { Fancybox } from '@fancyapps/ui';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Banknote,
+    ChevronRight,
+    Coins,
+    CreditCard,
     Image as ImageIcon,
     Paperclip,
     Pencil,
@@ -35,6 +38,7 @@ import {
     formatCurrency,
     formatDate,
     formatDateCode,
+    formatLongDate,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import { matchingTransactionShifts } from '@/composables/useTransactionShift';
@@ -46,6 +50,7 @@ import type {
     CarwashDateFilter,
     CarwashBrand,
     CarwashCashSummary,
+    CarwashDailyBalance,
     CarwashMoneyEntry,
     CarwashOrder,
     CarwashPersona,
@@ -64,7 +69,13 @@ const props = defineProps<{
     incomeCategories: string[];
     expenseCategories: string[];
     cashSummary: CarwashCashSummary;
+    dailyBalance: {
+        cash: number;
+        nonCash: number;
+    };
+    dailyBalanceHistory: CarwashDailyBalance[];
     paymentMethods: string[];
+    expenseMethods: string[];
     shifts: CarwashShift[];
     orders: CarwashOrder[];
     persona: CarwashPersona;
@@ -176,6 +187,14 @@ const activeCategories = computed<string[]>(() =>
         : props.expenseCategories,
 );
 
+/**
+ * Income still names the channel it arrived on; an expense is only asked
+ * whether it left the till, so it picks from Tunai / Non-Tunai instead.
+ */
+const activeMethods = computed<string[]>(() =>
+    activeLedger.value === 'in' ? props.paymentMethods : props.expenseMethods,
+);
+
 const shiftTabs = computed(() => [
     {
         id: allShiftsKey,
@@ -281,7 +300,16 @@ const totalOut = computed<number>(() =>
     scopedExpenses.value.reduce((total, entry) => total + entry.amount, 0),
 );
 
-const remainingBalance = computed<number>(() => totalIn.value - totalOut.value);
+const profit = computed<number>(() => totalIn.value - totalOut.value);
+
+const balanceHistoryOpen = ref(false);
+
+/** The balance is an accumulation, so the card names the day it stops at. */
+const balanceCaption = computed<string>(() =>
+    props.filters.date === ''
+        ? 'Akumulasi sampai tanggal dipilih'
+        : `Akumulasi sampai tanggal ${formatLongDate(props.filters.date)}`,
+);
 
 const financialChannels = props.paymentMethods.map((key) => ({
     key,
@@ -313,6 +341,40 @@ const channelRows = computed(() =>
     }),
 );
 
+/** The one channel the till holds, spelled the way the payment methods spell it. */
+const cashChannelKey = 'Tunai';
+
+/**
+ * The table reads as two sections. Cash keeps a channel of its own; the rest
+ * only ever differ by what came in, so their outgoings and balance are merged
+ * into a single figure instead of six rows of Rp 0.
+ */
+const cashChannelRow = computed(
+    () =>
+        channelRows.value.find((channel) => channel.key === cashChannelKey) ??
+        channelRows.value[0],
+);
+
+const nonCashChannelRows = computed(() =>
+    channelRows.value.filter((channel) => channel.key !== cashChannelKey),
+);
+
+const nonCashTotals = computed(() => {
+    const income = nonCashChannelRows.value.reduce(
+        (total, channel) => total + channel.income,
+        0,
+    );
+
+    /*
+     * An expense names Tunai or Non-Tunai and nothing finer, so it never lands
+     * on a channel row. Everything that did not leave the till is taken as the
+     * remainder, the same way UpdateDailyBalance splits a movement in two.
+     */
+    const expense = totalOut.value - cashChannelRow.value.expense;
+
+    return { income, expense, balance: income - expense };
+});
+
 /**
  * What the shift being handed over comes to: the three figures on the cards and
  * the channel table under them, and nothing else. The ledger rows behind them
@@ -323,21 +385,16 @@ const channelRows = computed(() =>
  */
 function financeRecapSheet(): RecapSheet {
     const tab = shiftTabs.value.find((shift) => shift.id === activeShift.value);
-    const channels = channelRows.value;
+    const cash = cashChannelRow.value;
+    const nonCash = nonCashChannelRows.value;
+    const nonCashTotal = nonCashTotals.value;
 
-    const totalRow = {
-        label: 'Total',
-        values: [
-            formatCurrency(totalIn.value),
-            formatCurrency(totalOut.value),
-            formatCurrency(remainingBalance.value),
-        ],
-        tones: [
-            'positive' as const,
-            'negative' as const,
-            remainingBalance.value < 0 ? ('negative' as const) : undefined,
-        ],
-    };
+    const channelColumns = [
+        'Kanal Keuangan',
+        'Pemasukan',
+        'Pengeluaran',
+        'Saldo Kanal',
+    ];
 
     return {
         title: 'Rekap Keuangan',
@@ -360,46 +417,70 @@ function financeRecapSheet(): RecapSheet {
                 tone: 'negative',
             },
             {
-                label: 'Sisa saldo',
-                value: formatCurrency(remainingBalance.value),
+                label: 'Profit / Keuntungan',
+                value: formatCurrency(profit.value),
                 caption: 'Uang masuk dikurangi uang keluar',
-                tone: remainingBalance.value < 0 ? 'negative' : 'default',
+                tone: profit.value < 0 ? 'negative' : 'default',
             },
         ],
+        /*
+         * The screen merges the non-cash outgoings into one cell spanning the
+         * rows; a printed sheet has no rowspan, so the same two sections become
+         * two tables and the merge becomes the foot of the second one. The day
+         * totals are not restated under either — the channels only add up to
+         * the day when every entry names one, and the three cards above already
+         * carry the figures that do.
+         */
         tables: [
             {
                 heading: 'Kanal Keuangan',
-                caption:
-                    'Ringkasan pemasukan, pengeluaran, dan saldo per kanal',
-                columns: [
-                    'Kanal Keuangan',
-                    'Pemasukan',
-                    'Pengeluaran',
-                    'Saldo Kanal',
+                caption: 'Pemasukan, pengeluaran, dan saldo tunai',
+                columns: channelColumns,
+                rows: [
+                    {
+                        label: cash.label,
+                        values: [
+                            formatCurrency(cash.income),
+                            formatCurrency(cash.expense),
+                            formatCurrency(cash.balance),
+                        ],
+                        tones: [
+                            'positive' as const,
+                            'negative' as const,
+                            cash.balance < 0
+                                ? ('negative' as const)
+                                : ('default' as const),
+                        ],
+                    },
                 ],
-                rows: channels.map((channel) => ({
+            },
+            {
+                heading: 'Non-Tunai',
+                caption: 'Pemasukan per kanal; pengeluaran dan saldo digabung',
+                columns: channelColumns,
+                rows: nonCash.map((channel) => ({
                     label: channel.label,
+                    values: [formatCurrency(channel.income), '—', '—'],
+                    tones: [
+                        'positive' as const,
+                        'default' as const,
+                        'default' as const,
+                    ],
+                })),
+                total: {
+                    label: 'Total Non-Tunai',
                     values: [
-                        formatCurrency(channel.income),
-                        formatCurrency(channel.expense),
-                        formatCurrency(channel.balance),
+                        formatCurrency(nonCashTotal.income),
+                        formatCurrency(nonCashTotal.expense),
+                        formatCurrency(nonCashTotal.balance),
                     ],
                     tones: [
                         'positive' as const,
                         'negative' as const,
-                        channel.balance < 0
+                        nonCashTotal.balance < 0
                             ? ('negative' as const)
                             : ('default' as const),
                     ],
-                })),
-                /*
-                 * The channels only add up to the day when every entry names
-                 * one, so the foot restates the cards rather than summing the
-                 * column and quietly disagreeing with them.
-                 */
-                total: {
-                    ...totalRow,
-                    tones: totalRow.tones.map((tone) => tone ?? 'default'),
                 },
             },
         ],
@@ -535,7 +616,7 @@ function openForm(): void {
         category: activeCategories.value[0],
         description: '',
         amount: 0,
-        method: 'Tunai',
+        method: activeMethods.value[0],
     };
     entryForm.clearErrors();
     isFormOpen.value = true;
@@ -937,8 +1018,14 @@ function saveDemoEntry(transactionShiftId: number | null): void {
  * delegation, so rows that appear later — a new filter, a fresh visit — are
  * picked up without rebinding. Its hash integration stays disabled so closing
  * an attachment cannot navigate Inertia's history or lose the ledger position.
+ *
+ * Fancybox groups items by the value of data-fancybox, so a shared name would
+ * hand the reader a carousel of every attachment on the page. The value is left
+ * empty on purpose: each image then opens on its own, and the counter, arrows,
+ * slideshow and thumbnail strip all drop away with the group.
  */
-const LIGHTBOX_GROUP = 'lampiran-keuangan';
+const LIGHTBOX_SELECTOR = '[data-fancybox]';
+const LIGHTBOX_STANDALONE = '';
 type FancyboxApi = typeof Fancybox;
 
 let attachmentLightbox: FancyboxApi | null = null;
@@ -953,7 +1040,7 @@ async function bindAttachmentLightbox(): Promise<void> {
     }
 
     attachmentLightbox = Fancybox;
-    Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {
+    Fancybox.bind(LIGHTBOX_SELECTOR, {
         Hash: false,
     });
 }
@@ -1029,7 +1116,7 @@ function applyDate(date: string): void {
         <section
             class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]"
         >
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-3 xl:grid-cols-1">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-1">
                 <StatCard
                     label="Uang masuk"
                     :value="formatCurrency(totalIn)"
@@ -1045,12 +1132,78 @@ function applyDate(date: string): void {
                     tone="rose"
                 />
                 <StatCard
-                    label="Sisa saldo"
-                    :value="formatCurrency(remainingBalance)"
+                    label="Profit / Keuntungan"
+                    :value="formatCurrency(profit)"
                     caption="Uang masuk dikurangi uang keluar"
-                    :icon="Wallet"
+                    :icon="Coins"
                     tone="amber"
                 />
+                <button
+                    type="button"
+                    class="relative w-full cursor-pointer overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 text-left shadow-sm transition duration-200 hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 active:translate-y-0"
+                    aria-haspopup="dialog"
+                    aria-label="Lihat riwayat saldo harian"
+                    @click="balanceHistoryOpen = true"
+                >
+                    <div class="flex items-center gap-3">
+                        <div
+                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-50 text-violet-600"
+                        >
+                            <Wallet class="h-5 w-5" />
+                        </div>
+                        <p class="text-sm text-slate-500">Saldo</p>
+                        <ChevronRight
+                            class="ml-auto h-4 w-4 shrink-0 text-slate-300"
+                        />
+                    </div>
+                    <div class="mt-4 grid grid-cols-2 gap-3">
+                        <div
+                            class="rounded-xl border border-emerald-100/80 bg-emerald-50/70 p-3"
+                        >
+                            <div
+                                class="flex items-center gap-1.5 text-emerald-700"
+                            >
+                                <Banknote class="h-3.5 w-3.5 shrink-0" />
+                                <span class="text-[11px] font-medium"
+                                    >Tunai</span
+                                >
+                            </div>
+                            <p
+                                class="mt-1 text-base font-semibold tracking-tight break-all tabular-nums"
+                                :class="
+                                    dailyBalance.cash < 0
+                                        ? 'text-rose-600'
+                                        : 'text-slate-900'
+                                "
+                            >
+                                {{ formatCurrency(dailyBalance.cash) }}
+                            </p>
+                        </div>
+                        <div
+                            class="rounded-xl border border-sky-100/80 bg-sky-50/70 p-3"
+                        >
+                            <div class="flex items-center gap-1.5 text-sky-700">
+                                <CreditCard class="h-3.5 w-3.5 shrink-0" />
+                                <span class="text-[11px] font-medium"
+                                    >Non-Tunai</span
+                                >
+                            </div>
+                            <p
+                                class="mt-1 text-base font-semibold tracking-tight break-all tabular-nums"
+                                :class="
+                                    dailyBalance.nonCash < 0
+                                        ? 'text-rose-600'
+                                        : 'text-slate-900'
+                                "
+                            >
+                                {{ formatCurrency(dailyBalance.nonCash) }}
+                            </p>
+                        </div>
+                    </div>
+                    <p class="mt-3 text-xs text-slate-400">
+                        {{ balanceCaption }} · lihat riwayat
+                    </p>
+                </button>
             </div>
 
             <article
@@ -1064,8 +1217,8 @@ function applyDate(date: string): void {
                             Kanal Keuangan
                         </h2>
                         <p class="mt-0.5 text-xs text-slate-500">
-                            Ringkasan pemasukan, pengeluaran, dan saldo per
-                            kanal
+                            Pemasukan per kanal; pengeluaran dan saldo non-tunai
+                            digabung
                         </p>
                     </div>
                     <RecapPrintMenu
@@ -1090,35 +1243,99 @@ function applyDate(date: string): void {
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-50">
+                            <tr>
+                                <th
+                                    colspan="4"
+                                    class="bg-slate-50/70 px-5 py-2 text-left text-[11px] font-semibold tracking-wider text-slate-500 uppercase"
+                                >
+                                    Tunai
+                                </th>
+                            </tr>
+                            <tr class="transition hover:bg-slate-50/70">
+                                <td
+                                    class="px-5 py-4 font-medium text-slate-900"
+                                >
+                                    {{ cashChannelRow.label }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-medium text-emerald-600 tabular-nums"
+                                >
+                                    {{ formatCurrency(cashChannelRow.income) }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-medium text-rose-600 tabular-nums"
+                                >
+                                    {{ formatCurrency(cashChannelRow.expense) }}
+                                </td>
+                                <td
+                                    class="px-5 py-4 text-right font-semibold tabular-nums"
+                                    :class="
+                                        cashChannelRow.balance < 0
+                                            ? 'text-rose-600'
+                                            : 'text-slate-900'
+                                    "
+                                >
+                                    {{ formatCurrency(cashChannelRow.balance) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                        <!--
+                            The row divider is drawn per cell here, not with
+                            divide-y, so it stops at the merged column instead
+                            of slicing the spanning cell in two.
+                        -->
+                        <tbody class="border-t border-slate-100">
+                            <tr>
+                                <th
+                                    colspan="4"
+                                    class="bg-slate-50/70 px-5 py-2 text-left text-[11px] font-semibold tracking-wider text-slate-500 uppercase"
+                                >
+                                    Non-Tunai
+                                </th>
+                            </tr>
                             <tr
-                                v-for="channel in channelRows"
+                                v-for="(channel, index) in nonCashChannelRows"
                                 :key="channel.key"
-                                class="transition hover:bg-slate-50/70"
                             >
                                 <td
                                     class="px-5 py-4 font-medium text-slate-900"
+                                    :class="
+                                        index > 0
+                                            ? 'border-t border-slate-50'
+                                            : ''
+                                    "
                                 >
                                     {{ channel.label }}
                                 </td>
                                 <td
                                     class="px-5 py-4 text-right font-medium text-emerald-600 tabular-nums"
+                                    :class="
+                                        index > 0
+                                            ? 'border-t border-slate-50'
+                                            : ''
+                                    "
                                 >
                                     {{ formatCurrency(channel.income) }}
                                 </td>
+                                <!-- One figure for the whole section, spanning its rows. -->
                                 <td
-                                    class="px-5 py-4 text-right font-medium text-rose-600 tabular-nums"
+                                    v-if="index === 0"
+                                    :rowspan="nonCashChannelRows.length"
+                                    class="border-l border-slate-100 px-5 py-4 text-right align-middle font-medium text-rose-600 tabular-nums"
                                 >
-                                    {{ formatCurrency(channel.expense) }}
+                                    {{ formatCurrency(nonCashTotals.expense) }}
                                 </td>
                                 <td
-                                    class="px-5 py-4 text-right font-semibold tabular-nums"
+                                    v-if="index === 0"
+                                    :rowspan="nonCashChannelRows.length"
+                                    class="border-l border-slate-100 px-5 py-4 text-right align-middle font-semibold tabular-nums"
                                     :class="
-                                        channel.balance < 0
+                                        nonCashTotals.balance < 0
                                             ? 'text-rose-600'
                                             : 'text-slate-900'
                                     "
                                 >
-                                    {{ formatCurrency(channel.balance) }}
+                                    {{ formatCurrency(nonCashTotals.balance) }}
                                 </td>
                             </tr>
                         </tbody>
@@ -1307,6 +1524,12 @@ function applyDate(date: string): void {
                                 >
                                     {{ entry.shift }}
                                 </p>
+                                <p
+                                    v-if="entry.updatedBy"
+                                    class="mt-0.5 text-[11px] text-cyan-600"
+                                >
+                                    Diperbarui: {{ entry.updatedBy }}
+                                </p>
                             </td>
                             <td class="px-5 py-3.5">
                                 <div
@@ -1319,7 +1542,7 @@ function applyDate(date: string): void {
                                         :href="attachment.url || undefined"
                                         :data-fancybox="
                                             attachment.isImage
-                                                ? LIGHTBOX_GROUP
+                                                ? LIGHTBOX_STANDALONE
                                                 : null
                                         "
                                         :data-caption="
@@ -1422,6 +1645,148 @@ function applyDate(date: string): void {
     </div>
 
     <ModalDialog
+        :open="balanceHistoryOpen"
+        title="Riwayat Saldo Harian"
+        :caption="balanceCaption"
+        size="xl"
+        @close="balanceHistoryOpen = false"
+    >
+        <div
+            v-if="dailyBalanceHistory.length > 0"
+            class="overflow-x-auto rounded-2xl border border-slate-200"
+        >
+            <table class="w-full min-w-[720px] text-sm">
+                <thead>
+                    <tr
+                        class="border-b border-slate-100 bg-slate-50/70 text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                    >
+                        <th rowspan="2" class="px-4 py-3 text-left">Tanggal</th>
+                        <th
+                            colspan="3"
+                            class="border-l border-slate-100 px-4 py-2 text-center text-emerald-700"
+                        >
+                            Tunai
+                        </th>
+                        <th
+                            colspan="3"
+                            class="border-l border-slate-100 px-4 py-2 text-center text-sky-700"
+                        >
+                            Non-Tunai
+                        </th>
+                    </tr>
+                    <tr
+                        class="border-b border-slate-100 bg-slate-50/70 text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                    >
+                        <th
+                            class="border-l border-slate-100 px-4 py-2 text-right"
+                        >
+                            Masuk
+                        </th>
+                        <th class="px-4 py-2 text-right">Keluar</th>
+                        <th class="px-4 py-2 text-right">Saldo</th>
+                        <th
+                            class="border-l border-slate-100 px-4 py-2 text-right"
+                        >
+                            Masuk
+                        </th>
+                        <th class="px-4 py-2 text-right">Keluar</th>
+                        <th class="px-4 py-2 text-right">Saldo</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-50">
+                    <tr
+                        v-for="day in dailyBalanceHistory"
+                        :key="day.date"
+                        class="transition hover:bg-slate-50/70"
+                        :class="
+                            day.date === filters.date
+                                ? 'bg-violet-50/60 hover:bg-violet-50'
+                                : ''
+                        "
+                    >
+                        <td class="px-4 py-3 whitespace-nowrap">
+                            <span class="font-medium text-slate-900">
+                                {{ formatDate(day.date) }}
+                            </span>
+                            <span
+                                v-if="day.date === filters.date"
+                                class="mt-0.5 block text-[11px] text-violet-600"
+                            >
+                                Tanggal dipilih
+                            </span>
+                        </td>
+                        <td
+                            class="border-l border-slate-100 px-4 py-3 text-right text-emerald-700 tabular-nums"
+                        >
+                            {{ formatCurrency(day.cashIncome) }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-right text-rose-600 tabular-nums"
+                        >
+                            {{ formatCurrency(day.cashExpense) }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-right font-semibold tabular-nums"
+                            :class="
+                                day.cashBalance < 0
+                                    ? 'text-rose-600'
+                                    : 'text-slate-900'
+                            "
+                        >
+                            {{ formatCurrency(day.cashBalance) }}
+                        </td>
+                        <td
+                            class="border-l border-slate-100 px-4 py-3 text-right text-emerald-700 tabular-nums"
+                        >
+                            {{ formatCurrency(day.nonCashIncome) }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-right text-rose-600 tabular-nums"
+                        >
+                            {{ formatCurrency(day.nonCashExpense) }}
+                        </td>
+                        <td
+                            class="px-4 py-3 text-right font-semibold tabular-nums"
+                            :class="
+                                day.nonCashBalance < 0
+                                    ? 'text-rose-600'
+                                    : 'text-slate-900'
+                            "
+                        >
+                            {{ formatCurrency(day.nonCashBalance) }}
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <EmptyState
+            v-else
+            :icon="Wallet"
+            title="Belum ada riwayat saldo"
+            caption="Saldo terbentuk setelah ada transaksi masuk atau keluar."
+        />
+
+        <p
+            v-if="dailyBalanceHistory.length > 0"
+            class="mt-3 text-xs text-slate-400"
+        >
+            Menampilkan {{ dailyBalanceHistory.length }} hari terakhir yang
+            memiliki pergerakan uang sampai tanggal dipilih.
+        </p>
+
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="balanceHistoryOpen = false"
+            >
+                Tutup
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
         :open="selectedTransactionEntry !== null"
         title="Detail Transaksi"
         :caption="selectedTransactionEntry?.ref"
@@ -1490,6 +1855,16 @@ function applyDate(date: string): void {
                                 selectedTransactionEntry.shift ?? 'Tanpa shift'
                             }}
                         </span>
+                    </dd>
+                </div>
+                <div v-if="selectedTransactionEntry.updatedBy">
+                    <dt
+                        class="text-[10px] font-medium tracking-wide text-slate-400 uppercase"
+                    >
+                        Terakhir diperbarui oleh
+                    </dt>
+                    <dd class="mt-1 text-xs font-medium text-slate-700">
+                        {{ selectedTransactionEntry.updatedBy }}
                     </dd>
                 </div>
                 <div class="sm:col-span-2">
@@ -2041,7 +2416,7 @@ function applyDate(date: string): void {
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
                     >
                         <option
-                            v-for="method in paymentMethods"
+                            v-for="method in activeMethods"
                             :key="method"
                             :value="method"
                         >
@@ -2070,7 +2445,7 @@ function applyDate(date: string): void {
                         <a
                             :href="attachment.url || undefined"
                             :data-fancybox="
-                                attachment.isImage ? LIGHTBOX_GROUP : null
+                                attachment.isImage ? LIGHTBOX_STANDALONE : null
                             "
                             class="flex aspect-[4/3] items-center justify-center bg-slate-50"
                         >

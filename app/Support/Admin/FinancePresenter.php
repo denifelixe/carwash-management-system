@@ -66,6 +66,7 @@ class FinancePresenter
     public static function cashEntry(CashEntry $entry): array
     {
         $recordedBy = $entry->getRelation('recordedBy');
+        $updatedBy = $entry->getRelation('updatedBy');
         $attachments = $entry->getRelation('attachments');
         $occurredAt = $entry->occurred_at;
 
@@ -80,6 +81,7 @@ class FinancePresenter
             'method' => $entry->method,
             'channelBreakdown' => [['label' => $entry->method, 'amount' => (int) $entry->amount]],
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : '—',
+            'updatedBy' => $updatedBy instanceof Admin ? $updatedBy->name : null,
             'shift' => $entry->shift_name,
             'source' => 'manual',
             'orderId' => null,

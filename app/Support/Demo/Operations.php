@@ -49,9 +49,20 @@ class Operations
 
         return array_map(function (array $order): array {
             $order = self::withTransactionShifts($order);
+            $crew = $order['crew'] ?? null;
+            $inputBy = $order['inputBy'] ?? 'Yuni Astuti';
+            $handledByManual = $order['handledByManual'] ?? $order['handledBy'] ?? (
+                is_string($crew) && ! in_array($crew, ['Menunggu crew', '—'], true)
+                    ? $crew
+                    : null
+            );
 
             return [
                 ...$order,
+                'inputBy' => $inputBy,
+                'handledByAdminId' => $order['handledByAdminId'] ?? null,
+                'handledByManual' => filled($handledByManual) ? $handledByManual : null,
+                'handledBy' => filled($handledByManual) ? $handledByManual : $inputBy,
                 'serviceItems' => self::serviceItems($order['serviceIds']),
             ];
         }, [...self::bookingOrders(), ...$orders]);
@@ -446,5 +457,16 @@ class Operations
     public static function paymentMethods(): array
     {
         return ['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money'];
+    }
+
+    /**
+     * Outgoing money only splits into till cash and everything else, mirroring
+     * OrderQueries::EXPENSE_METHODS.
+     *
+     * @return list<string>
+     */
+    public static function expenseMethods(): array
+    {
+        return ['Tunai', 'Non-Tunai'];
     }
 }

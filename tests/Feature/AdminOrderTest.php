@@ -8,6 +8,9 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\Service;
 use App\Models\ServiceVariation;
+use App\Support\Admin\OrderQueries;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
 
 test('guests cannot open the live order module', function () {
@@ -15,12 +18,23 @@ test('guests cannot open the live order module', function () {
         ->assertRedirect(route('admin.login'));
 });
 
+test('order handler columns exist', function () {
+    expect(Schema::hasColumns('orders', [
+        'handled_by_admin_id',
+        'handled_by',
+    ]))->toBeTrue();
+});
+
 test('the live order page uses the shared component and database records', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create(['name' => 'Premium Wash', 'variations' => ['Ukuran' => ['Small']]]);
     $variation = $service->serviceVariations()->firstOrFail();
     $variation->update(['variations' => ['Ukuran' => 'Small']]);
-    $order = Order::factory()->create(['number' => 'ORD-TEST-001']);
+    $order = Order::factory()->create([
+        'number' => 'ORD-TEST-001',
+        'created_by_admin_id' => $owner->id,
+        'handled_by' => 'Pak Joko',
+    ]);
     $order->serviceVariations()->attach($variation, [
         'service_name' => $service->name,
         'variations' => json_encode($variation->variations),
@@ -38,6 +52,10 @@ test('the live order page uses the shared component and database records', funct
                 ->component('admin/Orders')
                 ->where('mode', 'live')
                 ->where('orders.0.orderNo', 'ORD-TEST-001')
+                ->where('orders.0.inputBy', $owner->name)
+                ->where('orders.0.handledByAdminId', null)
+                ->where('orders.0.handledByManual', 'Pak Joko')
+                ->where('orders.0.handledBy', 'Pak Joko')
                 ->where('orders.0.serviceIds.0', $service->id)
                 ->where('services.0.variations.Ukuran.0', 'Small')
                 ->where('services.0.serviceVariations.0.variations.Ukuran', 'Small')
@@ -89,6 +107,9 @@ test('an owner can create a member order with database priced services', functio
             'customer_phone' => '',
             'vehicle_name' => '',
             'vehicle_plate' => '',
+            'created_by_admin_id' => 999999,
+            'handled_by_admin_id' => $owner->id,
+            'handled_by' => '  Pak   Joko  ',
             'items' => $variations->map(fn ($variation): array => [
                 'service_variation_id' => $variation->id,
                 'quantity' => 1,
@@ -104,6 +125,9 @@ test('an owner can create a member order with database priced services', functio
         ->member_vehicle_id->toBe($vehicle->id)
         ->customer_name->toBe($member->name)
         ->vehicle_plate->toBe('B1234XYZ')
+        ->created_by_admin_id->toBe($owner->id)
+        ->handled_by_admin_id->toBe($owner->id)
+        ->handled_by->toBe('Pak Joko')
         ->subtotal->toBe(70000)
         ->total->toBe(70000)
         ->status->toBe('menunggu')
@@ -131,7 +155,130 @@ test('an owner can create a non member order without registering a member', func
     expect(Order::query()->latest('id')->firstOrFail())
         ->member_id->toBeNull()
         ->customer_name->toBe('Tamu Walk In')
+        ->created_by_admin_id->toBe($owner->id)
+        ->handled_by->toBeNull()
         ->vehicle_plate->toBe('B9876ABC');
+});
+
+test('order handler prioritizes admin then manual name then the order creator', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $inputAdmin = Admin::factory()->create(['name' => 'Kasir Pembuat']);
+    $order = Order::factory()->create([
+        'status' => 'selesai',
+        'created_by_admin_id' => $inputAdmin->id,
+        'handled_by' => 'Petugas Lama',
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), [
+            'handled_by_admin_id' => $owner->id,
+            'handled_by' => '  Petugas   Serabutan  ',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->handled_by_admin_id->toBe($owner->id)
+        ->handled_by->toBe('Petugas Serabutan');
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', ['date' => $order->service_date->toDateString()]))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('orders.0.handledByAdminId', $owner->id)
+                ->where('orders.0.handledByManual', 'Petugas Serabutan')
+                ->where('orders.0.handledBy', $owner->name),
+        );
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), [
+            'handled_by_admin_id' => null,
+            'handled_by' => '  Petugas   Manual  ',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', ['date' => $order->service_date->toDateString()]))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('orders.0.handledByAdminId', null)
+                ->where('orders.0.handledByManual', 'Petugas Manual')
+                ->where('orders.0.handledBy', 'Petugas Manual'),
+        );
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), [
+            'handled_by_admin_id' => null,
+            'handled_by' => '   ',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->handled_by_admin_id->toBeNull()
+        ->handled_by->toBeNull();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', ['date' => $order->service_date->toDateString()]))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('orders.0.handledByAdminId', null)
+                ->where('orders.0.handledByManual', null)
+                ->where('orders.0.handledBy', 'Kasir Pembuat'),
+        );
+});
+
+test('order handler admin id cannot impersonate another admin', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $otherAdmin = Admin::factory()->create();
+    $order = Order::factory()->create();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), [
+            'handled_by_admin_id' => $otherAdmin->id,
+            'handled_by' => null,
+        ])
+        ->assertSessionHasErrors('handled_by_admin_id');
+
+    expect($order->refresh()->handled_by_admin_id)->toBeNull();
+});
+
+test('order handler is limited to 255 characters', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), [
+            'handled_by' => Str::repeat('a', 256),
+        ])
+        ->assertSessionHasErrors('handled_by');
+
+    expect($order->refresh()->handled_by)->toBeNull();
+});
+
+test('order payload eagerly includes the admin who input it', function () {
+    $admin = Admin::factory()->create([
+        'name' => 'Admin CS',
+        'is_owner' => true,
+    ]);
+    $createdOrder = Order::factory()->create([
+        'created_by_admin_id' => $admin->id,
+        'handled_by' => '',
+    ]);
+
+    $order = OrderQueries::forDate(now()->toDateString())->firstOrFail();
+
+    expect($order->relationLoaded('createdBy'))->toBeTrue()
+        ->and($order->relationLoaded('handledByAdmin'))->toBeTrue()
+        ->and($order->createdBy?->name)->toBe('Admin CS');
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.orders.index', ['date' => $createdOrder->service_date->toDateString()]))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('orders.0.inputBy', 'Admin CS')
+                ->where('orders.0.handledByAdminId', null)
+                ->where('orders.0.handledByManual', null)
+                ->where('orders.0.handledBy', 'Admin CS'),
+        );
 });
 
 test('order cart supports quantity and different variations of the same service using database prices', function () {
@@ -248,6 +395,12 @@ test('order access follows the role permission matrix', function () {
 
     $this->actingAs($admin, 'admin')
         ->post(route('admin.orders.store'), [])
+        ->assertForbidden();
+
+    $order = Order::factory()->create();
+
+    $this->actingAs($admin, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas'])
         ->assertForbidden();
 });
 

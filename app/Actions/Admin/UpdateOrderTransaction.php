@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 
 class UpdateOrderTransaction
 {
+    public function __construct(private UpdateDailyBalance $updateDailyBalance) {}
+
     /**
      * @param  array{amount: int, channels: list<array{label: string, amount: int, reference: string}>}  $payment
      */
@@ -47,11 +49,19 @@ class UpdateOrderTransaction
                 ], fn (mixed $value): bool => $value !== ''),
                 $payment['channels'],
             );
+            $previousAmounts = UpdateDailyBalance::channelAmounts($transaction->channel_breakdown);
+            $correctedAmounts = UpdateDailyBalance::channelAmounts($channels);
 
             $transaction->update([
                 'amount' => $payment['amount'],
                 'channel_breakdown' => $channels,
             ]);
+
+            $this->updateDailyBalance->handle(
+                $transaction->paid_at->toDateString(),
+                cashIncomeDelta: $correctedAmounts['cash'] - $previousAmounts['cash'],
+                nonCashIncomeDelta: $correctedAmounts['nonCash'] - $previousAmounts['nonCash'],
+            );
 
             $paymentMethod = $order->transactions()
                 ->get(['channel_breakdown'])

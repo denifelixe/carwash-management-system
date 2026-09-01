@@ -74,7 +74,7 @@ function paidOrder(Admin $cashier, int $amount = 150000): Order
         'stamps' => 1,
     ]);
 
-    OrderTransaction::factory()->create([
+    OrderTransaction::factory()->withDailyBalance()->create([
         'order_id' => $order->id,
         'recorded_by_admin_id' => $cashier->id,
         'reference' => $order->number.'-TRX-1',

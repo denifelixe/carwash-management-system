@@ -173,8 +173,16 @@ test('finance attachments are client-only and keep the current ledger position',
     expect($financePage)
         ->not->toContain("import { Fancybox } from '@fancyapps/ui';")
         ->toContain("await import('@fancyapps/ui')")
-        ->toContain('Fancybox.bind(`[data-fancybox="${LIGHTBOX_GROUP}"]`, {')
-        ->toContain('Hash: false,');
+        ->toContain('Fancybox.bind(LIGHTBOX_SELECTOR, {')
+        ->toContain('Hash: false,')
+        /*
+         * An empty group value is what keeps each attachment standalone:
+         * naming the group would open every image on the page as a carousel.
+         */
+        ->toContain("const LIGHTBOX_SELECTOR = '[data-fancybox]';")
+        ->toContain("const LIGHTBOX_STANDALONE = '';")
+        ->toContain('attachment.isImage ? LIGHTBOX_STANDALONE : null')
+        ->not->toContain('LIGHTBOX_GROUP');
 });
 
 test('dashboard revenue matches finance money in for the selected day', function () {
@@ -253,6 +261,8 @@ test('finance page exposes and displays related order details', function () {
                 ->component('admin/Finance')
                 ->has('moneyIn', count($todayEntries))
                 ->has('orders', count(Operations::orders()))
+                ->where('dailyBalance', Finance::dailyBalance(Reports::todayDate()))
+                ->where('dailyBalanceHistory', Finance::dailyBalanceHistory(Reports::todayDate()))
                 ->where('moneyIn.0.ref', $todayEntries[0]['ref'])
                 ->where(
                     'moneyIn.'.array_search($posEntry, $todayEntries, true).'.orderNo',
@@ -296,13 +306,38 @@ test('finance overview shows shift tabs stacked summaries and financial channels
         ->toContain('v-if="shift.caption"')
         ->toContain('label="Uang masuk"')
         ->toContain('label="Uang keluar"')
-        ->toContain('label="Sisa saldo"')
+        ->toContain('label="Profit / Keuntungan"')
+        ->toContain('<p class="text-sm text-slate-500">Saldo</p>')
+        ->toContain('<Wallet class="h-5 w-5" />')
+        ->toContain('Tunai')
+        ->toContain('Non-Tunai')
+        ->toContain('formatCurrency(dailyBalance.cash)')
+        ->toContain('formatCurrency(dailyBalance.nonCash)')
+        ->toContain('{{ balanceCaption }}')
+        ->toContain('@click="balanceHistoryOpen = true"')
+        ->toContain('title="Riwayat Saldo Harian"')
+        ->toContain('v-for="day in dailyBalanceHistory"')
+        ->toContain('formatCurrency(day.cashBalance)')
+        ->toContain('formatCurrency(day.nonCashBalance)')
+        ->toContain('Akumulasi sampai tanggal ')
+        ->toContain('formatLongDate(props.filters.date)')
+        ->toContain('sm:grid-cols-2 xl:grid-cols-1')
         ->toContain('Kanal Keuangan')
         ->toContain('Pemasukan')
         ->toContain('Pengeluaran')
         ->toContain('Saldo Kanal')
         ->toContain('const financialChannels = props.paymentMethods.map')
         ->toContain("label: key === 'E-Money' ? 'Emoney' : key")
+        // Cash keeps its own section; the rest share one merged figure.
+        ->toContain("const cashChannelKey = 'Tunai';")
+        ->toContain('const cashChannelRow = computed(')
+        ->toContain('const nonCashChannelRows = computed(')
+        ->toContain('const nonCashTotals = computed(')
+        ->toContain('formatCurrency(cashChannelRow.expense)')
+        ->toContain('v-for="(channel, index) in nonCashChannelRows"')
+        ->toContain(':rowspan="nonCashChannelRows.length"')
+        ->toContain('formatCurrency(nonCashTotals.expense)')
+        ->toContain('formatCurrency(nonCashTotals.balance)')
         ->toContain('xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]')
         ->not->toContain('formatShortCurrency(shift.moneyIn)');
 });
@@ -339,6 +374,30 @@ test('every finance entry exposes an exact channel breakdown', function () {
         ]);
 });
 
+test('an expense only ever names cash or non-cash', function () {
+    expect(Operations::expenseMethods())->toBe(['Tunai', 'Non-Tunai']);
+
+    foreach (Finance::moneyOut() as $entry) {
+        expect($entry['method'])->toBeIn(['Tunai', 'Non-Tunai'])
+            ->and(array_column($entry['channelBreakdown'], 'label'))
+            ->toBe([$entry['method']]);
+    }
+
+    $financePage = file_get_contents(
+        resource_path('js/pages/admin/Finance.vue'),
+    );
+
+    expect($financePage)
+        ->toContain('const activeMethods = computed<string[]>(')
+        ->toContain(
+            "activeLedger.value === 'in' ? props.paymentMethods : props.expenseMethods,",
+        )
+        ->toContain('v-for="method in activeMethods"')
+        ->toContain('method: activeMethods.value[0],')
+        /* The merged cell takes every outgoing that did not leave the till. */
+        ->toContain('const expense = totalOut.value - cashChannelRow.value.expense;');
+});
+
 test('finance transaction list shows amounts for split payment methods', function () {
     $financePage = file_get_contents(
         resource_path('js/pages/admin/Finance.vue'),
@@ -360,7 +419,7 @@ test('finance transaction summary keeps the requested money labels', function ()
     expect($financePage)
         ->toContain('label="Uang masuk"')
         ->toContain('label="Uang keluar"')
-        ->toContain('label="Sisa saldo"')
+        ->toContain('label="Profit / Keuntungan"')
         ->not->toContain('label="Arus kas bersih"');
 });
 
@@ -407,4 +466,29 @@ test('finance transaction toolbar supports selecting multiple category chips', f
         ->toContain(':aria-pressed="isFilterActive(activeFilter, filter)"')
         ->toContain('wideSearch?: boolean')
         ->toContain("wideSearch ? 'w-full sm:w-96' : undefined");
+});
+
+test('the demo balance history accumulates day by day up to the selected date', function () {
+    $history = Finance::dailyBalanceHistory(Reports::todayDate());
+    $dates = array_column($history, 'date');
+    $descending = $dates;
+    rsort($descending);
+
+    expect($history)->not->toBeEmpty()
+        ->and($dates)->toBe($descending)
+        ->and($dates[0])->toBeLessThanOrEqual(Reports::todayDate())
+        ->and(Finance::dailyBalance(Reports::todayDate()))->toBe([
+            'cash' => $history[0]['cashBalance'],
+            'nonCash' => $history[0]['nonCashBalance'],
+        ]);
+
+    $oldest = $history[count($history) - 1];
+
+    expect($oldest['cashBalance'])
+        ->toBe($oldest['cashIncome'] - $oldest['cashExpense'])
+        ->and($oldest['nonCashBalance'])
+        ->toBe($oldest['nonCashIncome'] - $oldest['nonCashExpense']);
+
+    /* An earlier date never carries a later day's movement. */
+    expect(Finance::dailyBalanceHistory($oldest['date']))->toBe([$oldest]);
 });

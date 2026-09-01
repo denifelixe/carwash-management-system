@@ -110,7 +110,13 @@ class MemberQueries
 
         $orders = Order::query()
             ->whereBelongsTo($member)
-            ->with(['serviceVariations:id,service_id', 'transactions.recordedBy:id,name', 'crew:id,name'])
+            ->with([
+                'serviceVariations:id,service_id',
+                'transactions.recordedBy:id,name',
+                'createdBy:id,name',
+                'handledByAdmin:id,name',
+                'crew:id,name',
+            ])
             ->latest('service_date')
             ->latest('id')
             ->limit(50)

@@ -22,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int $amount
  * @property string $method
  * @property int|null $recorded_by_admin_id
+ * @property int|null $updated_by_admin_id
  * @property string|null $shift_name
  * @property Carbon $entry_date
  * @property Carbon $occurred_at
@@ -36,6 +37,7 @@ use Illuminate\Support\Carbon;
     'amount',
     'method',
     'recorded_by_admin_id',
+    'updated_by_admin_id',
     'shift_name',
     'entry_date',
     'occurred_at',
@@ -49,6 +51,12 @@ class CashEntry extends Model
     public function recordedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'recorded_by_admin_id');
+    }
+
+    /** @return BelongsTo<Admin, $this> */
+    public function updatedBy(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'updated_by_admin_id');
     }
 
     /** @return HasMany<CashEntryAttachment, $this> */

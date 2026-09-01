@@ -5,6 +5,7 @@ namespace App\Support\Demo;
 use App\Support\Admin\FinancePresenter;
 use App\Support\Admin\FinanceQueries;
 use App\Support\Admin\FinanceReference;
+use Illuminate\Support\Str;
 
 /**
  * Cash flow management (BR-10): money in, money out, and their categories.
@@ -98,12 +99,12 @@ class Finance
     public static function moneyOut(): array
     {
         return [
-            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 22), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-1', 'nota-supplier-0803.jpg', '412 KB')]],
-            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 21), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'QRIS', 'channelBreakdown' => [['label' => 'QRIS', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-2', 'struk-token-listrik.pdf', '128 KB')]],
+            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 22), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-1', 'nota-supplier-0803.jpg', '412 KB')]],
+            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 21), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-2', 'struk-token-listrik.pdf', '128 KB')]],
             ['id' => 3, 'ref' => self::transactionRef('Gaji & Upah', self::date(1), 20), 'date' => self::date(1), 'time' => '17.40', 'category' => 'Gaji & Upah', 'description' => 'Uang makan crew shift sore (5 orang)', 'amount' => 175000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 175000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'attachments' => [self::attachment('expense-3', 'rekap-uang-makan.jpg', '287 KB')]],
             ['id' => 4, 'ref' => self::transactionRef('Perawatan Alat', self::date(1), 19), 'date' => self::date(1), 'time' => '11.20', 'category' => 'Perawatan Alat', 'description' => 'Servis mesin high pressure Bay 2', 'amount' => 850000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 850000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-4', 'invoice-servis-mesin.pdf', '96 KB')]],
-            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 18), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-5', 'nota-microfiber.jpg', '355 KB')]],
-            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 17), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Debit', 'channelBreakdown' => [['label' => 'Debit', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-6', 'bukti-bayar-ads.png', '204 KB')]],
+            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 18), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-5', 'nota-microfiber.jpg', '355 KB')]],
+            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 17), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-6', 'bukti-bayar-ads.png', '204 KB')]],
         ];
     }
 
@@ -199,6 +200,81 @@ class Finance
             'closingBalance' => 12400000 + $todayIn - $todayOut,
             'pendingPayments' => Operations::outstandingTotal(),
         ];
+    }
+
+    /** @return array{cash: int, nonCash: int} */
+    public static function dailyBalance(string $date): array
+    {
+        $latest = self::dailyBalanceHistory($date, 1)[0] ?? null;
+
+        return [
+            'cash' => $latest['cashBalance'] ?? 0,
+            'nonCash' => $latest['nonCashBalance'] ?? 0,
+        ];
+    }
+
+    /**
+     * The fixtures replayed the way the live daily_balance table stores them:
+     * one snapshot per day that moved money, newest first, each carrying the
+     * accumulated balance it closed on — as FinanceQueries::dailyBalanceHistory.
+     *
+     * @return list<array{date: string, cashIncome: int, cashExpense: int, cashBalance: int, nonCashIncome: int, nonCashExpense: int, nonCashBalance: int}>
+     */
+    public static function dailyBalanceHistory(string $date, int $limit = FinanceQueries::BALANCE_HISTORY_DAYS): array
+    {
+        /** @var array<string, array{cashIncome: int, cashExpense: int, nonCashIncome: int, nonCashExpense: int}> $movements */
+        $movements = [];
+        $emptyDay = [
+            'cashIncome' => 0,
+            'cashExpense' => 0,
+            'nonCashIncome' => 0,
+            'nonCashExpense' => 0,
+        ];
+
+        foreach (self::moneyIn() as $entry) {
+            if ($entry['date'] > $date) {
+                continue;
+            }
+
+            $movements[$entry['date']] ??= $emptyDay;
+
+            foreach ($entry['channelBreakdown'] as $channel) {
+                $key = Str::before($channel['label'], ' · ') === 'Tunai' ? 'cashIncome' : 'nonCashIncome';
+                $movements[$entry['date']][$key] += $channel['amount'];
+            }
+        }
+
+        foreach (self::moneyOut() as $entry) {
+            if ($entry['date'] > $date) {
+                continue;
+            }
+
+            $movements[$entry['date']] ??= $emptyDay;
+            $key = $entry['method'] === 'Tunai' ? 'cashExpense' : 'nonCashExpense';
+            $movements[$entry['date']][$key] += $entry['amount'];
+        }
+
+        ksort($movements);
+
+        $cashBalance = 0;
+        $nonCashBalance = 0;
+        $history = [];
+
+        foreach ($movements as $day => $totals) {
+            $cashBalance += $totals['cashIncome'] - $totals['cashExpense'];
+            $nonCashBalance += $totals['nonCashIncome'] - $totals['nonCashExpense'];
+            $history[] = [
+                'date' => $day,
+                'cashIncome' => $totals['cashIncome'],
+                'cashExpense' => $totals['cashExpense'],
+                'cashBalance' => $cashBalance,
+                'nonCashIncome' => $totals['nonCashIncome'],
+                'nonCashExpense' => $totals['nonCashExpense'],
+                'nonCashBalance' => $nonCashBalance,
+            ];
+        }
+
+        return array_slice(array_reverse($history), 0, $limit);
     }
 
     /**

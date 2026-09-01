@@ -94,16 +94,21 @@ test('the finance recap carries the cards and every channel', function () {
         // The three cards, spelled the way the page spells them.
         ->toContain("label: 'Uang masuk',")
         ->toContain("label: 'Uang keluar',")
-        ->toContain("label: 'Sisa saldo',")
+        ->toContain("label: 'Profit / Keuntungan',")
         ->toContain('formatCurrency(totalIn.value)')
         ->toContain('formatCurrency(totalOut.value)')
-        ->toContain('formatCurrency(remainingBalance.value)')
-        // The channel table, straight off the rows the page renders.
+        ->toContain('formatCurrency(profit.value)')
+        // The channel tables, straight off the rows the page renders.
         ->toContain("heading: 'Kanal Keuangan',")
-        ->toContain('const channels = channelRows.value;')
+        ->toContain('const cash = cashChannelRow.value;')
         ->toContain("'Pemasukan',")
         ->toContain("'Pengeluaran',")
-        ->toContain("'Saldo Kanal',");
+        ->toContain("'Saldo Kanal',")
+        // Non-cash prints as its own section, merged into a footed total.
+        ->toContain("heading: 'Non-Tunai',")
+        ->toContain('const nonCash = nonCashChannelRows.value;')
+        ->toContain('const nonCashTotal = nonCashTotals.value;')
+        ->toContain("label: 'Total Non-Tunai',");
 });
 
 test('the POS recap carries the payment types and channels', function () {

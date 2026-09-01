@@ -157,17 +157,6 @@ class AdminShell
             ? $role->readableModules
             : new Collection;
 
-        if (! $modules->contains('key', 'dashboard')) {
-            $dashboard = AdminModule::query()
-                ->where('key', 'dashboard')
-                ->where('is_active', true)
-                ->first();
-
-            if ($dashboard !== null) {
-                $modules->prepend($dashboard);
-            }
-        }
-
         return $modules->sortBy('sort_order')->values();
     }
 }

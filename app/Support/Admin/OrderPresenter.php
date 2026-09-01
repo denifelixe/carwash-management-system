@@ -53,6 +53,14 @@ class OrderPresenter
     {
         $paidAmount = (int) $order->paid_amount;
         $total = (int) $order->total;
+        $createdBy = $order->relationLoaded('createdBy')
+            ? $order->getRelation('createdBy')
+            : null;
+        $inputBy = $createdBy instanceof Admin ? $createdBy->name : null;
+        $handledByAdmin = $order->relationLoaded('handledByAdmin')
+            ? $order->getRelation('handledByAdmin')
+            : null;
+        $handledByManual = filled($order->handled_by) ? $order->handled_by : null;
         $crew = $order->getRelation('crew');
         $serviceItems = self::serviceItems($order);
 
@@ -79,6 +87,12 @@ class OrderPresenter
             'paymentStatus' => $paidAmount === 0 ? 'belum bayar' : ($paidAmount >= $total ? 'lunas' : 'sebagian'),
             'status' => $order->status,
             'stampsEarned' => (int) $order->stamps_earned,
+            'inputBy' => $inputBy,
+            'handledByAdminId' => $handledByAdmin instanceof Admin ? $handledByAdmin->id : null,
+            'handledByManual' => $handledByManual,
+            'handledBy' => $handledByAdmin instanceof Admin
+                ? $handledByAdmin->name
+                : ($handledByManual ?? $inputBy),
             'crew' => $crew instanceof Admin ? $crew->name : 'Menunggu crew',
             'bay' => $order->bay ?? '—',
             'source' => $order->source,

@@ -8,6 +8,7 @@ use App\Models\ServiceVariation;
 use App\Support\VehiclePlate;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class StoreOrderRequest extends FormRequest
@@ -26,8 +27,13 @@ class StoreOrderRequest extends FormRequest
      */
     protected function prepareForValidation(): void
     {
+        $handledBy = Str::squish((string) $this->input('handled_by'));
+        $handledByAdminId = $this->input('handled_by_admin_id');
+
         $this->merge([
             'vehicle_plate' => VehiclePlate::normalize($this->input('vehicle_plate')),
+            'handled_by' => $handledBy !== '' ? $handledBy : null,
+            'handled_by_admin_id' => filled($handledByAdminId) ? (int) $handledByAdminId : null,
         ]);
     }
 
@@ -65,6 +71,12 @@ class StoreOrderRequest extends FormRequest
                     [Rule::unique(MemberVehicle::class, 'plate')],
                 ),
             ],
+            'handled_by_admin_id' => [
+                'nullable',
+                'integer',
+                Rule::in([(int) $this->user('admin')?->getAuthIdentifier()]),
+            ],
+            'handled_by' => ['nullable', 'string', 'max:255'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.service_variation_id' => [
                 'required',

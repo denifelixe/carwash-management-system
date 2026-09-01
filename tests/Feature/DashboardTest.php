@@ -205,7 +205,7 @@ test('demo and live dashboards share the same inertia component', function () {
         );
 });
 
-test('staff sidebar follows readable modules from its role', function () {
+test('staff sidebar only contains readable modules from its role', function () {
     $role = AdminRole::query()->create([
         'key' => 'test_cashier',
         'name' => 'Kasir',
@@ -224,13 +224,12 @@ test('staff sidebar follows readable modules from its role', function () {
     ]);
 
     $this->actingAs($admin, 'admin')
-        ->get(route('admin.dashboard'))
+        ->get(route('admin.orders.index'))
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->has('modules', 2)
-                ->where('modules.0.key', 'dashboard')
-                ->where('modules.1.key', 'orders')
-                ->where('modules.1.enabled', true)
+                ->has('modules', 1)
+                ->where('modules.0.key', 'orders')
+                ->where('modules.0.enabled', true)
         );
 });

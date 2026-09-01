@@ -6,6 +6,7 @@ use App\Models\AdminRole;
 use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
+use App\Models\DailyBalance;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use Carbon\CarbonImmutable;
@@ -89,11 +90,54 @@ test('an owner sees the live finance ledger with every capability', function () 
                 ->where('capabilities.update', true)
                 ->where('capabilities.delete', true)
                 ->where('cashSummary.openingBalance', 0)
+                ->where('dailyBalance.cash', 0)
+                ->where('dailyBalance.nonCash', 0)
+                ->has('dailyBalanceHistory', 0)
                 ->has('shifts', 2)
                 ->where('shifts.0.id', 'morning')
                 ->where('shifts.0.time', '08.00 - 16.00')
                 ->has('moneyIn', 0)
                 ->has('moneyOut', 0),
+        );
+});
+
+test('the balance card is handed the snapshots behind it, newest first', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    DailyBalance::factory()->create([
+        'date' => '2026-08-29',
+        'cash_income' => 100000,
+        'cash_expense' => 0,
+        'cash_balance' => 100000,
+        'non_cash_income' => 0,
+        'non_cash_expense' => 0,
+        'non_cash_balance' => 0,
+    ]);
+    DailyBalance::factory()->create([
+        'date' => '2026-08-30',
+        'cash_income' => 0,
+        'cash_expense' => 40000,
+        'cash_balance' => 60000,
+        'non_cash_income' => 25000,
+        'non_cash_expense' => 0,
+        'non_cash_balance' => 25000,
+    ]);
+    /* A later day never leaks into the history of the day being read. */
+    DailyBalance::factory()->create(['date' => '2026-08-31']);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->has('dailyBalanceHistory', 2)
+                ->where('dailyBalanceHistory.0.date', '2026-08-30')
+                ->where('dailyBalanceHistory.0.cashExpense', 40000)
+                ->where('dailyBalanceHistory.0.cashBalance', 60000)
+                ->where('dailyBalanceHistory.0.nonCashIncome', 25000)
+                ->where('dailyBalanceHistory.1.date', '2026-08-29')
+                ->where('dailyBalanceHistory.1.cashIncome', 100000)
+                ->where('dailyBalance.cash', 60000)
+                ->where('dailyBalance.nonCash', 25000),
         );
 });
 
@@ -185,7 +229,11 @@ test('an owner can correct the payment channel of a settled POS transaction', fu
     ]])
         ->and($order->refresh()->paid_amount)->toBe(150000)
         ->and($order->payment_method)->toBe('QRIS')
-        ->and($order->status)->toBe('selesai');
+        ->and($order->status)->toBe('selesai')
+        ->and(DailyBalance::query()->sole()->cash_income)->toBe(0)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(0)
+        ->and(DailyBalance::query()->sole()->non_cash_income)->toBe(150000)
+        ->and(DailyBalance::query()->sole()->non_cash_balance)->toBe(150000);
 });
 
 test('an owner can correct a partial POS transaction amount', function () {
@@ -195,7 +243,7 @@ test('an owner can correct a partial POS transaction amount', function () {
         'paid_amount' => 50000,
         'status' => 'proses',
     ]);
-    $transaction = OrderTransaction::factory()->create([
+    $transaction = OrderTransaction::factory()->withDailyBalance()->create([
         'order_id' => $order->id,
         'recorded_by_admin_id' => $owner->id,
         'amount' => 50000,
@@ -210,7 +258,9 @@ test('an owner can correct a partial POS transaction amount', function () {
         ->assertSessionHasNoErrors();
 
     expect($transaction->refresh()->amount)->toBe(75000)
-        ->and($order->refresh()->paid_amount)->toBe(75000);
+        ->and($order->refresh()->paid_amount)->toBe(75000)
+        ->and(DailyBalance::query()->sole()->cash_income)->toBe(75000)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(75000);
 });
 
 test('a correction cannot make a settled order unpaid', function () {
@@ -289,6 +339,56 @@ test('the categories a payment is filed under cannot be written by hand', functi
         ->assertSessionHasErrors('category');
 });
 
+test('an expense is only ever filed as cash or non-cash', function () {
+    Storage::fake(financeDisk());
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('expenseMethods', ['Tunai', 'Non-Tunai'])
+                ->where('paymentMethods', ['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money']),
+        );
+
+    $expense = fn (string $method): array => cashEntryPayload([
+        'direction' => 'out',
+        'category' => 'Pembelian Bahan',
+        'method' => $method,
+        'attachments' => [UploadedFile::fake()->image('nota-supplier.jpg')],
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), $expense('QRIS'))
+        ->assertSessionHasErrors('method');
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), $expense('Non-Tunai'))
+        ->assertSessionHasNoErrors();
+
+    $entry = CashEntry::query()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'category' => 'Pembelian Bahan',
+            'method' => 'Transfer',
+        ]))
+        ->assertSessionHasErrors('method');
+
+    /* Money in still names the channel it arrived on. */
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload(['method' => 'QRIS']))
+        ->assertSessionHasNoErrors();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload(['method' => 'Non-Tunai']))
+        ->assertSessionHasErrors('method');
+
+    expect($entry->refresh()->method)->toBe('Non-Tunai')
+        ->and(DailyBalance::query()->sole()->non_cash_expense)->toBe(360000)
+        ->and(DailyBalance::query()->sole()->cash_expense)->toBe(0);
+});
+
 test('an owner can record money in', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $today = now('Asia/Jakarta')->toDateString();
@@ -303,8 +403,12 @@ test('an owner can record money in', function () {
     expect($entry->direction)->toBe('in')
         ->and($entry->amount)->toBe(360000)
         ->and($entry->recorded_by_admin_id)->toBe($owner->id)
+        ->and($entry->updated_by_admin_id)->toBeNull()
         ->and($entry->attachments()->count())->toBe(0)
-        ->and($entry->reference)->toBe('TRX-PP-'.substr(str_replace('-', '', $today), 2).'-'.str_pad((string) $entry->id, 4, '0', STR_PAD_LEFT));
+        ->and($entry->reference)->toBe('TRX-PP-'.substr(str_replace('-', '', $today), 2).'-'.str_pad((string) $entry->id, 4, '0', STR_PAD_LEFT))
+        ->and(DailyBalance::query()->sole()->cash_income)->toBe(360000)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(360000)
+        ->and(DailyBalance::query()->sole()->non_cash_income)->toBe(0);
 });
 
 test('money out is refused without its supporting document', function () {
@@ -339,7 +443,9 @@ test('money out stores its supporting document', function () {
     expect($attachment->original_name)->toBe('nota-supplier.jpg')
         ->and($attachment->disk)->toBe(financeDisk())
         ->and($attachment->path)->toStartWith($entry->reference.'/')
-        ->and($attachment->path)->toEndWith('.jpg');
+        ->and($attachment->path)->toEndWith('.jpg')
+        ->and(DailyBalance::query()->sole()->cash_expense)->toBe(360000)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(-360000);
     Storage::assertExists($attachment->path);
 
     $this->actingAs($owner, 'admin')
@@ -449,7 +555,7 @@ test('a video attachment is refused', function () {
 
 test('a staff member without read access cannot download an attachment', function () {
     Storage::fake(financeDisk());
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
 
     $this->actingAs(financeStaff(['read' => false]), 'admin')
         ->get(route('admin.finance.attachment', $entry->attachments()->sole()))
@@ -459,7 +565,7 @@ test('a staff member without read access cannot download an attachment', functio
 test('an owner can change a recorded entry and append another document', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $previousAttachment = $entry->attachments()->sole();
     Storage::put($previousAttachment->path, 'nota lama');
 
@@ -468,7 +574,7 @@ test('an owner can change a recorded entry and append another document', functio
             'category' => 'Operasional',
             'description' => 'Token listrik bulanan',
             'amount' => 500000,
-            'method' => 'QRIS',
+            'method' => 'Non-Tunai',
             'attachments' => [UploadedFile::fake()->create('struk-token.pdf', 64, 'application/pdf')],
         ]))
         ->assertSessionHasNoErrors();
@@ -477,18 +583,31 @@ test('an owner can change a recorded entry and append another document', functio
 
     expect($entry->category)->toBe('Operasional')
         ->and($entry->amount)->toBe(500000)
+        ->and($entry->updated_by_admin_id)->toBe($owner->id)
         ->and($entry->attachments()->count())->toBe(2)
-        ->and($entry->attachments()->where('original_name', 'struk-token.pdf')->exists())->toBeTrue();
+        ->and($entry->attachments()->where('original_name', 'struk-token.pdf')->exists())->toBeTrue()
+        ->and(DailyBalance::query()->sole()->cash_expense)->toBe(0)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(0)
+        ->and(DailyBalance::query()->sole()->non_cash_expense)->toBe(500000)
+        ->and(DailyBalance::query()->sole()->non_cash_balance)->toBe(-500000);
     Storage::assertExists($previousAttachment->path);
     Storage::assertExists(
         $entry->attachments()->where('original_name', 'struk-token.pdf')->firstOrFail()->path,
     );
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('moneyOut.0.updatedBy', $owner->name),
+        );
 });
 
 test('an entry keeps the document already on file when none is uploaded', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $attachment = $entry->attachments()->sole();
     Storage::put($attachment->path, 'nota lama');
 
@@ -497,7 +616,7 @@ test('an entry keeps the document already on file when none is uploaded', functi
             'category' => 'Operasional',
             'description' => 'Token listrik bulanan',
             'amount' => 500000,
-            'method' => 'QRIS',
+            'method' => 'Non-Tunai',
         ]))
         ->assertSessionHasNoErrors();
 
@@ -508,7 +627,7 @@ test('an entry keeps the document already on file when none is uploaded', functi
 test('an owner can remove one stored attachment while keeping another', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $removedAttachment = $entry->attachments()->sole();
     $keptAttachment = CashEntryAttachment::factory()->for($entry)->create([
         'path' => $entry->reference.'/invoice.pdf',
@@ -532,7 +651,7 @@ test('an owner can remove one stored attachment while keeping another', function
 test('the last attachment of money out cannot be removed without a replacement', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $attachment = $entry->attachments()->sole();
     Storage::put($attachment->path, 'nota lama');
 
@@ -550,8 +669,8 @@ test('the last attachment of money out cannot be removed without a replacement',
 test('an attachment from another entry cannot be removed', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
-    $otherEntry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
+    $otherEntry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $otherAttachment = $otherEntry->attachments()->sole();
 
     $this->actingAs($owner, 'admin')
@@ -567,7 +686,7 @@ test('an attachment from another entry cannot be removed', function () {
 test('an owner can delete an entry along with its document', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
-    $entry = CashEntry::factory()->moneyOut()->create();
+    $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
     $attachment = $entry->attachments()->sole();
     Storage::put($attachment->path, 'nota lama');
 
@@ -577,11 +696,13 @@ test('an owner can delete an entry along with its document', function () {
 
     expect(CashEntry::query()->count())->toBe(0);
     expect(CashEntryAttachment::query()->count())->toBe(0);
+    expect(DailyBalance::query()->sole()->cash_expense)->toBe(0)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(0);
     Storage::assertMissing($attachment->path);
 });
 
 test('a staff member without update or delete access cannot change an entry', function () {
-    $entry = CashEntry::factory()->create();
+    $entry = CashEntry::factory()->withDailyBalance()->create();
     $staff = financeStaff(['read' => true, 'create' => true]);
 
     $this->actingAs($staff, 'admin')

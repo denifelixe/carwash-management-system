@@ -27,7 +27,10 @@ class FinanceController extends AdminController
             'incomeCategories' => Finance::incomeCategories(),
             'expenseCategories' => Finance::expenseCategories(),
             'cashSummary' => Finance::summary($date),
+            'dailyBalance' => Finance::dailyBalance($date),
+            'dailyBalanceHistory' => Finance::dailyBalanceHistory($date),
             'paymentMethods' => Operations::paymentMethods(),
+            'expenseMethods' => Operations::expenseMethods(),
             'shifts' => Brand::shifts(),
             'orders' => Operations::orders(),
             'capabilities' => [

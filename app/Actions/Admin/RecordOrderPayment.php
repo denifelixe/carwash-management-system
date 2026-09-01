@@ -18,7 +18,10 @@ use Illuminate\Support\Facades\DB;
  */
 class RecordOrderPayment
 {
-    public function __construct(private TransactionShiftResolver $transactionShiftResolver) {}
+    public function __construct(
+        private TransactionShiftResolver $transactionShiftResolver,
+        private UpdateDailyBalance $updateDailyBalance,
+    ) {}
 
     /**
      * @param  array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null}  $payment
@@ -72,6 +75,13 @@ class RecordOrderPayment
                 /* The outlet's own clock, which is what the column holds. */
                 'paid_at' => $paidAt,
             ]);
+
+            $channelAmounts = UpdateDailyBalance::channelAmounts($channels);
+            $this->updateDailyBalance->handle(
+                $paidAt->toDateString(),
+                cashIncomeDelta: $channelAmounts['cash'],
+                nonCashIncomeDelta: $channelAmounts['nonCash'],
+            );
 
             $order->update([
                 'discount' => (int) $order->discount + $discount,

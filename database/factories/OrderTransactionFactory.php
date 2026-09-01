@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Actions\Admin\UpdateDailyBalance;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -26,5 +27,19 @@ class OrderTransactionFactory extends Factory
             'channel_breakdown' => [['label' => 'Tunai', 'amount' => 20000]],
             'paid_at' => now(),
         ];
+    }
+
+    /** Include the derived daily snapshot when a test represents existing production data. */
+    public function withDailyBalance(): static
+    {
+        return $this->afterCreating(function (OrderTransaction $transaction): void {
+            $amounts = UpdateDailyBalance::channelAmounts($transaction->channel_breakdown);
+
+            app(UpdateDailyBalance::class)->handle(
+                $transaction->paid_at->toDateString(),
+                cashIncomeDelta: $amounts['cash'],
+                nonCashIncomeDelta: $amounts['nonCash'],
+            );
+        });
     }
 }

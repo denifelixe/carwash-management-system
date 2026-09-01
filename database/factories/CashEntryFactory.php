@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Actions\Admin\UpdateDailyBalance;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -48,5 +49,21 @@ class CashEntryFactory extends Factory
                     'path' => $entry->reference.'/nota-supplier.jpg',
                 ]);
             });
+    }
+
+    /** Include the derived daily snapshot when a test represents existing production data. */
+    public function withDailyBalance(): static
+    {
+        return $this->afterCreating(function (CashEntry $entry): void {
+            $amounts = UpdateDailyBalance::methodAmounts($entry->method, (int) $entry->amount);
+
+            app(UpdateDailyBalance::class)->handle(
+                $entry->entry_date->toDateString(),
+                cashIncomeDelta: $entry->direction === 'in' ? $amounts['cash'] : 0,
+                cashExpenseDelta: $entry->direction === 'out' ? $amounts['cash'] : 0,
+                nonCashIncomeDelta: $entry->direction === 'in' ? $amounts['nonCash'] : 0,
+                nonCashExpenseDelta: $entry->direction === 'out' ? $amounts['nonCash'] : 0,
+            );
+        });
     }
 }

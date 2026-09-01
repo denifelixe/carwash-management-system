@@ -270,6 +270,10 @@ export interface CarwashOrder {
     paymentStatus: CarwashPaymentStatus;
     status: string;
     stampsEarned: number;
+    inputBy: string | null;
+    handledByAdminId: number | null;
+    handledByManual: string | null;
+    handledBy: string | null;
     crew: string;
     bay: string;
     source: string;
@@ -331,6 +335,8 @@ export interface CarwashMoneyEntry {
     method: string;
     channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
+    /** The admin who most recently changed a manual cash entry. */
+    updatedBy?: string | null;
     /** The shift resolved and stamped when the entry was created. */
     shift?: string | null;
     source?: string;
@@ -359,6 +365,17 @@ export interface CarwashCashSummary {
     remainingBalance: number;
     closingBalance: number;
     pendingPayments: number;
+}
+
+/** One day's movement and the accumulated balance it closed on. */
+export interface CarwashDailyBalance {
+    date: string;
+    cashIncome: number;
+    cashExpense: number;
+    cashBalance: number;
+    nonCashIncome: number;
+    nonCashExpense: number;
+    nonCashBalance: number;
 }
 
 export interface CarwashOrderSummary {

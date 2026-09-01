@@ -12,6 +12,7 @@ class ClearOperationalData
      * @var list<string>
      */
     private const TABLES = [
+        'daily_balance',
         'cash_entry_attachments',
         'cash_entries',
         'order_transactions',

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\UpdateDailyBalance;
 use App\Actions\Admin\UpdateOrderTransaction;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreCashEntryRequest;
@@ -64,7 +65,10 @@ class FinanceController extends Controller
             'incomeCategories' => FinanceCategories::recordable('in'),
             'expenseCategories' => FinanceCategories::recordable('out'),
             'cashSummary' => FinanceQueries::cashSummary($moneyIn, $moneyOut),
+            'dailyBalance' => FinanceQueries::dailyBalance($selectedDate),
+            'dailyBalanceHistory' => FinanceQueries::dailyBalanceHistory($selectedDate),
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
+            'expenseMethods' => OrderQueries::EXPENSE_METHODS,
             'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $selectedDate),
             'orders' => FinanceQueries::ordersForDate($selectedDate)
                 ->map(fn (Order $order): array => OrderPresenter::order($order))
@@ -80,6 +84,7 @@ class FinanceController extends Controller
     public function store(
         StoreCashEntryRequest $request,
         TransactionShiftResolver $transactionShiftResolver,
+        UpdateDailyBalance $updateDailyBalance,
     ): RedirectResponse {
         $data = $request->validated();
 
@@ -107,6 +112,7 @@ class FinanceController extends Controller
                 $occurredAt,
                 $shift,
                 $attachments,
+                $updateDailyBalance,
                 &$storedFiles,
             ): void {
                 $entry = new CashEntry([
@@ -127,6 +133,22 @@ class FinanceController extends Controller
 
                 $entry->reference = FinanceReference::make($data['category'], $entryDate, $entry->id);
                 $entry->save();
+                $amounts = UpdateDailyBalance::methodAmounts($data['method'], $data['amount']);
+                $updateDailyBalance->handle(
+                    $entryDate,
+                    cashIncomeDelta: $data['direction'] === 'in'
+                        ? $amounts['cash']
+                        : 0,
+                    cashExpenseDelta: $data['direction'] === 'out'
+                        ? $amounts['cash']
+                        : 0,
+                    nonCashIncomeDelta: $data['direction'] === 'in'
+                        ? $amounts['nonCash']
+                        : 0,
+                    nonCashExpenseDelta: $data['direction'] === 'out'
+                        ? $amounts['nonCash']
+                        : 0,
+                );
                 $this->storeAttachments($entry, $attachments, $storedFiles);
             });
         } catch (Throwable $exception) {
@@ -139,9 +161,14 @@ class FinanceController extends Controller
             ->with('success', 'Catatan keuangan berhasil disimpan.');
     }
 
-    public function update(UpdateCashEntryRequest $request, CashEntry $cashEntry): RedirectResponse
-    {
+    public function update(
+        UpdateCashEntryRequest $request,
+        CashEntry $cashEntry,
+        UpdateDailyBalance $updateDailyBalance,
+    ): RedirectResponse {
         $data = $request->validated();
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
         /** @var list<UploadedFile> $attachments */
         $attachments = $request->file('attachments', []);
         /** @var list<int> $removedAttachmentIds */
@@ -159,22 +186,50 @@ class FinanceController extends Controller
         try {
             DB::transaction(function () use (
                 $data,
+                $admin,
                 $cashEntry,
                 $attachments,
                 $removedAttachmentIds,
+                $updateDailyBalance,
                 &$storedFiles,
             ): void {
+                $previousAmounts = UpdateDailyBalance::methodAmounts(
+                    $cashEntry->method,
+                    (int) $cashEntry->amount,
+                );
+                $correctedAmounts = UpdateDailyBalance::methodAmounts(
+                    $data['method'],
+                    (int) $data['amount'],
+                );
+
                 $cashEntry->fill([
                     'category' => $data['category'],
                     'description' => $data['description'],
                     'amount' => $data['amount'],
                     'method' => $data['method'],
+                    'updated_by_admin_id' => $admin->getKey(),
                     'reference' => FinanceReference::make(
                         $data['category'],
                         $cashEntry->entry_date->toDateString(),
                         $cashEntry->id,
                     ),
                 ])->save();
+
+                $updateDailyBalance->handle(
+                    $cashEntry->entry_date->toDateString(),
+                    cashIncomeDelta: $cashEntry->direction === 'in'
+                        ? $correctedAmounts['cash'] - $previousAmounts['cash']
+                        : 0,
+                    cashExpenseDelta: $cashEntry->direction === 'out'
+                        ? $correctedAmounts['cash'] - $previousAmounts['cash']
+                        : 0,
+                    nonCashIncomeDelta: $cashEntry->direction === 'in'
+                        ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
+                        : 0,
+                    nonCashExpenseDelta: $cashEntry->direction === 'out'
+                        ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
+                        : 0,
+                );
 
                 $cashEntry->attachments()->whereKey($removedAttachmentIds)->delete();
                 $this->storeAttachments($cashEntry, $attachments, $storedFiles);
@@ -205,8 +260,10 @@ class FinanceController extends Controller
             ->with('success', 'Transaksi pembayaran berhasil diperbarui.');
     }
 
-    public function destroy(CashEntry $cashEntry): RedirectResponse
-    {
+    public function destroy(
+        CashEntry $cashEntry,
+        UpdateDailyBalance $updateDailyBalance,
+    ): RedirectResponse {
         Gate::authorize('admin.finance.delete');
 
         $entryDate = $cashEntry->entry_date->toDateString();
@@ -218,7 +275,18 @@ class FinanceController extends Controller
             ])
             ->all();
 
-        $cashEntry->delete();
+        DB::transaction(function () use ($cashEntry, $updateDailyBalance): void {
+            $amounts = UpdateDailyBalance::methodAmounts($cashEntry->method, (int) $cashEntry->amount);
+
+            $updateDailyBalance->handle(
+                $cashEntry->entry_date->toDateString(),
+                cashIncomeDelta: $cashEntry->direction === 'in' ? -$amounts['cash'] : 0,
+                cashExpenseDelta: $cashEntry->direction === 'out' ? -$amounts['cash'] : 0,
+                nonCashIncomeDelta: $cashEntry->direction === 'in' ? -$amounts['nonCash'] : 0,
+                nonCashExpenseDelta: $cashEntry->direction === 'out' ? -$amounts['nonCash'] : 0,
+            );
+            $cashEntry->delete();
+        });
         $this->deleteStoredFiles($storedFiles);
 
         return to_route('admin.finance.index', ['date' => $entryDate])

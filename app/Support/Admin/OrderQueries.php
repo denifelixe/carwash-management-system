@@ -22,6 +22,30 @@ class OrderQueries
     public const PAYMENT_METHODS = ['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money'];
 
     /**
+     * What a hand-written expense may be paid with. Outgoing money is only ever
+     * asked whether it left the till or not — the same split the daily balance
+     * keeps — so naming a card network on the way out buys nothing.
+     *
+     * @var list<string>
+     */
+    public const EXPENSE_METHODS = ['Tunai', 'Non-Tunai'];
+
+    /**
+     * The methods a hand-written entry of this direction may name, the way
+     * FinanceCategories::recordable answers for its categories.
+     *
+     * @return list<string>
+     */
+    public static function recordableMethods(mixed $direction): array
+    {
+        if ($direction === 'out') {
+            return self::EXPENSE_METHODS;
+        }
+
+        return self::PAYMENT_METHODS;
+    }
+
+    /**
      * Every order of one service day, with the relations the payload reads.
      *
      * @return Collection<int, Order>
@@ -181,6 +205,8 @@ class OrderQueries
             'serviceVariations:id,service_id',
             'serviceVariations.service:id,name',
             'transactions.recordedBy:id,name',
+            'createdBy:id,name',
+            'handledByAdmin:id,name',
             'crew:id,name',
         ]);
     }

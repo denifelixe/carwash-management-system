@@ -4,6 +4,7 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
+use App\Models\DailyBalance;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -95,6 +96,7 @@ test('a partial payment leaves the order open and records its channels', functio
         ->assertSessionHasNoErrors();
 
     $transaction = OrderTransaction::query()->latest('id')->firstOrFail();
+    $dailyBalance = DailyBalance::query()->sole();
 
     expect($order->refresh())
         ->paid_amount->toBe(40000)
@@ -111,7 +113,11 @@ test('a partial payment leaves the order open and records its channels', functio
         ->and($transaction->channel_breakdown)->toBe([
             ['label' => 'Tunai', 'amount' => 25000],
             ['label' => 'Debit · BCA', 'amount' => 15000, 'reference' => '99881'],
-        ]);
+        ])
+        ->and($dailyBalance->cash_income)->toBe(25000)
+        ->and($dailyBalance->cash_balance)->toBe(25000)
+        ->and($dailyBalance->non_cash_income)->toBe(15000)
+        ->and($dailyBalance->non_cash_balance)->toBe(15000);
 });
 
 test('the cashier page exposes the current overlap status and selectable windows', function () {

@@ -35,7 +35,7 @@ class UpdateCashEntryRequest extends FormRequest
             ],
             'description' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
-            'method' => ['required', Rule::in(OrderQueries::PAYMENT_METHODS)],
+            'method' => ['required', Rule::in(OrderQueries::recordableMethods($this->entry()->direction))],
             'attachments' => [
                 'nullable',
                 'array',

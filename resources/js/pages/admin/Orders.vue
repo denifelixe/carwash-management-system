@@ -8,17 +8,19 @@ import {
     CircleCheck,
     ClipboardList,
     Hourglass,
+    Pencil,
     Plus,
     Search,
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
 import {
     index as indexOrder,
     store as storeOrder,
+    updateHandler as updateOrderHandler,
     updateStatus as updateOrderStatus,
 } from '@/actions/App/Http/Controllers/Admin/OrderController';
 import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
@@ -46,6 +48,7 @@ import type {
     CarwashCrewMember,
     CarwashCustomer,
     CarwashOrder,
+    CarwashPersona,
     CarwashService,
     CarwashServiceItem,
     CarwashVehicle,
@@ -54,6 +57,7 @@ import type {
 const props = defineProps<{
     mode: 'demo' | 'live';
     brand: CarwashBrand;
+    persona: CarwashPersona;
     orders: CarwashOrder[];
     filters: CarwashDateFilter;
     orderStatuses: string[];
@@ -142,6 +146,7 @@ const search = ref<string>('');
 const statusFilter = ref<string>('menunggu');
 const detailOrderId = ref<number | null>(null);
 const isCreateOpen = ref<boolean>(false);
+const isStaffOpen = ref<boolean>(false);
 const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
@@ -153,8 +158,30 @@ const draft = ref({
     customerPhone: '',
     vehicle: '',
     plate: '',
+    handledByAdminId: null as number | null,
+    handledBy: '',
     serviceItems: [] as CarwashCartItem[],
 });
+
+/**
+ * What the folded Petugas row says, so the crew can skip opening it. A blank
+ * handler means the order is credited to whoever is entering it, so only a
+ * genuine hand-off is worth the second name.
+ */
+const staffSummary = computed<string>(() => {
+    const handler = draft.value.handledBy.trim();
+
+    return handler === '' || handler === props.persona.name
+        ? props.persona.name
+        : `${props.persona.name} → ${handler}`;
+});
+
+const createHandlerInput = ref<HTMLInputElement | null>(null);
+
+/** Claiming the order hides the free-text field, so the two never disagree. */
+const isCreateHandlerSelf = computed<boolean>(
+    () => draft.value.handledByAdminId === props.persona.id,
+);
 
 const bookingStatusLabel = 'Booking - Belum Datang';
 
@@ -252,14 +279,28 @@ const isDetailReadOnly = computed<boolean>(
 
 /** The dropdown edits a draft so nothing moves before the user saves. */
 const statusDraft = ref<string>('');
+const handlerDraft = ref<string>('');
+const handlerAdminIdDraft = ref<number | null>(null);
+const detailHandlerInput = ref<HTMLInputElement | null>(null);
+
+const isDetailHandlerSelf = computed<boolean>(
+    () => handlerAdminIdDraft.value === props.persona.id,
+);
 
 /** The row whose inline status is in flight, so only that chip greys out. */
 const pendingStatusOrderId = ref<number | null>(null);
+const handlerForm = useForm({
+    handled_by_admin_id: null as number | null,
+    handled_by: null as string | null,
+});
 
 watch(
     detailOrder,
     (order) => {
         statusDraft.value = order?.status ?? '';
+        handlerAdminIdDraft.value = order?.handledByAdminId ?? null;
+        handlerDraft.value = order?.handledByManual ?? '';
+        handlerForm.clearErrors();
     },
     { immediate: true },
 );
@@ -268,6 +309,14 @@ const isStatusDirty = computed<boolean>(
     () =>
         detailOrder.value !== null &&
         statusDraft.value !== detailOrder.value.status,
+);
+
+const isHandlerDirty = computed<boolean>(
+    () =>
+        detailOrder.value !== null &&
+        (handlerAdminIdDraft.value !== detailOrder.value.handledByAdminId ||
+            handlerDraft.value.trim() !==
+                (detailOrder.value.handledByManual ?? '')),
 );
 
 /** Everything still on the floor: waiting, being washed, or at the cashier. */
@@ -508,6 +557,56 @@ function saveStatus(): void {
     });
 }
 
+function saveHandler(): void {
+    if (detailOrder.value === null) {
+        return;
+    }
+
+    const handledBy = handlerDraft.value.trim() || null;
+
+    if (props.mode === 'demo') {
+        detailOrder.value.handledByAdminId = handlerAdminIdDraft.value;
+        detailOrder.value.handledByManual = handledBy;
+        detailOrder.value.handledBy =
+            handlerAdminIdDraft.value === props.persona.id
+                ? props.persona.name
+                : (handledBy ?? detailOrder.value.inputBy);
+        handlerDraft.value = handledBy ?? '';
+
+        return;
+    }
+
+    handlerForm.handled_by_admin_id = handlerAdminIdDraft.value;
+    handlerForm.handled_by = handledBy;
+    handlerForm.submit(updateOrderHandler(detailOrder.value.id), {
+        preserveScroll: true,
+    });
+}
+
+function toggleCreateHandlerAdmin(): void {
+    if (isCreateHandlerSelf.value) {
+        draft.value.handledByAdminId = null;
+        void nextTick(() => createHandlerInput.value?.focus());
+
+        return;
+    }
+
+    draft.value.handledByAdminId = props.persona.id;
+    draft.value.handledBy = '';
+}
+
+function toggleDetailHandlerAdmin(): void {
+    if (isDetailHandlerSelf.value) {
+        handlerAdminIdDraft.value = null;
+        void nextTick(() => detailHandlerInput.value?.focus());
+
+        return;
+    }
+
+    handlerAdminIdDraft.value = props.persona.id;
+    handlerDraft.value = '';
+}
+
 function pickCustomer(option: CustomerOption): void {
     selectedCustomerOption.value = option;
     draft.value.customerId = option.customer.id;
@@ -548,11 +647,14 @@ function resetDraft(): void {
         customerPhone: '',
         vehicle: '',
         plate: '',
+        handledByAdminId: null,
+        handledBy: '',
         serviceItems: [],
     };
     customerQuery.value = '';
     customerMode.value = 'existing';
     selectedCustomerOption.value = null;
+    isStaffOpen.value = false;
 }
 
 function createOrder(): void {
@@ -571,6 +673,8 @@ function createOrder(): void {
         orderForm.customer_phone = draft.value.customerPhone.trim();
         orderForm.vehicle_name = draft.value.vehicle.trim();
         orderForm.vehicle_plate = draft.value.plate.trim();
+        orderForm.handled_by_admin_id = draft.value.handledByAdminId;
+        orderForm.handled_by = draft.value.handledBy.trim() || null;
         orderForm.items = draft.value.serviceItems.map((item) => ({
             service_variation_id: item.serviceVariationId,
             quantity: item.quantity,
@@ -646,6 +750,13 @@ function createOrder(): void {
         paymentStatus: 'belum bayar',
         status: 'menunggu',
         stampsEarned: draftStamps.value,
+        inputBy: props.persona.name,
+        handledByAdminId: draft.value.handledByAdminId,
+        handledByManual: draft.value.handledBy.trim() || null,
+        handledBy:
+            draft.value.handledByAdminId === props.persona.id
+                ? props.persona.name
+                : draft.value.handledBy.trim() || props.persona.name,
         crew: 'Menunggu crew',
         bay: '—',
         source: 'walk-in',
@@ -674,6 +785,8 @@ const orderForm = useForm({
     customer_phone: '',
     vehicle_name: '',
     vehicle_plate: '',
+    handled_by_admin_id: null as number | null,
+    handled_by: null as string | null,
     items: [] as { service_variation_id: number; quantity: number }[],
 });
 
@@ -757,7 +870,7 @@ const statusForm = useForm({ status: '' });
                     whole row opens the detail. The wide layout keeps its own
                     Customer column and Detail button.
                 -->
-                <table class="w-full min-w-[340px] text-sm lg:min-w-[900px]">
+                <table class="w-full min-w-[340px] text-sm lg:min-w-[1100px]">
                     <thead>
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
@@ -767,6 +880,12 @@ const statusForm = useForm({ status: '' });
                                 Customer
                             </th>
                             <th class="px-5 py-3">Layanan</th>
+                            <th class="hidden px-5 py-3 lg:table-cell">
+                                Diinput oleh
+                            </th>
+                            <th class="hidden px-5 py-3 lg:table-cell">
+                                Dihandle oleh
+                            </th>
                             <th class="px-5 py-3">Status</th>
                             <th class="hidden px-5 py-3 lg:table-cell"></th>
                         </tr>
@@ -818,6 +937,16 @@ const statusForm = useForm({ status: '' });
                                 class="px-5 py-3.5 text-slate-600 lg:max-w-[200px]"
                             >
                                 {{ order.items }}
+                            </td>
+                            <td
+                                class="hidden px-5 py-3.5 text-slate-600 lg:table-cell"
+                            >
+                                {{ order.inputBy ?? '—' }}
+                            </td>
+                            <td
+                                class="hidden px-5 py-3.5 text-slate-600 lg:table-cell"
+                            >
+                                {{ order.handledBy ?? '—' }}
                             </td>
                             <!-- Picking a stage must not also open the row. -->
                             <td class="px-5 py-3.5" @click.stop>
@@ -953,6 +1082,101 @@ const statusForm = useForm({ status: '' });
                     </p>
                 </div>
             </div>
+
+            <section class="rounded-xl border border-slate-200 p-3">
+                <!--
+                    The handler row carries a field plus up to three buttons, so
+                    it takes the panel's full width; sharing a two-column grid
+                    squeezed the field down to a couple of characters.
+                -->
+                <dl class="space-y-3">
+                    <div class="flex items-baseline justify-between gap-3">
+                        <dt class="text-[11px] text-slate-500">Diinput oleh</dt>
+                        <dd class="text-sm font-medium text-slate-800">
+                            {{ detailOrder.inputBy ?? '—' }}
+                        </dd>
+                    </div>
+                    <div class="border-t border-slate-100 pt-3">
+                        <dt class="text-[11px] text-slate-500">
+                            Dihandle oleh
+                        </dt>
+                        <dd v-if="capabilities.update" class="mt-1">
+                            <div class="flex gap-2">
+                                <input
+                                    v-if="!isDetailHandlerSelf"
+                                    ref="detailHandlerInput"
+                                    v-model="handlerDraft"
+                                    type="text"
+                                    maxlength="255"
+                                    aria-label="Dihandle oleh"
+                                    placeholder="Nama petugas"
+                                    class="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 focus:border-cyan-400 focus:outline-none"
+                                    @input="handlerAdminIdDraft = null"
+                                    @keydown.enter.prevent="saveHandler"
+                                />
+                                <button
+                                    type="button"
+                                    :aria-pressed="isDetailHandlerSelf"
+                                    :class="
+                                        isDetailHandlerSelf
+                                            ? 'flex-1 border-cyan-600 bg-cyan-50 text-cyan-700'
+                                            : 'shrink-0 border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                    "
+                                    class="rounded-xl border px-3 py-2 text-xs font-semibold transition"
+                                    @click="toggleDetailHandlerAdmin"
+                                >
+                                    Saya
+                                </button>
+                                <button
+                                    v-if="isDetailHandlerSelf"
+                                    type="button"
+                                    aria-label="Isi nama petugas lain"
+                                    title="Isi nama petugas lain"
+                                    class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                    @click="toggleDetailHandlerAdmin"
+                                >
+                                    <Pencil class="h-4 w-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    :disabled="
+                                        !isHandlerDirty ||
+                                        handlerForm.processing
+                                    "
+                                    class="shrink-0 rounded-xl bg-cyan-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-cyan-700 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                                    @click="saveHandler"
+                                >
+                                    Simpan
+                                </button>
+                            </div>
+                            <p
+                                v-if="
+                                    handlerForm.errors.handled_by ||
+                                    handlerForm.errors.handled_by_admin_id
+                                "
+                                class="mt-1 text-[11px] text-rose-600"
+                            >
+                                {{
+                                    handlerForm.errors.handled_by ??
+                                    handlerForm.errors.handled_by_admin_id
+                                }}
+                            </p>
+                            <p
+                                v-if="!isDetailHandlerSelf"
+                                class="mt-1 text-[11px] text-slate-400"
+                            >
+                                Jika kosong, otomatis mengikuti Diinput oleh.
+                            </p>
+                        </dd>
+                        <dd
+                            v-else
+                            class="mt-1 text-sm font-medium text-slate-800"
+                        >
+                            {{ detailOrder.handledBy ?? '—' }}
+                        </dd>
+                    </div>
+                </dl>
+            </section>
 
             <div>
                 <p class="text-xs font-medium text-slate-500">
@@ -1344,6 +1568,109 @@ const statusForm = useForm({ status: '' });
                         Data ini hanya dicatat pada order dan tidak membuat
                         member baru.
                     </p>
+                </div>
+            </div>
+
+            <!--
+                Petugas is right by default on most orders, so it collapses to a
+                single label-and-name row instead of eating two field rows.
+            -->
+            <div class="rounded-xl border border-slate-200">
+                <button
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-left"
+                    :aria-expanded="isStaffOpen"
+                    aria-controls="order-staff-fields"
+                    @click="isStaffOpen = !isStaffOpen"
+                >
+                    <span
+                        class="shrink-0 text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                    >
+                        Petugas
+                    </span>
+                    <span
+                        class="min-w-0 flex-1 truncate text-xs text-slate-600"
+                    >
+                        {{ staffSummary }}
+                    </span>
+                    <ChevronDown
+                        class="h-4 w-4 shrink-0 text-slate-400 transition-transform"
+                        :class="isStaffOpen ? 'rotate-180' : ''"
+                    />
+                </button>
+                <div
+                    v-show="isStaffOpen"
+                    id="order-staff-fields"
+                    class="grid gap-3 border-t border-slate-100 p-3 sm:grid-cols-2"
+                >
+                    <div class="space-y-1.5">
+                        <label class="block text-xs font-medium text-slate-600">
+                            Diinput oleh
+                        </label>
+                        <div
+                            class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-600"
+                        >
+                            {{ persona.name }}
+                        </div>
+                    </div>
+                    <div class="space-y-1.5">
+                        <label
+                            for="order-handled-by"
+                            class="block text-xs font-medium text-slate-600"
+                        >
+                            Dihandle oleh
+                            <span class="font-normal text-slate-400"
+                                >(opsional)</span
+                            >
+                        </label>
+                        <!--
+                            Claiming the order and naming someone else are the
+                            two answers here, so 'Saya' takes the whole row and
+                            the pencil beside it hands the free-text field back.
+                        -->
+                        <div class="flex gap-2">
+                            <input
+                                v-if="!isCreateHandlerSelf"
+                                id="order-handled-by"
+                                ref="createHandlerInput"
+                                v-model="draft.handledBy"
+                                type="text"
+                                maxlength="255"
+                                placeholder="Nama petugas"
+                                class="min-w-0 flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                @input="draft.handledByAdminId = null"
+                            />
+                            <button
+                                type="button"
+                                :aria-pressed="isCreateHandlerSelf"
+                                :class="
+                                    isCreateHandlerSelf
+                                        ? 'flex-1 border-cyan-600 bg-cyan-50 text-cyan-700'
+                                        : 'shrink-0 border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                                "
+                                class="rounded-xl border px-3 py-2.5 text-xs font-semibold transition"
+                                @click="toggleCreateHandlerAdmin"
+                            >
+                                Saya
+                            </button>
+                            <button
+                                v-if="isCreateHandlerSelf"
+                                type="button"
+                                aria-label="Isi nama petugas lain"
+                                title="Isi nama petugas lain"
+                                class="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                                @click="toggleCreateHandlerAdmin"
+                            >
+                                <Pencil class="h-4 w-4" />
+                            </button>
+                        </div>
+                        <p
+                            v-if="!isCreateHandlerSelf"
+                            class="text-[11px] text-slate-400"
+                        >
+                            Jika kosong, otomatis mengikuti Diinput oleh.
+                        </p>
+                    </div>
                 </div>
             </div>
 
