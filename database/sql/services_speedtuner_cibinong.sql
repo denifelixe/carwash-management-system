@@ -19,7 +19,8 @@ CREATE TEMPORARY TABLE service_catalog_import (
     is_active TINYINT(1) NOT NULL,
     created_at DATETIME NOT NULL,
     updated_at DATETIME NOT NULL
-);
+) DEFAULT CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
 
 INSERT INTO service_catalog_import
     (name, category, price, stamps, icon, description, is_popular, is_active, created_at, updated_at)
@@ -113,7 +114,10 @@ VALUES
 ('Complete Detailing Motor - Extra Large', 'Detailing Motor', 1000000, 0, '🛵', 'Complete detailing motor termasuk wash dan multi step polish. Ukuran extra large.', 0, 1, NOW(), NOW());
 
 DROP TEMPORARY TABLE IF EXISTS service_catalog_normalized;
-CREATE TEMPORARY TABLE service_catalog_normalized AS
+CREATE TEMPORARY TABLE service_catalog_normalized
+DEFAULT CHARACTER SET utf8mb4
+COLLATE utf8mb4_unicode_ci
+AS
 SELECT
     source_order,
     CASE
@@ -197,7 +201,8 @@ UPDATE service_variations AS variation
 INNER JOIN services AS service
     ON service.id = variation.service_id
 INNER JOIN service_catalog_normalized AS catalog
-    ON catalog.logical_name COLLATE utf8mb4_unicode_ci = service.name
+    ON CONVERT(catalog.logical_name USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        = CONVERT(service.name USING utf8mb4) COLLATE utf8mb4_unicode_ci
     AND (
         (catalog.size_value IS NULL AND variation.variations IS NULL)
         OR JSON_UNQUOTE(JSON_EXTRACT(variation.variations, '$.Ukuran')) = catalog.size_value
@@ -222,7 +227,8 @@ SELECT
     NOW()
 FROM service_catalog_normalized AS catalog
 INNER JOIN services AS service
-    ON service.name = catalog.logical_name COLLATE utf8mb4_unicode_ci
+    ON CONVERT(service.name USING utf8mb4) COLLATE utf8mb4_unicode_ci
+        = CONVERT(catalog.logical_name USING utf8mb4) COLLATE utf8mb4_unicode_ci
 WHERE NOT EXISTS (
     SELECT 1
     FROM service_variations AS variation

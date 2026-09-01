@@ -67,7 +67,13 @@ test('the Speedtuner SQL import uses the requested category order', function () 
     expect($sql)
         ->not->toContain("'Paket Premium Mobil'")
         ->toContain('(name, category, variations, stamps, icon, description, is_popular, is_active, sort_order, created_at, updated_at)')
-        ->toContain('sort_order = VALUES(sort_order)');
+        ->toContain('sort_order = VALUES(sort_order)')
+        ->toContain(") DEFAULT CHARACTER SET utf8mb4\n  COLLATE utf8mb4_unicode_ci;")
+        ->toContain("CREATE TEMPORARY TABLE service_catalog_normalized\nDEFAULT CHARACTER SET utf8mb4\nCOLLATE utf8mb4_unicode_ci\nAS")
+        ->and(substr_count($sql, 'CONVERT(catalog.logical_name USING utf8mb4) COLLATE utf8mb4_unicode_ci'))
+        ->toBe(2)
+        ->and(substr_count($sql, 'CONVERT(service.name USING utf8mb4) COLLATE utf8mb4_unicode_ci'))
+        ->toBe(2);
 
     foreach ($categories as $index => $category) {
         expect($sql)->toContain("WHEN '{$category}' THEN ".($index + 1));
