@@ -44,7 +44,7 @@ test('the service picker keeps its catalog compact behind an internal scroll', f
     );
 
     expect($picker)
-        ->toContain('class="grid max-h-64 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"')
+        ->toContain('class="grid max-h-40 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:grid-cols-2"')
         // A round chevron button hints at the overflow and hides at the bottom.
         ->toContain('@scroll="syncScrollHint"')
         ->toContain('v-if="canScrollDown"')
@@ -523,6 +523,19 @@ test('the cart picker folds the catalog and the cart into one open panel on phon
         // Each header carries its own count so a collapsed panel still reports state.
         ->toContain('{{ visibleServices.length }} layanan')
         ->toContain('{{ modelValue.length }} item');
+});
+
+test('a shorter catalog on phones keeps the cart header on the first screen', function () {
+    $picker = file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue'));
+
+    expect($picker)
+        // The list scrolls inside a shorter box on phones, full height from sm up.
+        ->toContain('max-h-40 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-64')
+        // The cart stays in normal flow below it — never a floating overlay.
+        ->toContain('<div class="overflow-hidden rounded-2xl bg-slate-50">')
+        ->not->toContain('sticky bottom-0')
+        // A filled badge makes a non-empty cart obvious at a glance.
+        ->toContain("modelValue.length\n                                ? 'bg-cyan-600 text-white'");
 
     expect(strpos($picker, "togglePanel('services')"))
         ->toBeLessThan(strpos($picker, "togglePanel('cart')"));

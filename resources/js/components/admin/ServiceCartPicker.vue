@@ -361,7 +361,7 @@ function removeItem(serviceVariationId: number): void {
                 <div v-if="visibleServices.length" class="relative">
                     <div
                         ref="catalog"
-                        class="grid max-h-64 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:grid-cols-2"
+                        class="grid max-h-40 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:grid-cols-2"
                         @scroll="syncScrollHint"
                     >
                         <button
@@ -418,6 +418,10 @@ function removeItem(serviceVariationId: number): void {
             </div>
         </div>
 
+        <!--
+            The catalog above stays short on phones so this header sits inside
+            the first screen instead of past the fold.
+        -->
         <div class="overflow-hidden rounded-2xl bg-slate-50">
             <button
                 type="button"
@@ -431,7 +435,15 @@ function removeItem(serviceVariationId: number): void {
                     <ShoppingCart class="h-4 w-4" /> Keranjang layanan
                 </span>
                 <span class="flex items-center gap-2 text-xs text-slate-500">
-                    {{ modelValue.length }} item
+                    <span
+                        class="rounded-full px-2 py-0.5 font-semibold"
+                        :class="
+                            modelValue.length
+                                ? 'bg-cyan-600 text-white'
+                                : 'bg-slate-200 text-slate-500'
+                        "
+                        >{{ modelValue.length }} item</span
+                    >
                     <ChevronDown
                         class="h-4 w-4 transition sm:hidden"
                         :class="openPanel === 'cart' ? 'rotate-180' : ''"
