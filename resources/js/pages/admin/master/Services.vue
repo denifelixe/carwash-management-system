@@ -872,7 +872,7 @@ function saveOrder(): void {
                             <table class="w-full text-left text-xs">
                                 <thead class="bg-slate-50 text-slate-500">
                                     <tr>
-                                        <th class="px-4 py-2.5">Kombinasi</th>
+                                        <th class="px-4 py-2.5">Variasi</th>
                                         <th class="px-4 py-2.5">Harga</th>
                                         <th class="px-4 py-2.5">Status</th>
                                         <th class="px-4 py-2.5">Dipakai</th>
@@ -1135,7 +1135,7 @@ function saveOrder(): void {
 
             <section>
                 <h3 class="text-sm font-semibold text-slate-900">
-                    Kombinasi dan harga
+                    Variasi dan harga
                 </h3>
                 <div
                     class="mt-2 overflow-x-auto rounded-xl border border-slate-200"
@@ -1143,7 +1143,7 @@ function saveOrder(): void {
                     <table class="w-full text-left text-xs">
                         <thead class="bg-slate-50 text-slate-500">
                             <tr>
-                                <th class="px-3 py-2.5">Kombinasi</th>
+                                <th class="px-3 py-2.5">Variasi</th>
                                 <th class="px-3 py-2.5">Harga</th>
                                 <th class="px-3 py-2.5">Aktif</th>
                             </tr>

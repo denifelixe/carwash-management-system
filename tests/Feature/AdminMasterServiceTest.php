@@ -257,6 +257,8 @@ test('the master page contains variation accordion and matrix controls', functio
         ->not->toContain('structuredClone')
         ->toContain('Jenis variation')
         ->toContain('toggleExpanded(service.id)')
+        ->toContain('Variasi dan harga')
+        ->not->toContain('Kombinasi')
         ->toContain('Ubah urutan');
 });
 

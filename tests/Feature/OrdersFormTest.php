@@ -332,6 +332,8 @@ test('the status chip in a row changes the stage without opening the order', fun
     expect($ordersPage)
         ->toContain('function changeRowStatus(')
         ->toContain('statusForm.submit(updateOrderStatus(order.id), {')
+        ->toContain('    ChevronDown,')
+        ->toContain('<ChevronDown')
         // Only the stages the floor owns, and never on a settled order.
         ->toContain('v-for="status in editableOrderStatuses"')
         ->toContain("props.capabilities.update && order.status !== 'selesai'")
