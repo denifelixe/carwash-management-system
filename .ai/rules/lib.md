@@ -27,8 +27,21 @@ One address, one place per medium: the QR prints (`.verification`, hidden by def
 
 jsPDF is `import()`ed from the click handler — never top-level — so the POS bundle does not carry 400KB for a button most sessions never press.
 
-[Cetak] still goes through `receiptWindow.print()`; do not route it through jsPDF. recapSheet.ts is unchanged and still has no PDF generator.
+[Cetak] still goes through the window's own `print()` on both documents; do not route it through jsPDF.
 
-The slip cannot reach the app's vue-sonner toaster, so it carries its own `.toast` (top right, `data-receipt-toast`), hidden by the same @media print rule as the toolbar.
+Neither document can reach the app's vue-sonner toaster, so both carry the shared `.toast` (top right, `data-print-toast`), hidden by the same @media print rule as the toolbar.
 
 Toolbar handlers hold their button in a `const` from `querySelector`, never `event.currentTarget`: they await first, and by the time they resume the click has finished dispatching and `currentTarget` is null — that silently killed the copy confirmation once. Copying also cannot assume `navigator.clipboard`, which does not exist on an outlet served over plain http; copyReceiptLink() falls back to a selection and reports failure so the toast can say so.
+
+## Both printed documents write their own PDF; pdfDocument.ts is the shared half
+Supersedes the earlier "recapSheet.ts is unchanged and still has no PDF generator" line: the recap has one now too.
+
+pdfDocument.ts is to the PDFs what printDocument.ts is to the HTML — one copy of the mechanism, never two. It holds PdfCursor (paragraph/row/meta/line/block/gap, driven by a PageMetrics value so A4/helvetica/solid-rules and 78mm/courier/dashed come off the same code), pdfText (WinAnsi swap), pdfFileName, the colour tokens, and the raster helpers. posReceiptPdf.ts and recapSheetPdf.ts keep only their own blocks and metrics.
+
+Each PDF module splits a pure renderPosReceiptPdf/renderRecapSheetPdf (returns the jsPDF doc) from the download that saves it — the same split renderRecapSheetDocument/openRecapSheetWindow already have, and what lets the layout be rendered and measured in Node without a browser.
+
+A4 is a fixed page, so it breaks through cursor.ensureRoom(): a table that breaks redraws its header on the page it continues onto, and a row of summary cards is kept whole. The roll has no height and is cut to what the layout filled by a throwaway measuring pass. Verified in Node through Vite's ssrLoadModule (with ssr.external: ['jspdf']): a 60-row recap comes out 3 pages with no image XObject.
+
+The recap PDF must not format anything — RecapSheet arrives with every figure already spelled out by the page, exactly as the HTML renderer receives it. No formatCurrency/formatDate in recapSheetPdf.ts.
+
+The toolbar (segmented bar, glyphs, toolbarButton, toastMarkup, documentToaster) is shared from printDocument.ts. Every toolbar handler holds its button in a const from querySelector, never event.currentTarget: they await, and by then the click has finished dispatching and currentTarget is null.

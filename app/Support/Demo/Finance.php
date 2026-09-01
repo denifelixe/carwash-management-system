@@ -5,6 +5,7 @@ namespace App\Support\Demo;
 use App\Support\Admin\FinancePresenter;
 use App\Support\Admin\FinanceQueries;
 use App\Support\Admin\FinanceReference;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Str;
 
 /**
@@ -203,7 +204,30 @@ class Finance
     }
 
     /** @return array{cash: int, nonCash: int} */
+    /**
+     * @return array{cash: int, nonCash: int, previous: array{date: string, cash: int, nonCash: int}}
+     */
     public static function dailyBalance(string $date): array
+    {
+        $previousDate = CarbonImmutable::parse($date)->subDay()->toDateString();
+        $closing = self::balanceAsOf($date);
+        $opening = self::balanceAsOf($previousDate);
+
+        return [
+            'cash' => $closing['cash'],
+            'nonCash' => $closing['nonCash'],
+            'previous' => [
+                'date' => $previousDate,
+                'cash' => $opening['cash'],
+                'nonCash' => $opening['nonCash'],
+            ],
+        ];
+    }
+
+    /**
+     * @return array{cash: int, nonCash: int}
+     */
+    private static function balanceAsOf(string $date): array
     {
         $latest = self::dailyBalanceHistory($date, 1)[0] ?? null;
 

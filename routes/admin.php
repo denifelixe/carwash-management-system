@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\Master\WorkShiftController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PosController;
+use App\Http\Controllers\Admin\RecapQrController;
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -72,6 +73,7 @@ Route::domain((string) config('domains.admin'))
             Route::patch('finance/{cashEntry}', [FinanceController::class, 'update'])->name('finance.update');
             Route::delete('finance/{cashEntry}', [FinanceController::class, 'destroy'])->name('finance.destroy');
             Route::get('finance/attachments/{cashEntryAttachment}', [FinanceController::class, 'attachment'])->name('finance.attachment');
+            Route::get('rekap/qr', RecapQrController::class)->name('recap.qr');
             Route::get('members', [MemberController::class, 'index'])->name('members.index');
             Route::post('members', [MemberController::class, 'store'])->name('members.store');
             Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');

@@ -1,6 +1,17 @@
 import { jsPDF } from 'jspdf';
 
 import { formatCurrency, formatDate } from '@/composables/useCarwashFormat';
+import {
+    brandArtwork,
+    drawBrandMark,
+    lineHeight,
+    LINK,
+    MUTED,
+    PdfCursor,
+    pdfFileName,
+    PT_TO_MM,
+} from '@/lib/pdfDocument';
+import type { PageMetrics, RasterImage } from '@/lib/pdfDocument';
 import { paymentChannelLabel } from '@/lib/posReceipt';
 import type { PosReceipt, PosReceiptHistoryEntry } from '@/lib/posReceipt';
 import { formatWhatsapp, printedAt } from '@/lib/printDocument';
@@ -21,61 +32,34 @@ import type { CarwashBrand } from '@/types/demo';
  * figure has to be added here as well or it will be missing from the file.
  */
 
-/** Printable width of the roll, matching PAPER_WIDTH in posReceipt.ts. */
-const PAGE_WIDTH = 78;
+/** The roll the slip is laid out at, matching PAPER_WIDTH in posReceipt.ts. */
+const ROLL: PageMetrics = {
+    width: 78,
+    margin: 4,
+    bodySize: 8,
+    font: 'courier',
+    dashedRules: true,
+    blockGap: 1.8,
+};
 
-const MARGIN = 4;
+const PAGE_WIDTH = ROLL.width;
 
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
-
-const RIGHT_EDGE = MARGIN + CONTENT_WIDTH;
+const CONTENT_WIDTH = PAGE_WIDTH - ROLL.margin * 2;
 
 const CENTER = PAGE_WIDTH / 2;
-
-/** jsPDF sizes type in points whatever the document's unit is. */
-const PT_TO_MM = 25.4 / 72;
-
-const BODY_SIZE = 8;
 
 const HEADING_SIZE = 10;
 
 const FINE_SIZE = 6.5;
 
-/** Matches the 1.45 line-height the HTML slip is set in. */
-function lineHeight(size: number): number {
-    return size * 1.45 * PT_TO_MM;
-}
-
-const INK: [number, number, number] = [15, 23, 42];
-
-const MUTED: [number, number, number] = [100, 116, 139];
-
-const RULE: [number, number, number] = [148, 163, 184];
-
-const LINK: [number, number, number] = [29, 78, 216];
-
-interface RasterImage {
-    dataUrl: string;
-    width: number;
-    height: number;
-}
-
-interface ReceiptArtwork {
-    logo: RasterImage | null;
-}
-
-interface TextOptions {
-    size?: number;
-    bold?: boolean;
-    color?: [number, number, number];
-}
-
-/**
- * The built-in PDF fonts are encoded in WinAnsi, which has no U+2212, so the
- * minus the HTML slip prints becomes the hyphen the font does carry.
- */
-function pdfText(value: string): string {
-    return value.replaceAll('−', '-').replaceAll(' ', ' ');
+/** A figure row, spelled the way the slip spells money. */
+function amountRow(
+    slip: PdfCursor,
+    label: string,
+    value: number,
+    bold = false,
+): void {
+    slip.row(label, formatCurrency(value), { bold });
 }
 
 /** Spaced out the way the slip letter-spaces its status stamp: "L U N A S". */
@@ -83,122 +67,12 @@ function spacedOut(value: string): string {
     return [...value].join(' ');
 }
 
-/** A cursor down the page: every writer takes the top and returns the next. */
-class Slip {
-    constructor(
-        public readonly doc: jsPDF,
-        public y: number = MARGIN + 1,
-    ) {}
-
-    private apply({ size, bold, color }: TextOptions = {}): number {
-        const fontSize = size ?? BODY_SIZE;
-
-        this.doc.setFont('courier', bold === true ? 'bold' : 'normal');
-        this.doc.setFontSize(fontSize);
-        this.doc.setTextColor(...(color ?? INK));
-
-        return fontSize;
-    }
-
-    /** Wrapped paragraph across the full content width. */
-    paragraph(
-        value: string,
-        align: 'left' | 'center' = 'left',
-        options: TextOptions = {},
-    ): void {
-        const size = this.apply(options);
-        const x = align === 'center' ? CENTER : MARGIN;
-
-        for (const line of this.doc.splitTextToSize(
-            pdfText(value),
-            CONTENT_WIDTH,
-        )) {
-            this.doc.text(line, x, this.y, { align, baseline: 'top' });
-            this.y += lineHeight(size);
-        }
-    }
-
-    /**
-     * Label on the left, figure on the right. The label wraps into whatever the
-     * figure leaves, so a long service name never pushes the price off the roll.
-     */
-    row(label: string, value: string, options: TextOptions = {}): void {
-        const size = this.apply(options);
-        const valueWidth = this.doc.getTextWidth(pdfText(value));
-        const labelLines = this.doc.splitTextToSize(
-            pdfText(label),
-            /* A figure wide enough to crowd the label out still leaves it room. */
-            Math.max(CONTENT_WIDTH - valueWidth - 1.5, 12),
-        );
-
-        this.doc.text(pdfText(value), RIGHT_EDGE, this.y, {
-            align: 'right',
-            baseline: 'top',
-        });
-
-        for (const line of labelLines) {
-            this.doc.text(line, MARGIN, this.y, { baseline: 'top' });
-            this.y += lineHeight(size);
-        }
-    }
-
-    /** The muted label / dark value pairing the slip's summary blocks use. */
-    meta(label: string, value: string): void {
-        const size = this.apply();
-
-        this.doc.setTextColor(...MUTED);
-        this.doc.text(pdfText(label), MARGIN, this.y, { baseline: 'top' });
-        this.doc.setTextColor(...INK);
-        this.doc.text(pdfText(value), RIGHT_EDGE, this.y, {
-            align: 'right',
-            baseline: 'top',
-        });
-        this.y += lineHeight(size);
-    }
-
-    amount(label: string, value: number, bold = false): void {
-        this.row(label, formatCurrency(value), { bold });
-    }
-
-    line(dashed = true): void {
-        this.doc.setDrawColor(...(dashed ? RULE : INK));
-        this.doc.setLineWidth(0.15);
-        this.doc.setLineDashPattern(dashed ? [0.5, 0.5] : [], 0);
-        this.doc.line(MARGIN, this.y, RIGHT_EDGE, this.y);
-        this.doc.setLineDashPattern([], 0);
-    }
-
-    /** The dashed divider every block on the slip opens with. */
-    block(): void {
-        this.y += 1.8;
-        this.line();
-        this.y += 1.8;
-    }
-
-    gap(millimetres = 1.2): void {
-        this.y += millimetres;
-    }
-}
-
 function brandHeader(
-    slip: Slip,
+    slip: PdfCursor,
     brand: CarwashBrand,
-    art: ReceiptArtwork,
+    logo: RasterImage | null,
 ): void {
-    if (art.logo !== null) {
-        const width = Math.min(14, (10 * art.logo.width) / art.logo.height);
-        const height = (width * art.logo.height) / art.logo.width;
-
-        slip.doc.addImage(
-            art.logo.dataUrl,
-            'PNG',
-            CENTER - width / 2,
-            slip.y,
-            width,
-            height,
-        );
-        slip.y += height + 1;
-    }
+    drawBrandMark(slip, logo, 10, 14);
 
     slip.paragraph(brand.name, 'center', { size: HEADING_SIZE, bold: true });
     slip.paragraph(formatWhatsapp(brand.whatsapp), 'center', {
@@ -211,7 +85,7 @@ function brandHeader(
     });
 }
 
-function summaryBlock(slip: Slip, receipt: PosReceipt): void {
+function summaryBlock(slip: PdfCursor, receipt: PosReceipt): void {
     slip.block();
     slip.paragraph(
         receipt.isSettled ? 'STRUK PEMBAYARAN' : 'BUKTI PEMBAYARAN SEBAGIAN',
@@ -245,7 +119,7 @@ function summaryBlock(slip: Slip, receipt: PosReceipt): void {
     slip.meta('Plat', formatPlate(receipt.plate));
 }
 
-function servicesBlock(slip: Slip, receipt: PosReceipt): void {
+function servicesBlock(slip: PdfCursor, receipt: PosReceipt): void {
     slip.block();
     slip.paragraph('RINCIAN LAYANAN', 'left', { bold: true });
     slip.gap(0.6);
@@ -261,9 +135,9 @@ function servicesBlock(slip: Slip, receipt: PosReceipt): void {
     }
 }
 
-function billBlock(slip: Slip, receipt: PosReceipt): void {
+function billBlock(slip: PdfCursor, receipt: PosReceipt): void {
     slip.block();
-    slip.amount('Subtotal', receipt.subtotal + receipt.priorDiscount);
+    amountRow(slip, 'Subtotal', receipt.subtotal + receipt.priorDiscount);
 
     if (receipt.priorDiscount > 0) {
         /* A reprint cannot tell which payment took the discount. */
@@ -297,7 +171,7 @@ function billBlock(slip: Slip, receipt: PosReceipt): void {
     });
 }
 
-function historyEntry(slip: Slip, entry: PosReceiptHistoryEntry): void {
+function historyEntry(slip: PdfCursor, entry: PosReceiptHistoryEntry): void {
     slip.row(
         `${formatDate(entry.date)} · ${entry.time}`,
         formatCurrency(entry.amount),
@@ -315,7 +189,7 @@ function historyEntry(slip: Slip, entry: PosReceiptHistoryEntry): void {
  * Payments the order already took. A prototype order can carry a paid amount
  * with no transactions behind it, so the total prints either way.
  */
-function historyBlock(slip: Slip, receipt: PosReceipt): void {
+function historyBlock(slip: PdfCursor, receipt: PosReceipt): void {
     if (receipt.history.length === 0 && receipt.previouslyPaid <= 0) {
         return;
     }
@@ -328,10 +202,10 @@ function historyBlock(slip: Slip, receipt: PosReceipt): void {
         historyEntry(slip, entry);
     }
 
-    slip.amount('Dibayar sebelumnya', receipt.previouslyPaid, true);
+    amountRow(slip, 'Dibayar sebelumnya', receipt.previouslyPaid, true);
 }
 
-function paymentBlock(slip: Slip, receipt: PosReceipt): void {
+function paymentBlock(slip: PdfCursor, receipt: PosReceipt): void {
     const hasHistory = receipt.history.length > 0 || receipt.previouslyPaid > 0;
     /* A copy can be of any payment in the run, not just the most recent one. */
     const heading = hasHistory
@@ -359,10 +233,10 @@ function paymentBlock(slip: Slip, receipt: PosReceipt): void {
         }
     }
 
-    slip.amount('Total diterima', receipt.tenderedTotal, true);
+    amountRow(slip, 'Total diterima', receipt.tenderedTotal, true);
 
     if (receipt.change > 0) {
-        slip.amount('Kembalian', receipt.change, true);
+        amountRow(slip, 'Kembalian', receipt.change, true);
     }
 
     if (receipt.isSettled) {
@@ -370,8 +244,8 @@ function paymentBlock(slip: Slip, receipt: PosReceipt): void {
     }
 
     slip.block();
-    slip.amount('Total sudah dibayar', receipt.paidTotal);
-    slip.amount('Sisa tagihan', receipt.dueAfter, true);
+    amountRow(slip, 'Total sudah dibayar', receipt.paidTotal);
+    amountRow(slip, 'Sisa tagihan', receipt.dueAfter, true);
 }
 
 /**
@@ -379,7 +253,7 @@ function paymentBlock(slip: Slip, receipt: PosReceipt): void {
  * away from the URL, and the QR is there for the printed copy that cannot be
  * tapped. The HTML keeps the same split under body[data-output-mode="print"].
  */
-function verificationBlock(slip: Slip, receipt: PosReceipt): void {
+function verificationBlock(slip: PdfCursor, receipt: PosReceipt): void {
     if (receipt.publicUrl === null) {
         return;
     }
@@ -421,7 +295,7 @@ function verificationBlock(slip: Slip, receipt: PosReceipt): void {
     }
 }
 
-function footerBlock(slip: Slip, receipt: PosReceipt): void {
+function footerBlock(slip: PdfCursor, receipt: PosReceipt): void {
     slip.block();
     slip.paragraph(
         spacedOut(receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'),
@@ -452,11 +326,11 @@ function layoutSlip(
     doc: jsPDF,
     receipt: PosReceipt,
     brand: CarwashBrand,
-    art: ReceiptArtwork,
+    logo: RasterImage | null,
 ): number {
-    const slip = new Slip(doc);
+    const slip = new PdfCursor(doc, ROLL);
 
-    brandHeader(slip, brand, art);
+    brandHeader(slip, brand, logo);
     summaryBlock(slip, receipt);
     servicesBlock(slip, receipt);
     billBlock(slip, receipt);
@@ -464,130 +338,35 @@ function layoutSlip(
     paymentBlock(slip, receipt);
     footerBlock(slip, receipt);
 
-    return slip.y + MARGIN + 2;
-}
-
-/**
- * Redraws an image as PNG data so jsPDF can place it: the QR arrives as an SVG
- * it cannot read, and the outlet's photo can be served from another origin.
- * Returns null when the source will not load or the canvas comes back tainted,
- * and the slip simply prints without that mark.
- */
-function rasterize(
-    receiptWindow: Window,
-    source: string,
-): Promise<RasterImage | null> {
-    return new Promise((resolve) => {
-        const image = receiptWindow.document.createElement('img');
-
-        image.crossOrigin = 'anonymous';
-        image.addEventListener('error', () => resolve(null));
-        image.addEventListener('load', () => {
-            /* Oversampled so the mark stays sharp at the roll's small size. */
-            const scale = 4;
-            const width = (image.naturalWidth || 200) * scale;
-            const height = (image.naturalHeight || 200) * scale;
-            const canvas = receiptWindow.document.createElement('canvas');
-
-            canvas.width = width;
-            canvas.height = height;
-
-            const context = canvas.getContext('2d');
-
-            if (context === null) {
-                resolve(null);
-
-                return;
-            }
-
-            context.drawImage(image, 0, 0, width, height);
-
-            try {
-                resolve({
-                    dataUrl: canvas.toDataURL('image/png'),
-                    width,
-                    height,
-                });
-            } catch {
-                resolve(null);
-            }
-        });
-        image.src = source;
-    });
-}
-
-/**
- * The brand emoji drawn onto a canvas, so a shop with no uploaded photo still
- * gets its mark: the built-in PDF fonts have no glyph for it.
- */
-function rasterizeEmoji(
-    receiptWindow: Window,
-    logo: string,
-): RasterImage | null {
-    const size = 160;
-    const canvas = receiptWindow.document.createElement('canvas');
-
-    canvas.width = size;
-    canvas.height = size;
-
-    const context = canvas.getContext('2d');
-
-    if (context === null) {
-        return null;
-    }
-
-    context.font = `${Math.round(size * 0.8)}px serif`;
-    context.textAlign = 'center';
-    context.textBaseline = 'middle';
-    context.fillText(logo, size / 2, size / 2);
-
-    try {
-        return {
-            dataUrl: canvas.toDataURL('image/png'),
-            width: size,
-            height: size,
-        };
-    } catch {
-        return null;
-    }
-}
-
-/** The outlet's mark is the only thing on the file that is not drawn as text. */
-async function receiptArtwork(
-    receiptWindow: Window,
-    brand: CarwashBrand,
-): Promise<ReceiptArtwork> {
-    return {
-        logo:
-            brand.photo === null
-                ? rasterizeEmoji(receiptWindow, brand.logo)
-                : await rasterize(receiptWindow, brand.photo),
-    };
+    return slip.y + ROLL.margin + 2;
 }
 
 /** Filename the slip is saved under, e.g. "Struk-ZW-20260901-AIHOQS.pdf". */
 export function receiptFileName(receipt: PosReceipt): string {
     const number = receipt.isSettled ? receipt.invoice : receipt.orderNo;
 
-    return `Struk-${number.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`;
+    return pdfFileName(`Struk-${number}`);
 }
 
 /**
- * Writes the slip straight to a PDF file, with no print prompt in between.
+ * The finished document, before anything is done with it.
  *
  * The roll has no fixed length, so the page is sized to the slip: the layout is
  * run once against a throwaway document to measure it, then replayed onto a
  * page cut to that exact height. It draws twice, which for a receipt costs
  * nothing and keeps the file a single continuous page like the roll.
+ *
+ * Kept separate from the download so the layout can be rendered and inspected
+ * without a browser, the way renderPosReceiptDocument is separate from the
+ * window that opens it.
  */
-export async function downloadPosReceiptPdf(
-    receiptWindow: Window,
+export function renderPosReceiptPdf(
     receipt: PosReceipt,
     brand: CarwashBrand,
-): Promise<void> {
-    const art = await receiptArtwork(receiptWindow, brand);
+    logo: RasterImage | null,
+): jsPDF {
     const measured = new jsPDF({ unit: 'mm', format: [PAGE_WIDTH, 1000] });
-    const height = layoutSlip(measured, receipt, brand, art);
+    const height = layoutSlip(measured, receipt, brand, logo);
     const doc = new jsPDF({ unit: 'mm', format: [PAGE_WIDTH, height] });
 
     doc.setProperties({
@@ -595,6 +374,18 @@ export async function downloadPosReceiptPdf(
         subject: receipt.reference,
         author: brand.name,
     });
-    layoutSlip(doc, receipt, brand, art);
-    doc.save(receiptFileName(receipt));
+    layoutSlip(doc, receipt, brand, logo);
+
+    return doc;
+}
+
+/** Writes the slip straight to a PDF file, with no print prompt in between. */
+export async function downloadPosReceiptPdf(
+    receiptWindow: Window,
+    receipt: PosReceipt,
+    brand: CarwashBrand,
+): Promise<void> {
+    const logo = await brandArtwork(receiptWindow, brand);
+
+    renderPosReceiptPdf(receipt, brand, logo).save(receiptFileName(receipt));
 }

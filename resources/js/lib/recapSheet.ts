@@ -1,8 +1,15 @@
 import {
     brandContacts,
     brandMark,
+    copyToClipboard,
+    documentToaster,
     escapeHtml,
+    parseIcon,
     printedAt,
+    toastMarkup,
+    toolbarButton,
+    toolbarIcons,
+    toolbarStyles,
 } from '@/lib/printDocument';
 import type { CarwashBrand } from '@/types/demo';
 
@@ -45,9 +52,28 @@ export interface RecapSummaryItem {
 
 export interface RecapTableRow {
     label: string;
-    /** Already formatted, one per column after the label. */
+    /** Already formatted, one per column the table fills row by row. */
     values: string[];
     tones?: RecapTone[];
+}
+
+export interface RecapMergedValue {
+    /** Already formatted, like every other figure on the sheet. */
+    value: string;
+    tone?: RecapTone;
+}
+
+/**
+ * Figures that belong to the table rather than to any one row — non-cash
+ * outgoings are booked against the section, not the channel that took the
+ * money. The screen spans them down the rows and the A4 sheet does the same;
+ * the roll stacks every row and cannot span, so it foots them under this label
+ * instead. Both readings come from here, so they cannot drift apart.
+ */
+export interface RecapTableMerge {
+    label: string;
+    /** One per value column, null where the column is filled row by row. */
+    values: Array<RecapMergedValue | null>;
 }
 
 export interface RecapTable {
@@ -58,6 +84,7 @@ export interface RecapTable {
     rows: RecapTableRow[];
     /** Footed total, so a printed sheet adds up without a calculator. */
     total?: RecapTableRow;
+    merge?: RecapTableMerge;
     emptyMessage?: string;
 }
 
@@ -75,6 +102,22 @@ export interface RecapSheet {
     tables: RecapTable[];
     /** The outlet's zone, so the print stamp reads the shop clock. */
     timezone: string;
+    /**
+     * Deep link back to this recap in the console. A recap has no public page
+     * behind it the way a receipt does — its figures are the outlet's takings —
+     * so whoever follows it lands on the same day and shift once logged in.
+     */
+    sourceUrl: string | null;
+    /** The console's own QR endpoint, encoding that same link. */
+    qrUrl: string | null;
+}
+
+/**
+ * Wayfinder hands back protocol-relative URLs, and a document written into
+ * about:blank has no scheme of its own to resolve them against.
+ */
+export function absoluteUrl(url: string): string {
+    return url.startsWith('//') ? `${window.location.protocol}${url}` : url;
 }
 
 function toneClass(tone: RecapTone | undefined): string {
@@ -119,17 +162,50 @@ function summaryBlock(sheet: RecapSheet): string {
  * is too narrow for columns, so the same cells carry their own heading and the
  * stylesheet stacks them instead of the row being rendered a second time.
  */
+function valueCell(
+    heading: string,
+    value: string,
+    tone: RecapTone | undefined,
+): string {
+    return `<td class="value${toneClass(tone)}"><span class="cell-label">${escapeHtml(heading)}</span><span class="cell-value">${escapeHtml(value)}</span></td>`;
+}
+
+/**
+ * One row, laid out twice over, plus the cells that span it.
+ *
+ * A merged figure is written into the first row as a spanning cell for the A4
+ * sheet and again into the foot for the roll, which stacks its rows and has
+ * nothing to span. Each stylesheet shows one of the two, the same way
+ * .cell-label is written for the roll and hidden on the sheet.
+ */
 function tableRow(
     row: RecapTableRow,
     columns: string[],
-    modifier: '' | 'total' = '',
+    merge: RecapTableMerge | undefined,
+    span: number,
+    modifier: '' | 'total' | 'merged' = '',
 ): string {
-    const cells = row.values
-        .map((value, index) => {
-            const heading = escapeHtml(columns[index + 1] ?? '');
-            const tone = toneClass(row.tones?.[index]);
+    let filled = 0;
 
-            return `<td class="value${tone}"><span class="cell-label">${heading}</span><span class="cell-value">${escapeHtml(value)}</span></td>`;
+    const cells = columns
+        .slice(1)
+        .map((heading, index) => {
+            const merged =
+                modifier === '' ? (merge?.values[index] ?? null) : null;
+
+            if (merged === null) {
+                const value = row.values[filled] ?? '';
+                const tone = row.tones?.[filled];
+
+                filled += 1;
+
+                return valueCell(heading, value, tone);
+            }
+
+            /* Written once, by the row it starts on, and spanning the rest. */
+            return span === 0
+                ? ''
+                : `<td class="value cell-span${toneClass(merged.tone)}" rowspan="${span}">${escapeHtml(merged.value)}</td>`;
         })
         .join('');
 
@@ -161,12 +237,31 @@ function tableBlock(table: RecapTable): string {
         )
         .join('');
 
-    const rows = table.rows.map((row) => tableRow(row, table.columns)).join('');
+    const rows = table.rows
+        .map((row, index) =>
+            tableRow(
+                row,
+                table.columns,
+                table.merge,
+                index === 0 ? table.rows.length : 0,
+            ),
+        )
+        .join('');
 
+    /*
+     * A table that spans its figures foots them too, for the roll that cannot
+     * span; the sheet hides that row, and the roll hides the spanning cells.
+     */
     const total =
         table.total === undefined
             ? ''
-            : `<tfoot>${tableRow(table.total, table.columns, 'total')}</tfoot>`;
+            : `<tfoot>${tableRow(
+                  table.total,
+                  table.columns,
+                  undefined,
+                  0,
+                  table.merge === undefined ? 'total' : 'merged',
+              )}</tfoot>`;
 
     return `<section class="block">
     <p class="heading">${escapeHtml(table.heading)}</p>
@@ -202,7 +297,32 @@ ${sheet.tables.map(tableBlock).join('')}
 <footer class="footer">
     <p>Dicetak ${escapeHtml(printedAt(sheet.timezone))}.</p>
     <p class="fineprint">Rekap internal untuk serah terima kas, bukan bukti pembayaran.</p>
+    ${verificationBlock(sheet)}
 </footer>`;
+}
+
+/**
+ * The address this recap lives at, as both a code to scan and a line to read.
+ * Kept out of the on-screen window — the toolbar has a Salin Link button right
+ * there — and shown by stylesheet on the paper and in the file, which have no
+ * button to press.
+ */
+function verificationBlock(sheet: RecapSheet): string {
+    if (sheet.sourceUrl === null) {
+        return '';
+    }
+
+    const url = escapeHtml(sheet.sourceUrl);
+    const qrCode =
+        sheet.qrUrl === null
+            ? ''
+            : `<img class="verification-qr-image" src="${escapeHtml(sheet.qrUrl)}" alt="QR rekap">`;
+
+    return `<div class="verification">
+    ${qrCode}
+    <p class="verification-caption">Pindai untuk membuka rekap ini</p>
+    <p class="verification-link">${url}</p>
+</div>`;
 }
 
 function sharedStyles(): string {
@@ -214,19 +334,7 @@ function sharedStyles(): string {
 .contact-icon svg { height: 100%; width: 100%; }
 .contact-icon.whatsapp { color: #16a34a; }
 .contact-icon.instagram { color: #c026d3; }
-.toolbar { display: flex; gap: 6px; margin: 0 auto 12px; }
-.toolbar button {
-    background: #0284c7;
-    border: 0;
-    border-radius: 6px;
-    color: #ffffff;
-    cursor: pointer;
-    flex: 1;
-    font: inherit;
-    font-weight: 700;
-    padding: 8px 0;
-}
-.toolbar button.secondary { background: #475569; }
+${toolbarStyles()}
 .paper { background: #ffffff; margin: 0 auto; }
 .brand { text-align: center; }
 .title { font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
@@ -238,7 +346,13 @@ table { border-collapse: collapse; width: 100%; }
 .positive { color: #047857; }
 .negative { color: #be123c; }
 .empty { color: #64748b; }
-@media print { .toolbar { display: none; } }`;
+.verification { display: none; text-align: center; }
+.verification-qr-image { display: block; margin: 0 auto 3px; }
+@media print {
+    .toolbar, .toast { display: none; }
+    /* No button to press on paper, so the address is printed instead. */
+    .verification { display: block; }
+}`;
 }
 
 function a4Styles(): string {
@@ -250,7 +364,8 @@ function a4Styles(): string {
     line-height: 1.5;
     padding: 16px 0 32px;
 }
-.toolbar { width: 180mm; }
+/* Narrower than the sheet: three buttons stretched over 180mm read as empty. */
+.toolbar { width: 96mm; }
 .paper { box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18); padding: 14mm; width: 180mm; }
 .logo { font-size: 26px; line-height: 1.2; }
 .logo-image { display: block; height: auto; margin: 0 auto 6px; max-height: 64px; max-width: 90px; object-fit: contain; }
@@ -284,6 +399,9 @@ tbody th, tbody td, tfoot th, tfoot td { border-bottom: 1px solid #e2e8f0; paddi
 tfoot th, tfoot td { border-bottom: 0; border-top: 1px solid #0f172a; font-weight: 700; }
 /* The per-cell headings are for the roll, which cannot hold columns. */
 .cell-label { display: none; }
+/* A merged figure spans its rows here, so the footed reading is not wanted. */
+.cell-span { border-left: 1px solid #e2e8f0; vertical-align: middle; }
+.row.merged { display: none; }
 .footer { border-top: 1px solid #cbd5e1; color: #64748b; font-size: 10px; margin-top: 14px; padding-top: 10px; }
 .fineprint { margin-top: 2px; }
 @page { margin: 14mm; size: A4; }
@@ -331,8 +449,15 @@ tbody .row:first-child { border-top: 0; margin-top: 0; padding-top: 0; }
 .row > td { display: flex; gap: 8px; justify-content: space-between; padding-left: 6px; }
 .cell-label { color: #475569; flex: 0 0 auto; }
 .cell-value { text-align: right; }
-.row.total { border-top: 1px solid #0f172a; font-weight: 700; margin-top: 5px; padding-top: 5px; }
-.row.total .cell-label { color: #0f172a; }
+/*
+ * A footed row is written like any other block here — the same dotted rule
+ * and the same weights — so the closing figures read alongside the channels
+ * above them rather than louder than them.
+ *
+ * Nothing to span on a stacked row either, and hiding it takes the row's own
+ * specificity: '.row > td' above would otherwise keep it on display.
+ */
+.row > .cell-span { display: none; }
 .footer { border-top: 1px dashed #94a3b8; margin-top: 8px; padding-top: 8px; text-align: center; }
 .fineprint { color: #64748b; font-size: 9px; margin-top: 4px; }
 @page { margin: 0; size: ${PAPER_WIDTH} auto; }
@@ -368,9 +493,12 @@ export function renderRecapSheetDocument(
 </head>
 <body>
 <div class="toolbar">
-    <button type="button" data-recap-print>Cetak</button>
-    <button type="button" class="secondary" data-recap-close>Tutup</button>
+    ${toolbarButton('data-recap-print', toolbarIcons.print, 'Cetak', 'primary')}
+    ${toolbarButton('data-recap-download', toolbarIcons.download, 'Unduh PDF')}
+    ${toolbarButton('data-recap-copy', toolbarIcons.link, 'Salin Link', '', sheet.sourceUrl === null)}
+    ${toolbarButton('data-recap-close', toolbarIcons.close, 'Tutup')}
 </div>
+${toastMarkup()}
 <main class="paper">${recapSheetBody(sheet, brand)}</main>
 </body>
 </html>`;
@@ -401,9 +529,90 @@ export function openRecapSheetWindow(
     recapWindow.document.write(renderRecapSheetDocument(sheet, brand, paper));
     recapWindow.document.close();
 
+    const showToast = documentToaster(recapWindow);
+
     recapWindow.document
         .querySelector('[data-recap-print]')
         ?.addEventListener('click', () => recapWindow.print());
+
+    /*
+     * The button is held here rather than read off the event: the handler awaits
+     * the PDF writer, and by the time it resumes the click has finished
+     * dispatching and `event.currentTarget` is already null.
+     */
+    const downloadButton =
+        recapWindow.document.querySelector<HTMLButtonElement>(
+            '[data-recap-download]',
+        );
+
+    downloadButton?.addEventListener('click', async () => {
+        const downloadLabel = downloadButton.querySelector('span');
+
+        downloadButton.disabled = true;
+
+        if (downloadLabel !== null) {
+            downloadLabel.textContent = 'Membuat…';
+        }
+
+        try {
+            /* Fetched on the click so Finance and the POS never carry jsPDF. */
+            const { downloadRecapSheetPdf } =
+                await import('@/lib/recapSheetPdf');
+
+            await downloadRecapSheetPdf(recapWindow, sheet, brand, paper);
+        } catch {
+            showToast('PDF gagal dibuat', 'error');
+        } finally {
+            downloadButton.disabled = false;
+
+            if (downloadLabel !== null) {
+                downloadLabel.textContent = 'Unduh PDF';
+            }
+        }
+    });
+
+    /* Held rather than read off the event, for the same reason as above. */
+    const copyButton =
+        recapWindow.document.querySelector<HTMLButtonElement>(
+            '[data-recap-copy]',
+        );
+
+    copyButton?.addEventListener('click', async () => {
+        if (sheet.sourceUrl === null) {
+            return;
+        }
+
+        const copyLabel = copyButton.querySelector('span');
+
+        if (!(await copyToClipboard(recapWindow, sheet.sourceUrl))) {
+            showToast('Link gagal disalin', 'error');
+
+            return;
+        }
+
+        showToast('Link rekap disalin');
+        copyButton.classList.add('copied');
+        copyButton
+            .querySelector('svg')
+            ?.replaceWith(...parseIcon(recapWindow, toolbarIcons.check));
+
+        if (copyLabel !== null) {
+            copyLabel.textContent = 'Tersalin';
+        }
+
+        /* Falls back to the idle state so the button can be used again. */
+        recapWindow.setTimeout(() => {
+            copyButton.classList.remove('copied');
+            copyButton
+                .querySelector('svg')
+                ?.replaceWith(...parseIcon(recapWindow, toolbarIcons.link));
+
+            if (copyLabel !== null) {
+                copyLabel.textContent = 'Salin Link';
+            }
+        }, 2400);
+    });
+
     recapWindow.document
         .querySelector('[data-recap-close]')
         ?.addEventListener('click', () => recapWindow.close());

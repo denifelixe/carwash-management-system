@@ -46,11 +46,38 @@ test('finance balance query uses the latest snapshot through the selected date',
     $updateDailyBalance->handle('2026-08-30', cashIncomeDelta: 100000);
     $updateDailyBalance->handle('2026-09-01', nonCashIncomeDelta: 75000);
 
-    expect(FinanceQueries::dailyBalance('2026-08-29'))->toBe(['cash' => 0, 'nonCash' => 0])
-        ->and(FinanceQueries::dailyBalance('2026-08-30'))->toBe(['cash' => 100000, 'nonCash' => 0])
-        ->and(FinanceQueries::dailyBalance('2026-08-31'))->toBe(['cash' => 100000, 'nonCash' => 0])
-        ->and(FinanceQueries::dailyBalance('2026-09-01'))->toBe(['cash' => 100000, 'nonCash' => 75000])
-        ->and(FinanceQueries::dailyBalance('2026-09-05'))->toBe(['cash' => 100000, 'nonCash' => 75000]);
+    $closing = fn (string $date): array => array_diff_key(
+        FinanceQueries::dailyBalance($date),
+        ['previous' => null],
+    );
+
+    expect($closing('2026-08-29'))->toBe(['cash' => 0, 'nonCash' => 0])
+        ->and($closing('2026-08-30'))->toBe(['cash' => 100000, 'nonCash' => 0])
+        ->and($closing('2026-08-31'))->toBe(['cash' => 100000, 'nonCash' => 0])
+        ->and($closing('2026-09-01'))->toBe(['cash' => 100000, 'nonCash' => 75000])
+        ->and($closing('2026-09-05'))->toBe(['cash' => 100000, 'nonCash' => 75000]);
+});
+
+/*
+ * A printed recap shows where the day started as well as where it ended, so the
+ * opening figure is the same accumulation read one day earlier — including on a
+ * day the outlet did not trade, which leaves no snapshot of its own.
+ */
+test('the balance query also reports the day the selected one opened from', function () {
+    $updateDailyBalance = app(UpdateDailyBalance::class);
+    $updateDailyBalance->handle('2026-08-30', cashIncomeDelta: 100000);
+    $updateDailyBalance->handle('2026-09-01', nonCashIncomeDelta: 75000);
+
+    expect(FinanceQueries::dailyBalance('2026-09-01')['previous'])
+        ->toBe(['date' => '2026-08-31', 'cash' => 100000, 'nonCash' => 0]);
+
+    // The day trading began opens from nothing.
+    expect(FinanceQueries::dailyBalance('2026-08-30')['previous'])
+        ->toBe(['date' => '2026-08-29', 'cash' => 0, 'nonCash' => 0]);
+
+    // A quiet day opens and closes on the same figures.
+    expect(FinanceQueries::dailyBalance('2026-09-05')['previous'])
+        ->toBe(['date' => '2026-09-04', 'cash' => 100000, 'nonCash' => 75000]);
 });
 
 test('the balance history lists the days that moved money, newest first', function () {

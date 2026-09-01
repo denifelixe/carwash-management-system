@@ -187,16 +187,46 @@ class FinanceQueries
     }
 
     /** @return array{cash: int, nonCash: int} */
+    /**
+     * The balance a day closes on, and the one it opened from. A printed recap
+     * carries both so the sheet shows what the day moved, not just where it
+     * ended up.
+     *
+     * @return array{cash: int, nonCash: int, previous: array{date: string, cash: int, nonCash: int}}
+     */
     public static function dailyBalance(string $date): array
     {
-        $dailyBalance = DailyBalance::query()
+        $previousDate = CarbonImmutable::parse($date)->subDay()->toDateString();
+        $closing = self::balanceAsOf($date);
+        $opening = self::balanceAsOf($previousDate);
+
+        return [
+            'cash' => $closing['cash'],
+            'nonCash' => $closing['nonCash'],
+            'previous' => [
+                'date' => $previousDate,
+                'cash' => $opening['cash'],
+                'nonCash' => $opening['nonCash'],
+            ],
+        ];
+    }
+
+    /**
+     * The balance is an accumulation, so it is whatever the latest snapshot on
+     * or before that day closed on — days with no movement have no snapshot.
+     *
+     * @return array{cash: int, nonCash: int}
+     */
+    private static function balanceAsOf(string $date): array
+    {
+        $snapshot = DailyBalance::query()
             ->whereDate('date', '<=', $date)
             ->latest('date')
             ->first(['cash_balance', 'non_cash_balance']);
 
         return [
-            'cash' => $dailyBalance?->cash_balance ?? 0,
-            'nonCash' => $dailyBalance?->non_cash_balance ?? 0,
+            'cash' => $snapshot?->cash_balance ?? 0,
+            'nonCash' => $snapshot?->non_cash_balance ?? 0,
         ];
     }
 

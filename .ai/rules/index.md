@@ -11,7 +11,9 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/js/components/admin/ServiceCartPicker.vue | .ai/rules/components-admin.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue} | .ai/rules/demo-js-pages-admin.md |
 | {app/Support/AppSettings.php,app/Support/Demo/Brand.php,app/Http/Controllers/Demo/**} | .ai/rules/demo.md |
+| {app/Http/Controllers/Admin/RecapQrController.php,app/Support/Admin/RecapLink.php,resources/js/lib/recapSheet*.ts} | .ai/rules/js-lib.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Support/Admin/OrderQueries.php,app/Support/Admin/OrderPresenter.php,resources/js/pages/admin/Pos.vue} | .ai/rules/js-pages-admin.md |
+| {resources/js/lib/recapSheet*.ts,resources/js/pages/admin/Finance.vue} | .ai/rules/lib-js-pages-admin.md |
 | resources/js/lib/** | .ai/rules/lib.md |
 | resources/js/pages/admin/master/** | .ai/rules/master.md |
 | {routes/member.php,app/Http/Middleware/EnsureMemberPortalIsAvailable.php,bootstrap/app.php} | .ai/rules/middleware.md |

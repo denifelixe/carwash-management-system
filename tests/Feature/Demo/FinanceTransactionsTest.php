@@ -325,7 +325,7 @@ test('finance overview shows shift tabs stacked summaries and financial channels
         ->toContain('Kanal Keuangan')
         ->toContain('Pemasukan')
         ->toContain('Pengeluaran')
-        ->toContain('Saldo Kanal')
+        ->toContain('Profit/Keuntungan Kanal')
         ->toContain('const financialChannels = props.paymentMethods.map')
         ->toContain("label: key === 'E-Money' ? 'Emoney' : key")
         // Cash keeps its own section; the rest share one merged figure.
@@ -477,9 +477,15 @@ test('the demo balance history accumulates day by day up to the selected date', 
     expect($history)->not->toBeEmpty()
         ->and($dates)->toBe($descending)
         ->and($dates[0])->toBeLessThanOrEqual(Reports::todayDate())
-        ->and(Finance::dailyBalance(Reports::todayDate()))->toBe([
+        ->and(Finance::dailyBalance(Reports::todayDate()))->toMatchArray([
             'cash' => $history[0]['cashBalance'],
             'nonCash' => $history[0]['nonCashBalance'],
+        ])
+        // The recap prints where the day opened as well as where it closed.
+        ->and(Finance::dailyBalance(Reports::todayDate())['previous'])->toBe([
+            'date' => $history[1]['date'],
+            'cash' => $history[1]['cashBalance'],
+            'nonCash' => $history[1]['nonCashBalance'],
         ]);
 
     $oldest = $history[count($history) - 1];

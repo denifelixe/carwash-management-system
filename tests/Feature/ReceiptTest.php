@@ -61,7 +61,7 @@ test('the receipt offers print, PDF download, and link copying modes', function 
         ->toContain('data-receipt-download')
         ->toContain('data-receipt-copy')
         ->toContain('receiptWindow.print()')
-        ->toContain('navigator.clipboard.writeText(')
+        ->toContain('copyToClipboard(receiptWindow, receipt.publicUrl)')
         ->toContain('Pindai untuk memeriksa keabsahan struk');
 });
 
@@ -76,17 +76,19 @@ test('downloading draws a real text PDF rather than a picture of the slip', func
     expect($pdfModule)
         ->toContain('export async function downloadPosReceiptPdf(')
         ->toContain("import { jsPDF } from 'jspdf'")
-        ->toContain("this.doc.setFont('courier'")
-        ->toContain('this.doc.text(')
-        ->toContain('doc.save(receiptFileName(receipt))')
-        ->toContain("return `Struk-\${number.replace(/[^A-Za-z0-9-]+/g, '-')}.pdf`")
+        ->toContain('renderPosReceiptPdf(receipt, brand, logo).save(')
+        ->toContain('return pdfFileName(`Struk-${number}`);')
         // One continuous page at the roll's printable width, like the printer.
-        ->toContain('const PAGE_WIDTH = 78')
+        ->toContain("const ROLL: PageMetrics = {\n    width: 78,")
         ->toContain('format: [PAGE_WIDTH, height]')
         // The layout is measured on a throwaway page, then cut to that height.
-        ->toContain('const height = layoutSlip(measured, receipt, brand, art)')
-        // Nothing is rasterised but the two marks the fonts cannot draw.
+        ->toContain('const height = layoutSlip(measured, receipt, brand, logo)')
+        // Nothing is rasterised but the mark the fonts cannot draw.
         ->not->toContain('html2canvas');
+
+    expect(file_get_contents(resource_path('js/lib/pdfDocument.ts')))
+        ->toContain("this.doc.setFont(this.page.font, bold === true ? 'bold' : 'normal')")
+        ->toContain('this.doc.text(');
 
     $receiptModule = file_get_contents(resource_path('js/lib/posReceipt.ts'));
 
@@ -102,8 +104,10 @@ test('the verification link is clickable in the downloaded PDF', function () {
     expect(file_get_contents(resource_path('js/lib/posReceiptPdf.ts')))
         // Placed by hand: textWithLink measures its box off the wrong baseline.
         ->toContain('slip.doc.link(left, slip.y, width, step, { url: receipt.publicUrl })')
-        ->toContain('const LINK: [number, number, number] = [29, 78, 216]')
         ->not->toContain('doc.textWithLink(');
+
+    expect(file_get_contents(resource_path('js/lib/pdfDocument.ts')))
+        ->toContain('export const LINK: [number, number, number] = [29, 78, 216]');
 });
 
 /*
@@ -134,14 +138,21 @@ test('copying the link confirms itself with a toast on the slip', function () {
     $receiptModule = file_get_contents(resource_path('js/lib/posReceipt.ts'));
 
     expect($receiptModule)
-        ->toContain('function showReceiptToast(')
-        ->toContain('data-receipt-toast')
-        ->toContain("showReceiptToast(receiptWindow, 'Link struk disalin')")
-        ->toContain("showReceiptToast(receiptWindow, 'Link gagal disalin', 'error')")
-        // Top right of the slip's own window, and never on the printout.
-        ->toContain('right: 14px;')
-        ->toContain('top: 14px;')
+        ->toContain('const showToast = documentToaster(receiptWindow, TOAST_DURATION)')
+        ->toContain("showToast('Link struk disalin')")
+        ->toContain("showToast('Link gagal disalin', 'error')")
+        // The download can fail too, and used to say nothing when it did.
+        ->toContain("showToast('PDF gagal dibuat', 'error')")
+        ->toContain('${toastMarkup()}')
         ->toContain('.toolbar, .toast { display: none; }');
+
+    // The toast itself is shared with the recap, so it lives with the escaper.
+    expect(file_get_contents(resource_path('js/lib/printDocument.ts')))
+        ->toContain('export function documentToaster(')
+        ->toContain('data-print-toast')
+        // Top right of the document's own window, and never on the printout.
+        ->toContain('right: 14px;')
+        ->toContain('top: 14px;');
 });
 
 /*
@@ -159,8 +170,13 @@ test('the copy button is held rather than read back off the finished click event
 
 /* An outlet served over plain http has no navigator.clipboard at all. */
 test('copying falls back to a selection when the clipboard API is unavailable', function () {
+    // One copy of it, shared with the recap, beside the one escaper.
+    expect(file_get_contents(resource_path('js/lib/printDocument.ts')))
+        ->toContain('export async function copyToClipboard(')
+        ->toContain('documentWindow.navigator.clipboard.writeText(url)')
+        ->toContain('documentWindow.isSecureContext && documentWindow.navigator.clipboard')
+        ->toContain("documentWindow.document.execCommand('copy')");
+
     expect(file_get_contents(resource_path('js/lib/posReceipt.ts')))
-        ->toContain('async function copyReceiptLink(')
-        ->toContain('receiptWindow.isSecureContext && receiptWindow.navigator.clipboard')
-        ->toContain("receiptWindow.document.execCommand('copy')");
+        ->not->toContain('function copyReceiptLink(');
 });

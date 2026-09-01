@@ -25,6 +25,7 @@ import {
     update as updateCashEntry,
     updateTransaction as updateOrderTransaction,
 } from '@/actions/App/Http/Controllers/Admin/FinanceController';
+import RecapQrController from '@/actions/App/Http/Controllers/Admin/RecapQrController';
 import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -42,7 +43,8 @@ import {
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import { matchingTransactionShifts } from '@/composables/useTransactionShift';
-import { openRecapSheetWindow } from '@/lib/recapSheet';
+import { absoluteUrl, openRecapSheetWindow } from '@/lib/recapSheet';
+import type { RecapTableRow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
 import { formatPlate } from '@/lib/vehiclePlate';
 import admin from '@/routes/demo/admin';
@@ -72,6 +74,12 @@ const props = defineProps<{
     dailyBalance: {
         cash: number;
         nonCash: number;
+        /** What the day opened from, so a recap shows the move, not just the end. */
+        previous: {
+            date: string;
+            cash: number;
+            nonCash: number;
+        };
     };
     dailyBalanceHistory: CarwashDailyBalance[];
     paymentMethods: string[];
@@ -95,7 +103,14 @@ const allShiftsKey = 'all';
 const unassignedShiftKey = 'tanpa-shift';
 
 const activeLedger = ref<Ledger>('in');
-const activeShift = ref<Shift>(allShiftsKey);
+/*
+ * The shift tab is client state — switching it never hits the server — so it
+ * is read straight off the query rather than through props.filters. That is
+ * what makes a printed recap's link land on the shift it was taken from.
+ */
+const activeShift = ref<Shift>(
+    new URLSearchParams(window.location.search).get('shift') ?? allShiftsKey,
+);
 const search = ref<string>('');
 const categoryFilters = ref<string[]>(['Semua']);
 const isFormOpen = ref<boolean>(false);
@@ -304,6 +319,11 @@ const profit = computed<number>(() => totalIn.value - totalOut.value);
 
 const balanceHistoryOpen = ref(false);
 
+/** What the outlet holds across both channels, cash and non-cash together. */
+const dailyBalanceTotal = computed<number>(
+    () => props.dailyBalance.cash + props.dailyBalance.nonCash,
+);
+
 /** The balance is an accumulation, so the card names the day it stops at. */
 const balanceCaption = computed<string>(() =>
     props.filters.date === ''
@@ -383,6 +403,47 @@ const nonCashTotals = computed(() => {
  * Everything is read off the same computeds the page renders, so the printout
  * agrees with the screen, and the shift is whichever tab is open.
  */
+/**
+ * Where a printed recap points back to: the same console, day and shift. The
+ * QR is encoded by the server, which builds the address itself from these two
+ * filters rather than taking a destination from the page.
+ */
+function recapLinks(
+    page: 'finance',
+    date: string,
+    shift: string,
+): { sourceUrl: string; qrUrl: string } {
+    return {
+        sourceUrl: absoluteUrl(indexFinance.url({ query: { date, shift } })),
+        qrUrl: absoluteUrl(
+            RecapQrController.url({ query: { page, date, shift } }),
+        ),
+    };
+}
+
+/** One line of the recap's balance table, red where the figure is negative. */
+function balanceRow(
+    date: string,
+    cash: number,
+    nonCash: number,
+): RecapTableRow {
+    const total = cash + nonCash;
+
+    return {
+        label: `Saldo ${formatDate(date)}`,
+        values: [
+            formatCurrency(cash),
+            formatCurrency(nonCash),
+            formatCurrency(total),
+        ],
+        tones: [
+            cash < 0 ? ('negative' as const) : ('default' as const),
+            nonCash < 0 ? ('negative' as const) : ('default' as const),
+            total < 0 ? ('negative' as const) : ('default' as const),
+        ],
+    };
+}
+
 function financeRecapSheet(): RecapSheet {
     const tab = shiftTabs.value.find((shift) => shift.id === activeShift.value);
     const cash = cashChannelRow.value;
@@ -393,7 +454,7 @@ function financeRecapSheet(): RecapSheet {
         'Kanal Keuangan',
         'Pemasukan',
         'Pengeluaran',
-        'Saldo Kanal',
+        'Profit/Keuntungan Kanal',
     ];
 
     return {
@@ -403,6 +464,7 @@ function financeRecapSheet(): RecapSheet {
         shiftLabel: tab?.label ?? 'Seluruh Shift & Tanpa Shift',
         shiftCaption: tab?.caption ?? null,
         meta: [{ label: 'Dicetak oleh', value: props.persona.name }],
+        ...recapLinks('finance', props.filters.date, activeShift.value),
         summary: [
             {
                 label: 'Uang masuk',
@@ -424,16 +486,18 @@ function financeRecapSheet(): RecapSheet {
             },
         ],
         /*
-         * The screen merges the non-cash outgoings into one cell spanning the
-         * rows; a printed sheet has no rowspan, so the same two sections become
-         * two tables and the merge becomes the foot of the second one. The day
-         * totals are not restated under either — the channels only add up to
-         * the day when every entry names one, and the three cards above already
-         * carry the figures that do.
+         * The screen shows one table with a non-cash section; a printed sheet
+         * reads better as two, so the section becomes its own table and keeps
+         * the merge the screen draws — non-cash outgoings are booked against
+         * the section, not the channel that took the money. The day totals are
+         * not restated under either: the channels only add up to the day when
+         * every entry names one, and the three cards above already carry the
+         * figures that do.
          */
         tables: [
             {
-                heading: 'Kanal Keuangan',
+                /* Named for what it holds, not for the column it repeats. */
+                heading: 'Tunai',
                 caption: 'Pemasukan, pengeluaran, dan saldo tunai',
                 columns: channelColumns,
                 rows: [
@@ -456,17 +520,20 @@ function financeRecapSheet(): RecapSheet {
             },
             {
                 heading: 'Non-Tunai',
-                caption: 'Pemasukan per kanal; pengeluaran dan saldo digabung',
+                caption:
+                    'Pemasukan per kanal non-tunai; pengeluaran dan saldo digabung',
                 columns: channelColumns,
+                /* Only the income is per channel; the other two are merged. */
                 rows: nonCash.map((channel) => ({
                     label: channel.label,
-                    values: [formatCurrency(channel.income), '—', '—'],
-                    tones: [
-                        'positive' as const,
-                        'default' as const,
-                        'default' as const,
-                    ],
+                    values: [formatCurrency(channel.income)],
+                    tones: ['positive' as const],
                 })),
+                /*
+                 * Two readings of one set of figures, from one source: the
+                 * sheet spans them down the rows the way the screen does, and
+                 * the roll — which stacks every row — foots them instead.
+                 */
                 total: {
                     label: 'Total Non-Tunai',
                     values: [
@@ -482,6 +549,45 @@ function financeRecapSheet(): RecapSheet {
                             : ('default' as const),
                     ],
                 },
+                merge: {
+                    label: 'Total Non-Tunai',
+                    values: [
+                        null,
+                        {
+                            value: formatCurrency(nonCashTotal.expense),
+                            tone: 'negative' as const,
+                        },
+                        {
+                            value: formatCurrency(nonCashTotal.balance),
+                            tone:
+                                nonCashTotal.balance < 0
+                                    ? ('negative' as const)
+                                    : ('default' as const),
+                        },
+                    ],
+                },
+            },
+            {
+                /*
+                 * Where the day started and where it ended: the balance is an
+                 * accumulation, so a sheet that only carried the closing figure
+                 * would not say what the day actually moved.
+                 */
+                heading: 'Saldo Kas',
+                caption: balanceCaption.value,
+                columns: ['Saldo', 'Tunai', 'Non-Tunai', 'Total Saldo'],
+                rows: [
+                    balanceRow(
+                        props.dailyBalance.previous.date,
+                        props.dailyBalance.previous.cash,
+                        props.dailyBalance.previous.nonCash,
+                    ),
+                    balanceRow(
+                        props.filters.date,
+                        props.dailyBalance.cash,
+                        props.dailyBalance.nonCash,
+                    ),
+                ],
             },
         ],
         timezone: props.filters.timezone,
@@ -1199,6 +1305,29 @@ function applyDate(date: string): void {
                                 {{ formatCurrency(dailyBalance.nonCash) }}
                             </p>
                         </div>
+                        <!-- The two above, added up: what the outlet holds. -->
+                        <div
+                            class="col-span-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3"
+                        >
+                            <div
+                                class="flex items-center gap-1.5 text-slate-600"
+                            >
+                                <Wallet class="h-3.5 w-3.5 shrink-0" />
+                                <span class="text-[11px] font-medium"
+                                    >Total Saldo</span
+                                >
+                            </div>
+                            <p
+                                class="mt-1 text-base font-semibold tracking-tight break-all tabular-nums"
+                                :class="
+                                    dailyBalanceTotal < 0
+                                        ? 'text-rose-600'
+                                        : 'text-slate-900'
+                                "
+                            >
+                                {{ formatCurrency(dailyBalanceTotal) }}
+                            </p>
+                        </div>
                     </div>
                     <p class="mt-3 text-xs text-slate-400">
                         {{ balanceCaption }} · lihat riwayat
@@ -1238,7 +1367,7 @@ function applyDate(date: string): void {
                                     Pengeluaran
                                 </th>
                                 <th class="px-5 py-3 text-right">
-                                    Saldo Kanal
+                                    Profit/Keuntungan Kanal
                                 </th>
                             </tr>
                         </thead>

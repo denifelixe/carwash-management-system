@@ -9,9 +9,10 @@ import {
 import type { RecapPaper } from '@/lib/recapSheet';
 
 /**
- * The paper picker both recaps print from. The sheet opens in its own window,
- * where "Cetak" reaches the printer and the browser's own print prompt is what
- * saves it as a PDF — so one menu covers cetak and download alike.
+ * The paper picker both recaps print from. It chooses the paper, not the
+ * outcome: the sheet opens in its own window, and the toolbar there offers
+ * "Cetak" to the printer and "Unduh PDF" straight to a file, both on whichever
+ * paper was picked here — so one menu covers cetak and download alike.
  */
 defineProps<{
     /** Set when the browser refused the window, so the desk can retry. */

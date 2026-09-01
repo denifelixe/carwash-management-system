@@ -19,6 +19,7 @@ import {
     store as storePosPayment,
     storeMember as storePosMember,
 } from '@/actions/App/Http/Controllers/Admin/PosController';
+import RecapQrController from '@/actions/App/Http/Controllers/Admin/RecapQrController';
 import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import AccordionSection from '@/components/demo/AccordionSection.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
@@ -43,7 +44,7 @@ import type {
     PosReceiptHistoryEntry,
     PosReceiptLine,
 } from '@/lib/posReceipt';
-import { openRecapSheetWindow } from '@/lib/recapSheet';
+import { absoluteUrl, openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
 import { formatPlate, normalizePlate } from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
@@ -173,7 +174,15 @@ const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
 const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
 const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
 const selectedPaymentRecapOrder = ref<PaymentRecapOrderDetail | null>(null);
-const activePaymentRecapShift = ref<PaymentRecapShift>(paymentRecapTotalKey);
+/*
+ * The recap tab is client state — switching it never hits the server — so it
+ * is read straight off the query rather than through props. That is what makes
+ * a printed recap's link land on the shift it was taken from.
+ */
+const activePaymentRecapShift = ref<PaymentRecapShift>(
+    new URLSearchParams(window.location.search).get('shift') ??
+        paymentRecapTotalKey,
+);
 const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
 const selectedRewardId = ref<number | null>(null);
@@ -482,6 +491,23 @@ const paymentRecapByChannel = computed<PaymentRecapRow[]>(() => {
  * under those sections is deliberately left off — the sheet is a recap, and a
  * cashier closing up does not need every transaction reprinted with it.
  */
+/**
+ * Where a printed recap points back to: the same console, day and shift. The
+ * QR is encoded by the server, which builds the address itself from these two
+ * filters rather than taking a destination from the page.
+ */
+function recapLinks(
+    date: string,
+    shift: string,
+): { sourceUrl: string; qrUrl: string } {
+    return {
+        sourceUrl: absoluteUrl(indexPos.url({ query: { date, shift } })),
+        qrUrl: absoluteUrl(
+            RecapQrController.url({ query: { page: 'pos', date, shift } }),
+        ),
+    };
+}
+
 function posRecapSheet(): RecapSheet {
     const tab = paymentRecapShiftTabs.value.find(
         (option) => option.key === activePaymentRecapShift.value,
@@ -503,6 +529,7 @@ function posRecapSheet(): RecapSheet {
         shiftLabel: tab?.label ?? 'Total',
         shiftCaption: tab?.caption ?? null,
         meta: [{ label: 'Dicetak oleh', value: props.persona.name }],
+        ...recapLinks(props.filters.date, activePaymentRecapShift.value),
         summary: [
             {
                 label: 'Total pembayaran diterima',
