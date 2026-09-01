@@ -50,3 +50,26 @@ test('the catalog migration applies the requested category order', function () {
         ->and(Service::query()->orderBy('sort_order')->pluck('sort_order')->all())
         ->toBe(range(1, Service::query()->count()));
 });
+
+test('the Speedtuner SQL import uses the requested category order', function () {
+    $sql = file_get_contents(database_path('sql/services_speedtuner_cibinong.sql'));
+    $categories = [
+        'Cuci Mobil',
+        'Paket Mobil',
+        'Cuci Motor',
+        'Detailing Mobil',
+        'Detailing Motor',
+        'Coating Mobil',
+        'Coating Motor',
+        'Add-on',
+    ];
+
+    expect($sql)
+        ->not->toContain("'Paket Premium Mobil'")
+        ->toContain('(name, category, variations, stamps, icon, description, is_popular, is_active, sort_order, created_at, updated_at)')
+        ->toContain('sort_order = VALUES(sort_order)');
+
+    foreach ($categories as $index => $category) {
+        expect($sql)->toContain("WHEN '{$category}' THEN ".($index + 1));
+    }
+});

@@ -8,6 +8,7 @@ SET NAMES utf8mb4;
 
 DROP TEMPORARY TABLE IF EXISTS service_catalog_import;
 CREATE TEMPORARY TABLE service_catalog_import (
+    source_order INT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(255) NOT NULL,
     price BIGINT UNSIGNED NOT NULL,
@@ -42,6 +43,19 @@ VALUES
 ('Glass Coating', 'Paket Mobil', 300000, 1, '🛡️', 'Jamur kaca removal, coating kaca depan, dan regular wash.', 0, 1, NOW(), NOW()),
 ('Headlamp Restore', 'Paket Mobil', 300000, 1, '💎', 'Headlamp restore dan regular wash.', 0, 1, NOW(), NOW()),
 
+-- ------------------------------------------------------------- Supreme Wash
+-- Include: 1 layer coating, single step polish, windshield glass coating, engine bay
+-- cleaning, detailing ruang roda, rims cleaning, interior cleaning, free fogging freshener.
+('Supreme Wash - Small', 'Paket Mobil', 1200000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran small.', 0, 1, NOW(), NOW()),
+('Supreme Wash - Medium', 'Paket Mobil', 1400000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran medium.', 0, 1, NOW(), NOW()),
+('Supreme Wash - Large', 'Paket Mobil', 1600000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran large.', 0, 1, NOW(), NOW()),
+('Supreme Wash - Extra Large', 'Paket Mobil', 2000000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran extra large.', 0, 1, NOW(), NOW()),
+
+-- ---------------------------------------------------------------- Cuci motor
+('Motorcycle Wash', 'Cuci Motor', 25000, 0, '🏍️', 'Cuci motor harian.', 0, 1, NOW(), NOW()),
+('Sport Motorcycle Wash', 'Cuci Motor', 50000, 0, '🏍️', 'Cuci motor sport atau motor besar.', 0, 1, NOW(), NOW()),
+('Extra Sealant Motor', 'Cuci Motor', 25000, 0, '🧴', 'Tambahan sealant untuk cuci motor.', 0, 1, NOW(), NOW()),
+
 -- ------------------------------------------------------------- Coating Lite
 -- Include: 1 layer coating, express polish, interior cleaning, engine bay cleaning.
 ('Coating Lite - Small', 'Coating Mobil', 800000, 0, '🛡️', '1 layer coating, express polish, interior cleaning, dan engine bay cleaning. Ukuran small.', 0, 1, NOW(), NOW()),
@@ -57,14 +71,6 @@ VALUES
 ('Coating Mobil - Medium', 'Coating Mobil', 2500000, 0, '🛡️', '2 layer coating, exterior detailing, multi step polish, glass coating, rims detailing, body waterspot removal, engine dan interior cleaning dressing, free freshner fogging. Ukuran medium.', 0, 1, NOW(), NOW()),
 ('Coating Mobil - Large', 'Coating Mobil', 3000000, 0, '🛡️', '2 layer coating, exterior detailing, multi step polish, glass coating, rims detailing, body waterspot removal, engine dan interior cleaning dressing, free freshner fogging. Ukuran large.', 0, 1, NOW(), NOW()),
 ('Coating Mobil - Extra Large', 'Coating Mobil', 3500000, 0, '🛡️', '2 layer coating, exterior detailing, multi step polish, glass coating, rims detailing, body waterspot removal, engine dan interior cleaning dressing, free freshner fogging. Ukuran extra large.', 0, 1, NOW(), NOW()),
-
--- ------------------------------------------------------------- Supreme Wash
--- Include: 1 layer coating, single step polish, windshield glass coating, engine bay
--- cleaning, detailing ruang roda, rims cleaning, interior cleaning, free fogging freshener.
-('Supreme Wash - Small', 'Paket Premium Mobil', 1200000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran small.', 0, 1, NOW(), NOW()),
-('Supreme Wash - Medium', 'Paket Premium Mobil', 1400000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran medium.', 0, 1, NOW(), NOW()),
-('Supreme Wash - Large', 'Paket Premium Mobil', 1600000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran large.', 0, 1, NOW(), NOW()),
-('Supreme Wash - Extra Large', 'Paket Premium Mobil', 2000000, 0, '⭐', '1 layer coating, single step polish, windshield glass coating, engine bay cleaning, detailing ruang roda, rims cleaning, interior cleaning, dan free fogging freshener. Ukuran extra large.', 0, 1, NOW(), NOW()),
 
 -- --------------------------------------------------------- Detailing mobil
 ('Interior Detailing - Small', 'Detailing Mobil', 750000, 0, '🧽', 'Interior detailing termasuk fogging dan extra service by request. Ukuran small.', 0, 1, NOW(), NOW()),
@@ -92,11 +98,6 @@ VALUES
 ('Seat Remove Interior Detailing - Extra Large', 'Add-on', 700000, 0, '🪑', 'Opsional bongkar jok untuk interior detailing. Ukuran extra large.', 0, 1, NOW(), NOW()),
 ('Extra Service', 'Add-on', 20000, 0, '⭐', 'Layanan tambahan sesuai permintaan pelanggan.', 0, 1, NOW(), NOW()),
 
--- ---------------------------------------------------------------- Cuci motor
-('Motorcycle Wash', 'Cuci Motor', 25000, 0, '🏍️', 'Cuci motor harian.', 0, 1, NOW(), NOW()),
-('Sport Motorcycle Wash', 'Cuci Motor', 50000, 0, '🏍️', 'Cuci motor sport atau motor besar.', 0, 1, NOW(), NOW()),
-('Extra Sealant Motor', 'Cuci Motor', 25000, 0, '🧴', 'Tambahan sealant untuk cuci motor.', 0, 1, NOW(), NOW()),
-
 -- ------------------------------------------------------------- Coating motor
 -- Include: 2 layer coating, full body detailing, multi step polish,
 -- body waterspot removal, engine cleaning dressing.
@@ -114,6 +115,7 @@ VALUES
 DROP TEMPORARY TABLE IF EXISTS service_catalog_normalized;
 CREATE TEMPORARY TABLE service_catalog_normalized AS
 SELECT
+    source_order,
     CASE
         WHEN name REGEXP ' - (Small|Medium|Large|Extra Large)$'
             THEN REGEXP_REPLACE(name, ' - (Small|Medium|Large|Extra Large)$', '')
@@ -147,7 +149,7 @@ SELECT
 FROM service_catalog_import;
 
 INSERT INTO services
-    (name, category, variations, stamps, icon, description, is_popular, is_active, created_at, updated_at)
+    (name, category, variations, stamps, icon, description, is_popular, is_active, sort_order, created_at, updated_at)
 SELECT
     logical_name,
     MAX(CASE WHEN size_rank IN (0, 1) THEN category END),
@@ -161,6 +163,21 @@ SELECT
     MAX(CASE WHEN size_rank IN (0, 1) THEN description END),
     MAX(is_popular),
     MAX(is_active),
+    ROW_NUMBER() OVER (
+        ORDER BY
+            CASE MAX(CASE WHEN size_rank IN (0, 1) THEN category END)
+                WHEN 'Cuci Mobil' THEN 1
+                WHEN 'Paket Mobil' THEN 2
+                WHEN 'Cuci Motor' THEN 3
+                WHEN 'Detailing Mobil' THEN 4
+                WHEN 'Detailing Motor' THEN 5
+                WHEN 'Coating Mobil' THEN 6
+                WHEN 'Coating Motor' THEN 7
+                WHEN 'Add-on' THEN 8
+                ELSE 9
+            END,
+            MIN(source_order)
+    ),
     NOW(),
     NOW()
 FROM service_catalog_normalized
@@ -173,6 +190,7 @@ ON DUPLICATE KEY UPDATE
     description = VALUES(description),
     is_popular = VALUES(is_popular),
     is_active = VALUES(is_active),
+    sort_order = VALUES(sort_order),
     updated_at = NOW();
 
 UPDATE service_variations AS variation
