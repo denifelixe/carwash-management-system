@@ -61,11 +61,14 @@ test('member can authenticate only with the member guard', function () {
     $this->post(route('member.login.store'), [
         'email' => $member->email,
         'password' => 'password',
+        'remember' => '1',
     ])->assertRedirect(route('member.dashboard', absolute: false));
 
     $this->assertAuthenticatedAs($member, 'member');
     $this->assertGuest('admin');
-    expect($member->refresh()->last_login_at)->not->toBeNull();
+    expect($member->refresh())
+        ->last_login_at->not->toBeNull()
+        ->remember_token->not->toBeNull();
 
     $this->get(route('member.dashboard'))->assertOk();
 

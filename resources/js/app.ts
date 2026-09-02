@@ -12,6 +12,8 @@ createInertiaApp({
     title: (title) => title || appName,
     layout: (name) => {
         switch (true) {
+            case name.startsWith('errors/'):
+                return null;
             // The demo ships its own shells; auth screens are bare.
             case name.startsWith('demo/auth/'):
                 return null;

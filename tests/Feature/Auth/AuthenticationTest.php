@@ -2,6 +2,7 @@
 
 use App\Models\Admin;
 use App\Support\AppSettings;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
@@ -43,6 +44,20 @@ test('admins can authenticate using the admin login screen', function () {
     $response->assertRedirect(route('admin.dashboard', absolute: false));
 });
 
+test('admins can authenticate and be remembered', function () {
+    $admin = Admin::factory()->create();
+
+    $response = $this->post(route('admin.login.store'), [
+        'email' => $admin->email,
+        'password' => 'password',
+        'remember' => '1',
+    ]);
+
+    $this->assertAuthenticatedAs($admin, 'admin');
+    expect($admin->refresh()->remember_token)->not->toBeNull();
+    $response->assertCookie(Auth::guard('admin')->getRecallerName());
+});
+
 test('hidden admins can authenticate using the admin login screen', function () {
     $admin = Admin::factory()->create(['is_hidden' => true]);
 
@@ -77,8 +92,10 @@ test('admins can logout', function () {
     $this->assertGuest('admin');
 });
 
-test('admin login attempts are rate limited', function () {
+test('admin login attempts show the rate limit page', function () {
     $admin = Admin::factory()->create();
+
+    $this->withHeader('X-Inertia', 'true');
 
     foreach (range(1, 6) as $attempt) {
         $response = $this->post(route('admin.login.store'), [
@@ -87,5 +104,24 @@ test('admin login attempts are rate limited', function () {
         ]);
     }
 
-    $response->assertTooManyRequests();
+    $response
+        ->assertTooManyRequests()
+        ->assertHeader('Retry-After')
+        ->assertHeader('X-Inertia', 'true')
+        ->assertJsonPath('component', 'errors/TooManyRequests')
+        ->assertJsonPath('props.email', $admin->email)
+        ->assertJsonPath('props.returnUrl', route('admin.login', absolute: false))
+        ->assertJsonPath('props.retryAfter', fn (int $retryAfter): bool => $retryAfter > 0);
+});
+
+test('rate limit pages are rendered without an application layout', function () {
+    $appSource = file_get_contents(resource_path('js/app.ts'));
+    $rateLimitPageSource = file_get_contents(resource_path('js/pages/errors/TooManyRequests.vue'));
+
+    expect($appSource)
+        ->toContain("case name.startsWith('errors/'):")
+        ->toContain("case name.startsWith('errors/'):\n                return null;")
+        ->and($rateLimitPageSource)
+        ->toContain('{{ email }}')
+        ->not->toContain('ERROR 429');
 });
