@@ -33,8 +33,8 @@ test('the slip is laid out at the printable width of the 80mm roll', function ()
         ->toContain('const WINDOW_WIDTH = 520')
         ->toContain('width: ${PAPER_WIDTH}')
         ->toContain('@page { margin: 0; size: ${PAPER_WIDTH} auto; }')
-        // Only the printer's thin mechanical margins remain on paper.
-        ->toContain('padding: 0 5mm 6mm 3mm;')
+        // Shift the 72mm print area right, away from this printer's clipped edge.
+        ->toContain('padding: 0 3mm 6mm 5mm;')
         ->toContain('color: #000000;')
         ->toContain('font-size: 12px;')
         // The roll must never widen, so long references wrap instead.
