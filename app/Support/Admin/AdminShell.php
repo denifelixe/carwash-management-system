@@ -26,6 +26,7 @@ class AdminShell
         'bookings' => 'bookings',
         'finance' => 'finance',
         'members' => 'members',
+        'leads' => 'leads',
         'inventory' => 'inventory',
         'rewards' => 'rewards',
         'users_and_roles' => 'users',
@@ -34,6 +35,7 @@ class AdminShell
         'master_work_shifts' => 'work-shifts',
         'master_timezone' => 'timezone',
         'master_app_settings' => 'app-settings',
+        'master_receipt' => 'receipt',
     ];
 
     /**
@@ -121,11 +123,13 @@ class AdminShell
             'bookings' => 'admin.bookings.index',
             'finance' => 'admin.finance.index',
             'members' => 'admin.members.index',
+            'leads' => 'admin.leads.index',
             'users_and_roles' => 'admin.users.index',
             'master_services' => 'admin.master.services.index',
             'master_work_shifts' => 'admin.master.work-shifts.index',
             'master_timezone' => 'admin.master.timezone.index',
             'master_app_settings' => 'admin.master.app-settings.index',
+            'master_receipt' => 'admin.master.receipt.index',
             default => null,
         };
 

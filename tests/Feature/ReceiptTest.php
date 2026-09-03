@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\Member;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
@@ -46,9 +47,22 @@ test('a signed receipt link is publicly viewable without login', function () {
             ->where('receipt.invoice', 'ZW-20260901-AIHOQS')
             ->where('receipt.reference', 'TRX-PLO-260901-ORD20260901AIHOQS-TRX1')
             ->where('receipt.cashier', 'Deni Victoria')
+            ->where('receipt.customerStatus', 'Non-member')
             ->where('receipt.lines.0.name', 'Express Wash')
             ->where('receipt.publicUrl', URL::signedRoute('receipts.show', $transaction))
             ->where('receipt.verificationQr', fn (string $qrCode): bool => str_starts_with($qrCode, 'data:image/svg+xml;base64,'))
+            ->etc());
+});
+
+test('a receipt identifies an order that belongs to a member', function () {
+    $member = Member::factory()->create();
+    $order = Order::factory()->for($member)->create();
+    $transaction = OrderTransaction::factory()->for($order)->create();
+
+    $this->get(URL::signedRoute('receipts.show', $transaction))
+        ->assertSuccessful()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('receipt.customerStatus', 'Member')
             ->etc());
 });
 
@@ -122,7 +136,7 @@ test('the verification link is clickable in the downloaded PDF', function () {
         ->toContain('export const LINK: [number, number, number] = [29, 78, 216]');
 });
 
-test('the receipt QR markup is retained while it is temporarily hidden from print', function () {
+test('the receipt QR reaches paper only when the outlet switches it on', function () {
     expect(file_get_contents(resource_path('js/lib/posReceiptPdf.ts')))
         ->toContain('Verifikasi struk:')
         ->not->toContain('verificationQr')
@@ -131,12 +145,16 @@ test('the receipt QR markup is retained while it is temporarily hidden from prin
     $receiptModule = file_get_contents(resource_path('js/lib/posReceipt.ts'));
 
     expect($receiptModule)
-        ->toContain('function verificationBlock(receipt: PosReceipt): string')
+        // The switch lives in Master > Struk, not in a hardcoded hide.
+        ->toContain('function verificationBlock(receipt: PosReceipt, brand: CarwashBrand): string')
+        ->toContain('!brand.receipt.showQr ||')
         ->toContain('class="verification-qr-image"')
         ->toContain('Pindai untuk memeriksa keabsahan struk')
-        ->toContain('.verification { border-top: 1px dashed #94a3b8; display: none;')
-        ->toContain('.verification { display: none; }')
-        ->not->toContain('.verification { display: block; }')
+        // Screen keeps it hidden: the slip's own page is already the link.
+        ->toContain('.verification { border-top: 1px dashed #94a3b8; break-inside: avoid; display: none;')
+        ->toContain('page-break-inside: avoid;')
+        ->toContain('.verification { display: block; }')
+        ->not->toContain('.verification { display: none; }')
         // The link is gone from the slip's own page; the page is that link.
         ->not->toContain('verification-link')
         ->not->toContain('Verifikasi struk:')

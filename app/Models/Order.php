@@ -19,6 +19,7 @@ use Illuminate\Support\Carbon;
  * @property string|null $invoice_number
  * @property int|null $member_id
  * @property int|null $member_vehicle_id
+ * @property int|null $lead_id
  * @property int|null $created_by_admin_id
  * @property int|null $crew_admin_id
  * @property int|null $handled_by_admin_id
@@ -44,7 +45,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['number', 'invoice_number', 'member_id', 'member_vehicle_id', 'created_by_admin_id', 'crew_admin_id', 'handled_by_admin_id', 'handled_by', 'customer_name', 'customer_phone', 'vehicle_name', 'vehicle_plate', 'service_date', 'arrived_at', 'booking_date', 'source', 'status', 'subtotal', 'discount', 'total', 'paid_amount', 'stamps_earned', 'reward_name', 'payment_method', 'bay', 'notes'])]
+#[Fillable(['number', 'invoice_number', 'member_id', 'member_vehicle_id', 'lead_id', 'created_by_admin_id', 'crew_admin_id', 'handled_by_admin_id', 'handled_by', 'customer_name', 'customer_phone', 'vehicle_name', 'vehicle_plate', 'service_date', 'arrived_at', 'booking_date', 'source', 'status', 'subtotal', 'discount', 'total', 'paid_amount', 'stamps_earned', 'reward_name', 'payment_method', 'bay', 'notes'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
@@ -60,6 +61,12 @@ class Order extends Model
     public function memberVehicle(): BelongsTo
     {
         return $this->belongsTo(MemberVehicle::class);
+    }
+
+    /** @return BelongsTo<Lead, $this> */
+    public function lead(): BelongsTo
+    {
+        return $this->belongsTo(Lead::class);
     }
 
     /** @return BelongsTo<Admin, $this> */

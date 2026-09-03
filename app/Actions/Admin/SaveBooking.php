@@ -12,6 +12,8 @@ use Illuminate\Support\Str;
 
 class SaveBooking
 {
+    public function __construct(private CaptureOrderLead $captureOrderLead) {}
+
     /** @param array<string, mixed> $data */
     public function handle(array $data, int $adminId, ?Order $booking = null): Order
     {
@@ -57,6 +59,19 @@ class SaveBooking
             $customerPhone = $member?->phone ?? ($data['customer_phone'] ?? '');
             $vehicleName = $vehicle?->name ?? Str::squish($data['vehicle_name'] ?? '');
             $vehiclePlate = $vehicle?->plate ?? ($data['vehicle_plate'] ?? '');
+            /*
+             * A booking taken for a non-member is still that person's first
+             * footprint at the outlet, so it files a lead exactly like a
+             * walk-in does.
+             */
+            $lead = $member === null
+                ? $this->captureOrderLead->handle([
+                    'name' => $customerName,
+                    'phone' => $customerPhone,
+                    'vehicle_name' => $vehicleName,
+                    'vehicle_plate' => $vehiclePlate,
+                ])
+                : null;
             $subtotal = (int) $variations->sum(
                 fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
             );
@@ -65,6 +80,7 @@ class SaveBooking
             $values = [
                 'member_id' => $member?->id,
                 'member_vehicle_id' => $vehicle?->id,
+                'lead_id' => $lead?->id,
                 'customer_name' => $customerName,
                 'customer_phone' => $customerPhone,
                 'vehicle_name' => $vehicleName,

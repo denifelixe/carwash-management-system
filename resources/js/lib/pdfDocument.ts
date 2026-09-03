@@ -306,14 +306,19 @@ export function rasterizeEmoji(
     }
 }
 
-/** The outlet's mark is the only thing on either file that is not drawn as text. */
+/**
+ * The outlet's mark is the only thing on either file that is not drawn as text.
+ * `photo` is passed explicitly by documents that carry their own mark — the
+ * slip prints `brand.receipt.photo`, the recap the app photo.
+ */
 export async function brandArtwork(
     documentWindow: Window,
     brand: CarwashBrand,
+    photo: string | null = brand.photo,
 ): Promise<RasterImage | null> {
-    return brand.photo === null
+    return photo === null
         ? rasterizeEmoji(documentWindow, brand.logo)
-        : rasterize(documentWindow, brand.photo);
+        : rasterize(documentWindow, photo);
 }
 
 /** Places the outlet's mark centred, at the size the paper gives it. */

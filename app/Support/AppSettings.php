@@ -49,6 +49,30 @@ class AppSettings
 
     public const INSTAGRAM = 'instagram';
 
+    public const RECEIPT_BUSINESS_NAME = 'receipt_business_name';
+
+    public const RECEIPT_SHOW_LOGO = 'receipt_show_logo';
+
+    public const RECEIPT_SHOW_QR = 'receipt_show_qr';
+
+    public const RECEIPT_FOOTER_NOTE = 'receipt_footer_note';
+
+    public const RECEIPT_PHOTO = 'receipt_photo';
+
+    /**
+     * Printed width of the slip's mark, in millimetres.
+     *
+     * The default is the 15mm the slip printed before the size was adjustable.
+     * The ceiling is the full 72mm printable area of an 80mm roll.
+     */
+    public const RECEIPT_LOGO_WIDTH = 'receipt_logo_width';
+
+    public const RECEIPT_LOGO_WIDTH_DEFAULT = 15;
+
+    public const RECEIPT_LOGO_WIDTH_MIN = 8;
+
+    public const RECEIPT_LOGO_WIDTH_MAX = 72;
+
     private const CACHE_KEY = 'app_settings';
 
     /**
@@ -136,6 +160,79 @@ class AppSettings
         return self::brand(self::INSTAGRAM) ?? 'zenwash.id';
     }
 
+    /**
+     * The trading name printed on the thermal slip.
+     *
+     * An outlet often bills under a name the app is not installed under, so the
+     * receipt carries its own; left unset it simply follows the app name.
+     */
+    public static function receiptBusinessName(): string
+    {
+        return self::brand(self::RECEIPT_BUSINESS_NAME) ?? self::appName();
+    }
+
+    /**
+     * The fine print under the thank-you line. An outlet that saves it blank
+     * prints no line at all, which is why the default only stands in for an
+     * unset key, not for an empty one.
+     */
+    public static function receiptFooterNote(): string
+    {
+        return self::brand(self::RECEIPT_FOOTER_NOTE)
+            ?? 'Struk ini adalah bukti pembayaran yang sah.';
+    }
+
+    /**
+     * The mark printed on the slip.
+     *
+     * A slip is not the app: an outlet often wants a plain, high-contrast mark
+     * on the roll and a richer one in the console. Until it uploads its own,
+     * the slip borrows the app photo, so nothing on paper changes by adding
+     * this setting.
+     */
+    public static function receiptPhotoUrl(): ?string
+    {
+        return self::publicUrl(self::RECEIPT_PHOTO) ?? self::appPhotoUrl();
+    }
+
+    /**
+     * Clamped on the way out as well as validated on the way in: a value left
+     * over from an older range must still print inside the roll.
+     */
+    public static function receiptLogoWidth(): int
+    {
+        $width = self::brand(self::RECEIPT_LOGO_WIDTH);
+
+        if ($width === null || ! ctype_digit($width)) {
+            return self::RECEIPT_LOGO_WIDTH_DEFAULT;
+        }
+
+        return max(
+            self::RECEIPT_LOGO_WIDTH_MIN,
+            min(self::RECEIPT_LOGO_WIDTH_MAX, (int) $width),
+        );
+    }
+
+    /** Whether the slip carries its own mark rather than borrowing the app photo. */
+    public static function hasOwnReceiptPhoto(): bool
+    {
+        return self::brand(self::RECEIPT_PHOTO) !== null;
+    }
+
+    public static function receiptShowsLogo(): bool
+    {
+        return self::flag(self::RECEIPT_SHOW_LOGO, true);
+    }
+
+    /**
+     * The verification QR stays off until the outlet asks for it: it costs the
+     * roll about 30mm, and it is the block the print tests keep off the paper.
+     */
+    public static function receiptShowsQr(): bool
+    {
+        return self::flag(self::RECEIPT_SHOW_QR, false);
+    }
+
     public static function get(string $key): ?string
     {
         return self::all()[$key] ?? null;
@@ -189,6 +286,14 @@ class AppSettings
     private static function brand(string $key): ?string
     {
         return self::isDemoRequest() ? null : self::get($key);
+    }
+
+    /** Flags are stored as the strings '1' and '0', like every other value. */
+    private static function flag(string $key, bool $default): bool
+    {
+        $value = self::brand($key);
+
+        return $value === null ? $default : $value === '1';
     }
 
     private static function isDemoRequest(): bool

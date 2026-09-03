@@ -5,6 +5,7 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
 use App\Models\DailyBalance;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -566,4 +567,33 @@ test('a scheduled cashier must choose one of overlapping shifts for every paymen
         ->assertSessionHasNoErrors();
 
     expect(OrderTransaction::query()->firstOrFail()->shift_name)->toBe('Shift Siang');
+});
+
+test('registering a walk in as a member closes the lead behind the order', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $lead = Lead::factory()->create(['vehicle_plate' => 'B8120DS', 'name' => 'Belum Member']);
+    $order = Order::factory()->for($lead)->create([
+        'status' => 'pelunasan',
+        'vehicle_plate' => 'B8120DS',
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.member.store', $order), [
+            'name' => 'Deni Victoria',
+            'phone' => '081200002222',
+            'vehicle_name' => 'Toyota Avanza',
+            'vehicle_plate' => 'B 8120 DS',
+        ])
+        ->assertSessionHasNoErrors();
+
+    $member = Member::query()->latest('id')->firstOrFail();
+
+    expect($lead->refresh())
+        ->converted_member_id->toBe($member->id)
+        ->and($lead->converted_at)->not->toBeNull();
+
+    /* The row survives, it just leaves the working list. */
+    $this->actingAs($cashier, 'admin')
+        ->get(route('admin.leads.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page->where('leads.meta.total', 0));
 });

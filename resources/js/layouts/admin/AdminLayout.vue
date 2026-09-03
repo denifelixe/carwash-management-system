@@ -18,8 +18,10 @@ import {
     Menu,
     PanelLeftClose,
     PanelLeftOpen,
+    ReceiptText,
     ScanLine,
     ShieldCheck,
+    UserPlus,
     Users,
     Wallet,
     X,
@@ -49,6 +51,7 @@ const moduleIcons: Record<string, LucideIcon> = {
     orders: ClipboardList,
     pos: ScanLine,
     members: Users,
+    leads: UserPlus,
     finance: Wallet,
     bookings: CalendarClock,
     inventory: Boxes,
@@ -60,6 +63,7 @@ const moduleIcons: Record<string, LucideIcon> = {
     'work-shifts': Clock3,
     timezone: Globe,
     'app-settings': ImageIcon,
+    receipt: ReceiptText,
 };
 
 const fallbackModule: CarwashAdminModule = {

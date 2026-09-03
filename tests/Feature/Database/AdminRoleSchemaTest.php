@@ -111,19 +111,22 @@ test('admin modules are prefilled from the demo navigation', function () {
         ->orderBy('sort_order')
         ->get(['key', 'name', 'description', 'sort_order']);
 
-    /* The demo navigation, plus the master modules that only exist live. */
-    expect($modules)->toHaveCount(14);
-    expect($modules->last()->key)->toBe('master_app_settings');
+    /* The demo navigation, plus the modules that only exist live. */
+    expect($modules)->toHaveCount(16);
+    expect($modules->last()->key)->toBe('master_receipt');
+    expect($modules->firstWhere('key', 'leads')->sort_order)->toBe(7);
+
+    /* Leads has no demo counterpart, so it is not part of this comparison. */
+    $shared = $modules->reject(fn (object $module): bool => $module->key === 'leads')->values();
 
     foreach (RoleAccess::modules() as $index => $demoModule) {
         $expectedKey = $demoModule['key'] === 'users'
             ? 'users_and_roles'
             : $demoModule['key'];
 
-        expect($modules[$index]->key)->toBe($expectedKey)
-            ->and($modules[$index]->name)->toBe($demoModule['label'])
-            ->and($modules[$index]->description)->toBe($demoModule['caption'])
-            ->and($modules[$index]->sort_order)->toBe($index + 1);
+        expect($shared[$index]->key)->toBe($expectedKey)
+            ->and($shared[$index]->name)->toBe($demoModule['label'])
+            ->and($shared[$index]->description)->toBe($demoModule['caption']);
     }
 });
 

@@ -17,6 +17,8 @@ use Illuminate\Support\Facades\DB;
  */
 class RegisterOrderMember
 {
+    public function __construct(private MarkLeadConverted $markLeadConverted) {}
+
     /**
      * @param  array{name: string, phone: string, vehicle_name: string, vehicle_plate: string}  $details
      */
@@ -68,6 +70,8 @@ class RegisterOrderMember
                     fn ($variation): int => (int) $variation->pivot->stamps * (int) $variation->pivot->quantity,
                 ),
             ]);
+
+            $this->markLeadConverted->handle($member, [$vehicle->plate]);
 
             return $member;
         });

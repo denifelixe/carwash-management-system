@@ -36,7 +36,8 @@ class RoleAccess
             ['key' => 'master_services', 'label' => 'Layanan', 'caption' => 'Master data layanan', 'icon' => 'services', 'route' => 'demo.admin.master.services'],
             ['key' => 'master_work_shifts', 'label' => 'Shift', 'caption' => 'Master jadwal kerja', 'icon' => 'work-shifts', 'route' => 'demo.admin.master.work-shifts'],
             ['key' => 'master_timezone', 'label' => 'Timezone', 'caption' => 'Zona waktu operasional', 'icon' => 'timezone', 'route' => 'demo.admin.master.timezone'],
-            ['key' => 'master_app_settings', 'label' => 'App Setting', 'caption' => 'Nama, foto, dan favicon aplikasi', 'icon' => 'app-settings', 'route' => 'demo.admin.master.app-settings'],
+            ['key' => 'master_app_settings', 'label' => 'Aplikasi', 'caption' => 'Identitas, favicon, dan metadata', 'icon' => 'app-settings', 'route' => 'demo.admin.master.app-settings'],
+            ['key' => 'master_receipt', 'label' => 'Struk', 'caption' => 'Nama bisnis, catatan kaki, dan QR struk', 'icon' => 'receipt', 'route' => 'demo.admin.master.receipt'],
         ];
     }
 
@@ -62,8 +63,8 @@ class RoleAccess
     public static function matrix(): array
     {
         return [
-            'owner' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings'],
-            'manager' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'reports', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings'],
+            'owner' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'users', 'reports', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings', 'master_receipt'],
+            'manager' => ['dashboard', 'orders', 'pos', 'members', 'finance', 'bookings', 'inventory', 'rewards', 'reports', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings', 'master_receipt'],
             'cashier' => ['pos', 'members', 'finance', 'bookings', 'inventory'],
             'cs' => ['members', 'orders'],
             'finance' => ['finance', 'reports'],

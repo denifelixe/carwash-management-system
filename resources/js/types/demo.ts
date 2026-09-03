@@ -2,6 +2,21 @@
  * Shapes mirroring the PHP demo-data providers in `app/Support/Carwash`.
  */
 
+/** How the thermal slip is dressed, set in Master > Struk. */
+export interface CarwashReceiptBrand {
+    /** Trading name printed on the slip; follows the app name until changed. */
+    name: string;
+    /** Fine print under the thank-you line; blank prints no line at all. */
+    footerNote: string;
+    /** The slip's own mark, falling back to the app photo until one is uploaded. */
+    photo: string | null;
+    /** Printed width of that mark, in millimetres of the 72mm printable area. */
+    logoWidth: number;
+    showLogo: boolean;
+    /** The verification QR only ever reaches paper, and only when enabled. */
+    showQr: boolean;
+}
+
 export interface CarwashBrand {
     name: string;
     system: string;
@@ -12,6 +27,7 @@ export interface CarwashBrand {
     stampTarget: number;
     stampReward: string;
     today: string;
+    receipt: CarwashReceiptBrand;
 }
 
 export interface CarwashShift {
@@ -151,6 +167,45 @@ export interface CarwashMemberDetail {
     customer: CarwashCustomer;
     orders: CarwashOrder[];
     stampHistory: CarwashStampEntry[];
+}
+
+export interface CarwashLeadOption {
+    id: number;
+    name: string;
+    phone: string;
+    vehicleName: string;
+    vehiclePlate: string;
+}
+
+export interface CarwashLead extends CarwashLeadOption {
+    notes: string;
+    visits: number;
+    spend: number;
+    firstSeen: string;
+    lastVisit: string;
+    initials: string;
+    status: string;
+    isConverted: boolean;
+    convertedMemberId: number | null;
+}
+
+export interface CarwashLeadFilters {
+    q: string;
+    status: string;
+    conversion: string;
+    page: number;
+}
+
+export interface CarwashLeadStats {
+    total: number;
+    open: number;
+    converted: number;
+    returning: number;
+}
+
+export interface CarwashLeadDetail {
+    lead: CarwashLead;
+    orders: CarwashOrder[];
 }
 
 export interface CarwashVehicle {

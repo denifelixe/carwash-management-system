@@ -88,6 +88,7 @@ test('the sidebar modules follow the operational menu order', function () {
         'master_work_shifts',
         'master_timezone',
         'master_app_settings',
+        'master_receipt',
     ]);
 });
 

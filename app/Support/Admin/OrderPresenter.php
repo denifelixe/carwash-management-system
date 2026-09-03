@@ -4,6 +4,7 @@ namespace App\Support\Admin;
 
 use App\Models\Admin;
 use App\Models\AdminShift;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -160,6 +161,7 @@ class OrderPresenter
             'cashier' => $transaction->recordedBy?->name ?? '—',
             'shift' => $transaction->shift_name ?? 'Tanpa Shift',
             'customer' => $order->customer_name,
+            'customerStatus' => $order->member_id === null ? 'Non-member' : 'Member',
             'vehicle' => $order->vehicle_name,
             'plate' => $order->vehicle_plate,
             'items' => collect($serviceItems)->pluck('label')->join(', '),
@@ -313,6 +315,44 @@ class OrderPresenter
             'initials' => self::initials($member->name),
             'status' => $member->is_active ? 'aktif' : 'tidak aktif',
             'hasAccount' => $member->password !== null,
+        ];
+    }
+
+    /**
+     * A lead as the leads module lists it.
+     *
+     * @return array<string, mixed>
+     */
+    public static function lead(Lead $lead): array
+    {
+        return [
+            ...self::leadOption($lead),
+            'notes' => $lead->notes ?? '',
+            'visits' => (int) $lead->orders_count,
+            'spend' => (int) $lead->getAttribute('orders_sum_total'),
+            'firstSeen' => $lead->created_at?->format('M Y') ?? '',
+            'lastVisit' => self::visitLabel($lead->getAttribute('last_order_date')),
+            'initials' => self::initials($lead->name),
+            'status' => $lead->is_active ? 'aktif' : 'tidak aktif',
+            'isConverted' => $lead->converted_member_id !== null,
+            'convertedMemberId' => $lead->converted_member_id,
+        ];
+    }
+
+    /**
+     * The half of a lead the order form's picker needs: enough to recognise the
+     * car and to prefill the four walk-in fields.
+     *
+     * @return array<string, mixed>
+     */
+    public static function leadOption(Lead $lead): array
+    {
+        return [
+            'id' => $lead->id,
+            'name' => $lead->name,
+            'phone' => $lead->phone ?? '',
+            'vehicleName' => $lead->vehicle_name ?? '',
+            'vehiclePlate' => $lead->vehicle_plate,
         ];
     }
 

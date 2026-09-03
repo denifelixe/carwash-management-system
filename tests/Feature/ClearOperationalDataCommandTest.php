@@ -6,6 +6,7 @@ use App\Models\AppSetting;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
 use App\Models\DailyBalance;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -82,10 +83,12 @@ test('it clears operational data while preserving users roles and masters', func
 
     $member = Member::factory()->create();
     $vehicle = MemberVehicle::factory()->for($member)->create();
+    $lead = Lead::factory()->create();
     $order = Order::factory()->create([
         'member_id' => $member->id,
         'member_vehicle_id' => $vehicle->id,
         'created_by_admin_id' => $admin->id,
+        'lead_id' => $lead->id,
     ]);
     $variation = $service->serviceVariations()->firstOrFail();
     $order->serviceVariations()->attach($variation->id, [
@@ -174,6 +177,7 @@ test('it clears operational data while preserving users roles and masters', func
             'order_transactions',
             'order_services',
             'orders',
+            'leads',
             'member_vehicles',
             'member_password_reset_tokens',
             'members',

@@ -94,7 +94,7 @@ test('the entry screen exposes the roles and the full access matrix', function (
             fn (AssertableInertia $page) => $page
                 ->component('demo/auth/Entry')
                 ->has('roles', 5)
-                ->has('modules', 14)
+                ->has('modules', 15)
                 ->has('matrix')
         );
 });

@@ -8,6 +8,7 @@ use App\Support\Demo\DateFilter;
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Response;
 
 /**
@@ -32,6 +33,12 @@ class OrderController extends AdminController
             'customers' => Customers::all(),
             'crew' => Operations::crew(),
             'paymentMethods' => Operations::paymentMethods(),
+            /*
+             * The live console searches leads here; the demo has no lead
+             * fixtures, but the prop must exist so both consoles hand the
+             * shared page the same shape.
+             */
+            'leadOptions' => Inertia::optional(fn (): array => []),
             'capabilities' => [
                 'create' => true,
                 'update' => true,

@@ -36,9 +36,48 @@ test('the slip is laid out at the printable width of the 80mm roll', function ()
         // Shift the 72mm print area right, away from this printer's clipped edge.
         ->toContain('padding: 0 3mm 6mm 5mm;')
         ->toContain('color: #000000;')
-        ->toContain('font-size: 12px;')
+        ->toContain('font-size: 13px;')
+        ->toContain('.contact, .copy { font-size: 11px; }')
+        ->toContain('.reference, .detail, .fineprint, .verification-caption { font-size: 10px; }')
+        ->toContain('.name, .amount.grand, .status { font-size: 14px; }')
         // The roll must never widen, so long references wrap instead.
         ->toContain('overflow-wrap: anywhere');
+});
+
+/*
+ * The slip is dressed from Master > Struk, so its settings have to reach the
+ * markup rather than sit in the settings table unread.
+ */
+test('the slip is dressed by the receipt settings', function () {
+    expect(posReceiptModule())
+        // The fine print is the outlet's line, and a blank one prints nothing.
+        ->toContain("brand.receipt.footerNote === '' ? '' :")
+        ->toContain('escapeHtml(brand.receipt.footerNote)')
+        ->not->toContain('Struk ini adalah bukti pembayaran yang sah.')
+        // The QR is a switch now, never a hardcoded hide.
+        ->toContain('!brand.receipt.showQr ||')
+        ->toContain('.verification { display: block; }')
+        ->not->toContain('Temporarily hidden for receipt testing');
+
+    expect(file_get_contents(resource_path('js/lib/posReceiptPdf.ts')))
+        ->toContain("slip.paragraph(brand.receipt.name, 'center', {")
+        ->toContain("slip.meta('Status', receipt.customerStatus)")
+        ->toContain("if (brand.receipt.footerNote !== '') {")
+        // Nothing is rasterised for a slip that prints no logo.
+        ->toContain('const logo = brand.receipt.showLogo')
+        // ...and what is rasterised is the slip's mark, not the app photo.
+        ->toContain('brandArtwork(receiptWindow, brand, brand.receipt.photo)')
+        // Both layouts size the mark in the same millimetres of roll.
+        ->toContain('brand.receipt.logoWidth * 0.71,');
+
+    expect(posReceiptModule())
+        ->toContain('function receiptStyles(brand: CarwashBrand): string')
+        ->toContain('const logoWidth = brand.receipt.logoWidth;')
+        ->toContain('max-width: ${logoWidth}mm')
+        ->toContain('max-height: ${logoHeight}mm')
+        // The emoji fallback scales with the same setting.
+        ->toContain('.logo { font-size: ${(logoWidth * 0.35).toFixed(1)}mm;')
+        ->not->toContain('max-width: 56px');
 });
 
 test('the slip opens in its own window instead of inside the SPA', function () {
@@ -66,6 +105,7 @@ test('the slip carries everything the customer needs to reconcile the payment', 
     expect(posReceiptModule())
         ->toContain("metaRow('Ref.', receipt.reference)")
         ->toContain("metaRow('Kasir', receipt.cashier)")
+        ->toContain("metaRow('Status', receipt.customerStatus)")
         ->toContain("metaRow('Plat', formatPlate(receipt.plate))")
         ->toContain("amountRow('TOTAL', receipt.total, 'grand')")
         ->toContain("amountRow('Sisa tagihan', receipt.dueAfter, 'strong')")
@@ -88,7 +128,10 @@ test('the slip carries everything the customer needs to reconcile the payment', 
         ->toContain('contact-icon instagram');
 
     expect(posReceiptModule())
-        ->toContain('${brandMark(brand.photo, brand.logo, brand.name)}')
+        ->toContain(
+            '${brand.receipt.showLogo ? brandMark(brand.receipt.photo, brand.logo, brand.receipt.name) : \'\'}',
+        )
+        ->toContain('${escapeHtml(brand.receipt.name)}')
         ->toContain('.logo-image')
         ->toContain('${brandContacts(brand.whatsapp, brand.instagram)}')
         ->not->toContain('stampBlock')
@@ -119,6 +162,7 @@ test('the slip itemises every payment the order already took', function () {
         ->toContain("return 'Pembayaran';");
 
     expect(posModule())
+        ->toContain("customerStatus: order.customerId === null ? 'Non-member' : 'Member'")
         ->toContain('history: order.transactions.map((entry) => ({')
         ->toContain('type: paymentHistoryTypeLabel(entry)')
         ->toContain('channels: transactionChannelsLabel(entry)')

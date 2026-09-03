@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\CaptureOrderLead;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderHandlerRequest;
@@ -12,6 +13,7 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\ServiceVariation;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\LeadQueries;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
 use App\Support\Demo\DateFilter;
@@ -63,6 +65,14 @@ class OrderController extends Controller
                     'rating' => 0,
                     'initials' => OrderPresenter::initials($crew->name),
                 ])->all(),
+            /*
+             * The walk-in tab searches leads against the server rather than
+             * against a preloaded roster: leads grow with every non-member
+             * visit, so shipping them all would bloat this page forever.
+             */
+            'leadOptions' => Inertia::optional(
+                fn (): array => LeadQueries::searchOptions($request->string('leadQuery')->toString()),
+            ),
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
             'capabilities' => [
                 'create' => Gate::allows('admin.orders.create'),
@@ -71,11 +81,11 @@ class OrderController extends Controller
         ]);
     }
 
-    public function store(StoreOrderRequest $request): RedirectResponse
+    public function store(StoreOrderRequest $request, CaptureOrderLead $captureOrderLead): RedirectResponse
     {
         $data = $request->validated();
 
-        DB::transaction(function () use ($data, $request): void {
+        DB::transaction(function () use ($data, $request, $captureOrderLead): void {
             $quantities = collect($data['items'])->mapWithKeys(
                 fn (array $item): array => [(int) $item['service_variation_id'] => (int) $item['quantity']],
             );
@@ -86,6 +96,7 @@ class OrderController extends Controller
 
             abort_if($variations->count() !== $quantities->count(), 422, 'Pilihan layanan tidak lagi tersedia.');
             $member = null;
+            $lead = null;
             $vehicle = null;
 
             if ($data['customer_mode'] === 'existing') {
@@ -100,6 +111,18 @@ class OrderController extends Controller
                 $customerPhone = $data['customer_phone'] ?? '';
                 $vehicleName = Str::squish($data['vehicle_name'] ?? '');
                 $vehiclePlate = $data['vehicle_plate'] ?? '';
+
+                /*
+                 * Every non-member visit is filed against the plate, so a walk-in
+                 * who keeps coming back builds one lead instead of a new row per
+                 * order. The order form's lead picker is only a prefill on top.
+                 */
+                $lead = $captureOrderLead->handle([
+                    'name' => $customerName,
+                    'phone' => $customerPhone,
+                    'vehicle_name' => $vehicleName,
+                    'vehicle_plate' => $vehiclePlate,
+                ]);
             }
 
             $subtotal = (int) $variations->sum(
@@ -110,6 +133,7 @@ class OrderController extends Controller
                 'number' => 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
                 'member_id' => $member?->id,
                 'member_vehicle_id' => $vehicle?->id,
+                'lead_id' => $lead?->id,
                 'created_by_admin_id' => $request->user('admin')?->getAuthIdentifier(),
                 'handled_by_admin_id' => $data['handled_by_admin_id'],
                 'handled_by' => $data['handled_by'],

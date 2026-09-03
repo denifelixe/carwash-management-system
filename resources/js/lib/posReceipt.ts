@@ -76,6 +76,7 @@ export interface PosReceipt {
     cashier: string;
     shift: string;
     customer: string;
+    customerStatus: 'Member' | 'Non-member';
     vehicle: string;
     plate: string;
     items: string;
@@ -251,8 +252,8 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
         : 'BUKTI PEMBAYARAN SEBAGIAN';
 
     return `<header class="brand">
-    ${brandMark(brand.photo, brand.logo, brand.name)}
-    <p class="name">${escapeHtml(brand.name)}</p>
+    ${brand.receipt.showLogo ? brandMark(brand.receipt.photo, brand.logo, brand.receipt.name) : ''}
+    <p class="name">${escapeHtml(brand.receipt.name)}</p>
     ${brandContacts(brand.whatsapp, brand.instagram)}
 </header>
 <section class="block">
@@ -268,6 +269,7 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
 </section>
 <section class="block">
     ${metaRow('Customer', receipt.customer)}
+    ${metaRow('Status', receipt.customerStatus)}
     ${metaRow('Kendaraan', receipt.vehicle)}
     ${metaRow('Plat', formatPlate(receipt.plate))}
 </section>
@@ -282,18 +284,23 @@ ${outstandingBlock(receipt)}
 <footer class="footer">
     <p class="status">${receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'}</p>
     <p>Terima kasih atas kunjungan Anda.</p>
-    <p class="fineprint">Struk ini adalah bukti pembayaran yang sah.</p>
+    ${brand.receipt.footerNote === '' ? '' : `<p class="fineprint">${escapeHtml(brand.receipt.footerNote)}</p>`}
     ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(printedAt(receipt.timezone))}.</p>` : ''}
-    ${verificationBlock(receipt)}
+    ${verificationBlock(receipt, brand)}
 </footer>`;
 }
 
 /**
- * Kept in the markup so the printed QR can be restored after the receipt test.
- * It is temporarily hidden on both screen and paper by receiptStyles().
+ * Only ever reaches paper: a slip read on a screen is one tap from the URL, so
+ * receiptStyles() hides this block until the print sheet. It is written at all
+ * only when the outlet switched it on in Master > Struk.
  */
-function verificationBlock(receipt: PosReceipt): string {
-    if (receipt.publicUrl === null || receipt.verificationQr === '') {
+function verificationBlock(receipt: PosReceipt, brand: CarwashBrand): string {
+    if (
+        !brand.receipt.showQr ||
+        receipt.publicUrl === null ||
+        receipt.verificationQr === ''
+    ) {
         return '';
     }
 
@@ -303,7 +310,11 @@ function verificationBlock(receipt: PosReceipt): string {
 </div>`;
 }
 
-function receiptStyles(): string {
+function receiptStyles(brand: CarwashBrand): string {
+    const logoWidth = brand.receipt.logoWidth;
+    /* The mark keeps the 0.71 aspect cap the fixed 56x40px box used to give it. */
+    const logoHeight = (logoWidth * 0.71).toFixed(1);
+
     return `:root { color-scheme: light; }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 body {
@@ -327,8 +338,8 @@ ${toolbarStyles()}
     width: ${PAPER_WIDTH};
 }
 .brand { text-align: center; }
-.logo { font-size: 20px; line-height: 1.2; }
-.logo-image { display: block; height: auto; margin: 0 auto 4px; max-height: 40px; max-width: 56px; object-fit: contain; }
+.logo { font-size: ${(logoWidth * 0.35).toFixed(1)}mm; line-height: 1.2; }
+.logo-image { display: block; height: auto; margin: 0 auto 4px; max-height: ${logoHeight}mm; max-width: ${logoWidth}mm; object-fit: contain; }
 .name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
 .contacts { align-items: center; display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
 .contact { align-items: center; color: #475569; display: inline-flex; font-size: 10px; gap: 4px; }
@@ -409,7 +420,7 @@ ${toolbarStyles()}
     margin-bottom: 4px;
 }
 .fineprint { color: #64748b; font-size: 9px; margin-top: 6px; }
-.verification { border-top: 1px dashed #94a3b8; display: none; margin-top: 8px; padding-top: 8px; }
+.verification { border-top: 1px dashed #94a3b8; break-inside: avoid; display: none; margin-top: 8px; page-break-inside: avoid; padding-top: 8px; }
 .verification-qr-image { display: block; height: 30mm; margin: 0 auto 3px; width: 30mm; }
 .verification-caption { color: #64748b; font-size: 9px; }
 @page { margin: 0; size: ${PAPER_WIDTH} auto; }
@@ -417,7 +428,7 @@ ${toolbarStyles()}
     body {
         background: #ffffff;
         color: #000000;
-        font-size: 12px;
+        font-size: 13px;
         font-weight: 500;
         line-height: 1.4;
         padding: 0;
@@ -436,10 +447,12 @@ ${toolbarStyles()}
     .copy, .meta > span:first-child,
     .reference, .detail, .amount > span:first-child, .fineprint,
     .verification-caption { color: #000000; }
+    .contact, .copy { font-size: 11px; }
+    .reference, .detail, .fineprint, .verification-caption { font-size: 10px; }
+    .name, .amount.grand, .status { font-size: 14px; }
     .block, .footer, .verification, .history + .amount,
     .amount.grand { border-color: #000000; }
-    /* Temporarily hidden for receipt testing. Change to display: block to restore it. */
-    .verification { display: none; }
+    .verification { display: block; }
 }`;
 }
 
@@ -459,8 +472,8 @@ export function renderPosReceiptDocument(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light">
-<title>Struk ${escapeHtml(number)} — ${escapeHtml(brand.name)}</title>
-<style>${receiptStyles()}</style>
+<title>Struk ${escapeHtml(number)} — ${escapeHtml(brand.receipt.name)}</title>
+<style>${receiptStyles(brand)}</style>
 </head>
 <body>
 <div class="toolbar">

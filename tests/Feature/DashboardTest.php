@@ -61,7 +61,7 @@ test('owner dashboard uses live member data and enables completed modules', func
                 /* Two rostered shifts, closed by the Tanpa Shift bucket. */
                 ->has('shifts', 3)
                 ->has('notifications', 0)
-                ->has('modules', 11)
+                ->has('modules', 12)
                 ->where('modules.0.key', 'dashboard')
                 ->where('modules.0.enabled', true)
                 ->where('modules.0.active', true)

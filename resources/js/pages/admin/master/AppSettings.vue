@@ -255,7 +255,7 @@ onBeforeUnmount(() => {
 
 <template>
     <div>
-        <Head :title="`${settings.appName} — App Setting`" />
+        <Head :title="`${settings.appName} — Aplikasi`" />
 
         <form class="space-y-4" @submit.prevent="submit">
             <section
@@ -278,7 +278,6 @@ onBeforeUnmount(() => {
                     </div>
                 </div>
             </section>
-
             <section
                 class="rounded-2xl border border-slate-200/80 bg-white shadow-sm"
             >

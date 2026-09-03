@@ -24,7 +24,7 @@ class AppSettingController extends Controller
         $authenticatedAdmin = $request->user('admin');
 
         return Inertia::render('admin/master/AppSettings', [
-            ...$adminShell->props($authenticatedAdmin, 'App Setting', 'master_app_settings'),
+            ...$adminShell->props($authenticatedAdmin, 'Aplikasi', 'master_app_settings'),
             'settings' => [
                 'appName' => AppSettings::appName(),
                 'appPhotoUrl' => AppSettings::appPhotoUrl(),
@@ -60,7 +60,7 @@ class AppSettingController extends Controller
 
         Inertia::flash('toast', [
             'type' => 'success',
-            'message' => 'App setting berhasil diperbarui.',
+            'message' => 'Setting aplikasi berhasil diperbarui.',
         ]);
 
         return to_route('admin.master.app-settings.index');

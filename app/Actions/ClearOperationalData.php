@@ -18,6 +18,7 @@ class ClearOperationalData
         'order_transactions',
         'order_services',
         'orders',
+        'leads',
         'member_vehicles',
         'member_password_reset_tokens',
         'members',

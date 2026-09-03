@@ -72,9 +72,18 @@ function brandHeader(
     brand: CarwashBrand,
     logo: RasterImage | null,
 ): void {
-    drawBrandMark(slip, logo, 10, 14);
+    /* Same 0.71 aspect cap the HTML gives the mark, in the same millimetres. */
+    drawBrandMark(
+        slip,
+        logo,
+        brand.receipt.logoWidth * 0.71,
+        brand.receipt.logoWidth,
+    );
 
-    slip.paragraph(brand.name, 'center', { size: HEADING_SIZE, bold: true });
+    slip.paragraph(brand.receipt.name, 'center', {
+        size: HEADING_SIZE,
+        bold: true,
+    });
     slip.paragraph(formatWhatsapp(brand.whatsapp), 'center', {
         size: FINE_SIZE,
         color: MUTED,
@@ -115,6 +124,7 @@ function summaryBlock(slip: PdfCursor, receipt: PosReceipt): void {
 
     slip.block();
     slip.meta('Customer', receipt.customer);
+    slip.meta('Status', receipt.customerStatus);
     slip.meta('Kendaraan', receipt.vehicle);
     slip.meta('Plat', formatPlate(receipt.plate));
 }
@@ -295,7 +305,11 @@ function verificationBlock(slip: PdfCursor, receipt: PosReceipt): void {
     }
 }
 
-function footerBlock(slip: PdfCursor, receipt: PosReceipt): void {
+function footerBlock(
+    slip: PdfCursor,
+    receipt: PosReceipt,
+    brand: CarwashBrand,
+): void {
     slip.block();
     slip.paragraph(
         spacedOut(receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'),
@@ -304,11 +318,14 @@ function footerBlock(slip: PdfCursor, receipt: PosReceipt): void {
     );
     slip.gap(0.8);
     slip.paragraph('Terima kasih atas kunjungan Anda.', 'center');
-    slip.gap(0.8);
-    slip.paragraph('Struk ini adalah bukti pembayaran yang sah.', 'center', {
-        size: FINE_SIZE,
-        color: MUTED,
-    });
+
+    if (brand.receipt.footerNote !== '') {
+        slip.gap(0.8);
+        slip.paragraph(brand.receipt.footerNote, 'center', {
+            size: FINE_SIZE,
+            color: MUTED,
+        });
+    }
 
     if (receipt.isReprint) {
         slip.paragraph(
@@ -336,7 +353,7 @@ function layoutSlip(
     billBlock(slip, receipt);
     historyBlock(slip, receipt);
     paymentBlock(slip, receipt);
-    footerBlock(slip, receipt);
+    footerBlock(slip, receipt, brand);
 
     return slip.y + ROLL.margin + 2;
 }
@@ -372,7 +389,7 @@ export function renderPosReceiptPdf(
     doc.setProperties({
         title: `Struk ${receipt.isSettled ? receipt.invoice : receipt.orderNo}`,
         subject: receipt.reference,
-        author: brand.name,
+        author: brand.receipt.name,
     });
     layoutSlip(doc, receipt, brand, logo);
 
@@ -385,7 +402,9 @@ export async function downloadPosReceiptPdf(
     receipt: PosReceipt,
     brand: CarwashBrand,
 ): Promise<void> {
-    const logo = await brandArtwork(receiptWindow, brand);
+    const logo = brand.receipt.showLogo
+        ? await brandArtwork(receiptWindow, brand, brand.receipt.photo)
+        : null;
 
     renderPosReceiptPdf(receipt, brand, logo).save(receiptFileName(receipt));
 }

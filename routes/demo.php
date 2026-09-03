@@ -11,6 +11,7 @@ use App\Http\Controllers\Demo\InventoryController;
 use App\Http\Controllers\Demo\MemberController;
 use App\Http\Controllers\Demo\OrderController;
 use App\Http\Controllers\Demo\PosController;
+use App\Http\Controllers\Demo\ReceiptController;
 use App\Http\Controllers\Demo\ReportController;
 use App\Http\Controllers\Demo\RewardController;
 use App\Http\Controllers\Demo\ServiceController;
@@ -87,6 +88,10 @@ Route::name('demo.')->group(function () {
         Route::get('master/app-setting', [AppSettingController::class, 'index'])
             ->middleware('demo.module:master_app_settings')
             ->name('master.app-settings');
+
+        Route::get('master/struk', [ReceiptController::class, 'index'])
+            ->middleware('demo.module:master_receipt')
+            ->name('master.receipt');
     });
 
     /*

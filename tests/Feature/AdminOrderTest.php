@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -437,4 +439,93 @@ test('demo and live order pages have one frontend source of truth', function () 
         ->and(resource_path('js/pages/demo/admin/Orders.vue'))->not->toBeFile()
         ->and(file_get_contents(app_path('Http/Controllers/Demo/OrderController.php')))
         ->toContain("'admin/Orders'");
+});
+
+test('a walk-in order files a lead and a repeat visit reuses it by plate', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['price' => 45000]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $payload = [
+        'customer_mode' => 'walk-in',
+        'customer_name' => 'Tamu Walk In',
+        'customer_phone' => '081234567890',
+        'vehicle_name' => 'Toyota Calya',
+        'vehicle_plate' => 'b 9876 abc',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+    ];
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), $payload)
+        ->assertSessionHasNoErrors();
+
+    $lead = Lead::query()->sole();
+
+    expect($lead->vehicle_plate)->toBe('B9876ABC')
+        ->and($lead->name)->toBe('Tamu Walk In')
+        ->and(Order::query()->latest('id')->firstOrFail()->lead_id)->toBe($lead->id);
+
+    /* Same car, name spelled differently: one lead, refreshed. */
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), [
+            ...$payload,
+            'customer_name' => 'Tamu Walk-In Baru',
+            'customer_phone' => '081200002222',
+            'vehicle_plate' => 'B9876ABC',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(Lead::query()->count())->toBe(1)
+        ->and($lead->refresh()->name)->toBe('Tamu Walk-In Baru')
+        ->and($lead->phone)->toBe('081200002222')
+        ->and(Order::query()->where('lead_id', $lead->id)->count())->toBe(2);
+});
+
+test('a member order files no lead', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $vehicle = MemberVehicle::factory()->for($member)->create();
+    $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), [
+            'customer_mode' => 'existing',
+            'member_id' => $member->id,
+            'member_vehicle_id' => $vehicle->id,
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(Lead::query()->count())->toBe(0)
+        ->and(Order::query()->latest('id')->firstOrFail()->lead_id)->toBeNull();
+});
+
+test('the walk-in tab searches leads through a partial reload', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $match = Lead::factory()->create(['name' => 'Rina Prospek', 'vehicle_plate' => 'B1234CDE']);
+    Lead::factory()->create(['name' => 'Bukan Hasil', 'vehicle_plate' => 'D5555ZZ']);
+    Lead::factory()->create([
+        'name' => 'Sudah Member',
+        'vehicle_plate' => 'B1234CDF',
+        'converted_member_id' => $member->id,
+        'converted_at' => now(),
+    ]);
+
+    /* A full page load never pays for the search. */
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page->missing('leadOptions'));
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', ['leadQuery' => 'b 1234 cde']), [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(request()),
+            'X-Inertia-Partial-Component' => 'admin/Orders',
+            'X-Inertia-Partial-Data' => 'leadOptions',
+        ])
+        ->assertOk()
+        ->assertJsonCount(1, 'props.leadOptions')
+        ->assertJsonPath('props.leadOptions.0.id', $match->id)
+        ->assertJsonPath('props.leadOptions.0.vehiclePlate', 'B1234CDE');
 });

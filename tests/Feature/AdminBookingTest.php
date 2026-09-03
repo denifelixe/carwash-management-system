@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -198,4 +199,46 @@ test('demo and live booking pages have one frontend source of truth', function (
         ->and(resource_path('js/pages/demo/admin/Bookings.vue'))->not->toBeFile()
         ->and(file_get_contents(app_path('Http/Controllers/Demo/BookingController.php')))
         ->toContain("'admin/Bookings'");
+});
+
+test('a non member booking files a lead the same way a walk-in order does', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')->post(route('admin.bookings.store'), [
+        'customer_mode' => 'walk-in',
+        'customer_name' => 'Tamu Booking',
+        'customer_phone' => '081234567890',
+        'vehicle_name' => 'Toyota Calya',
+        'vehicle_plate' => 'b 9876 abc',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        'service_date' => now()->addDay()->toDateString(),
+    ])->assertSessionHasNoErrors();
+
+    $lead = Lead::query()->sole();
+    $booking = Order::query()->latest('id')->firstOrFail();
+
+    expect($lead->vehicle_plate)->toBe('B9876ABC')
+        ->and($lead->name)->toBe('Tamu Booking')
+        ->and($booking->lead_id)->toBe($lead->id);
+});
+
+test('a member booking files no lead', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $vehicle = MemberVehicle::factory()->for($member)->create();
+    $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')->post(route('admin.bookings.store'), [
+        'customer_mode' => 'existing',
+        'member_id' => $member->id,
+        'member_vehicle_id' => $vehicle->id,
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        'service_date' => now()->addDay()->toDateString(),
+    ])->assertSessionHasNoErrors();
+
+    expect(Lead::query()->count())->toBe(0)
+        ->and(Order::query()->latest('id')->firstOrFail()->lead_id)->toBeNull();
 });

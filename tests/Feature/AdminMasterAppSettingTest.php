@@ -90,12 +90,12 @@ test('an owner sees app setting in the master sidebar', function () {
                 ->where('settings.androidChrome512Url', null)
                 ->where('settings.siteWebmanifestUrl', null)
                 ->where('capabilities.update', true)
-                ->where('modules.10.key', 'master')
-                ->where('modules.10.active', true)
-                ->where('modules.10.children.3.key', 'master_app_settings')
-                ->where('modules.10.children.3.active', true)
+                ->where('modules.11.key', 'master')
+                ->where('modules.11.active', true)
+                ->where('modules.11.children.3.key', 'master_app_settings')
+                ->where('modules.11.children.3.active', true)
                 ->where(
-                    'modules.10.children.3.href',
+                    'modules.11.children.3.href',
                     route('admin.master.app-settings.index', absolute: false),
                 ),
         );
@@ -126,7 +126,7 @@ test('an owner can update the name photo and favicon', function () {
         ])
         ->assertRedirect(route('admin.master.app-settings.index'))
         ->assertInertiaFlash('toast.type', 'success')
-        ->assertInertiaFlash('toast.message', 'App setting berhasil diperbarui.');
+        ->assertInertiaFlash('toast.message', 'Setting aplikasi berhasil diperbarui.');
 
     $settings = AppSetting::query()
         ->whereIn('key', [

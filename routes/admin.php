@@ -5,7 +5,9 @@ use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\BookingController;
 use App\Http\Controllers\Admin\DashboardController;
 use App\Http\Controllers\Admin\FinanceController;
+use App\Http\Controllers\Admin\LeadController;
 use App\Http\Controllers\Admin\Master\AppSettingController;
+use App\Http\Controllers\Admin\Master\ReceiptController;
 use App\Http\Controllers\Admin\Master\ServiceController;
 use App\Http\Controllers\Admin\Master\TimezoneController;
 use App\Http\Controllers\Admin\Master\WorkShiftController;
@@ -78,6 +80,10 @@ Route::domain((string) config('domains.admin'))
             Route::post('members', [MemberController::class, 'store'])->name('members.store');
             Route::patch('members/{member}', [MemberController::class, 'update'])->name('members.update');
             Route::patch('members/{member}/status', [MemberController::class, 'updateStatus'])->name('members.status.update');
+            Route::get('leads', [LeadController::class, 'index'])->name('leads.index');
+            Route::post('leads', [LeadController::class, 'store'])->name('leads.store');
+            Route::patch('leads/{lead}', [LeadController::class, 'update'])->name('leads.update');
+            Route::patch('leads/{lead}/status', [LeadController::class, 'updateStatus'])->name('leads.status.update');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
             Route::get('users/{adminUser}/photo', [AdminUserController::class, 'photo'])->name('users.photo');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');
@@ -98,6 +104,8 @@ Route::domain((string) config('domains.admin'))
             Route::patch('master/zona-waktu', [TimezoneController::class, 'update'])->name('master.timezone.update');
             Route::get('master/app-setting', [AppSettingController::class, 'index'])->name('master.app-settings.index');
             Route::post('master/app-setting', [AppSettingController::class, 'update'])->name('master.app-settings.update');
+            Route::get('master/struk', [ReceiptController::class, 'index'])->name('master.receipt.index');
+            Route::post('master/struk', [ReceiptController::class, 'update'])->name('master.receipt.update');
 
             Route::get('user/confirm-password', [ConfirmablePasswordController::class, 'show'])->name('password.confirm');
             Route::post('user/confirm-password', [ConfirmablePasswordController::class, 'store'])->name('password.confirm.store');

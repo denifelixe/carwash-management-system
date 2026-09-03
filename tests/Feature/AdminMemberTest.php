@@ -3,6 +3,7 @@
 use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
+use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
@@ -308,4 +309,24 @@ test('read only staff see no write capabilities and cannot mutate members', func
     $this->actingAs($staff, 'admin')
         ->patch(route('admin.members.status.update', $member), ['is_active' => false])
         ->assertForbidden();
+});
+
+test('registering a member from the module closes the lead holding that plate', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $lead = Lead::factory()->create(['vehicle_plate' => 'B1234CDE']);
+    $untouched = Lead::factory()->create(['vehicle_plate' => 'D5555ZZ']);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.members.store'), memberPayload([
+            'vehicles' => [
+                ['name' => 'Toyota Avanza', 'plate' => 'b 1234 cde', 'type' => 'Mobil'],
+            ],
+        ]))
+        ->assertSessionHasNoErrors();
+
+    $member = Member::query()->sole();
+
+    expect($lead->refresh()->converted_member_id)->toBe($member->id)
+        ->and($lead->converted_at)->not->toBeNull()
+        ->and($untouched->refresh()->converted_member_id)->toBeNull();
 });

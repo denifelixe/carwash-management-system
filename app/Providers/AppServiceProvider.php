@@ -47,7 +47,7 @@ class AppServiceProvider extends ServiceProvider
             ? true
             : null);
 
-        foreach (['users_and_roles', 'orders', 'pos', 'bookings', 'finance', 'members', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings'] as $moduleKey) {
+        foreach (['users_and_roles', 'orders', 'pos', 'bookings', 'finance', 'members', 'leads', 'master_services', 'master_work_shifts', 'master_timezone', 'master_app_settings', 'master_receipt'] as $moduleKey) {
             foreach (['create', 'read', 'update', 'delete'] as $permission) {
                 Gate::define(
                     "admin.{$moduleKey}.{$permission}",

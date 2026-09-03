@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class SaveMember
 {
+    public function __construct(private MarkLeadConverted $markLeadConverted) {}
+
     /**
      * @param  array{name: string, phone: string, email: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}  $data
      */
@@ -17,6 +19,7 @@ class SaveMember
         return DB::transaction(function () use ($data): Member {
             $member = Member::query()->create(Arr::only($data, ['name', 'phone', 'email']));
             $this->syncVehicles($member, $data['vehicles']);
+            $this->markLeadConverted->handle($member, array_column($data['vehicles'], 'plate'));
 
             return $member->load('vehicles');
         });
@@ -30,6 +33,7 @@ class SaveMember
         return DB::transaction(function () use ($member, $data): Member {
             $member->update(Arr::only($data, ['name', 'phone', 'email']));
             $this->syncVehicles($member, $data['vehicles']);
+            $this->markLeadConverted->handle($member, array_column($data['vehicles'], 'plate'));
 
             return $member->load('vehicles');
         });

@@ -1541,6 +1541,7 @@ function settledReceipt(
         shift:
             transaction?.shift || props.persona.shift || unassignedShiftLabel,
         customer: order.customer,
+        customerStatus: order.customerId === null ? 'Non-member' : 'Member',
         vehicle: order.vehicle,
         plate: order.plate,
         items: order.items,
@@ -1690,6 +1691,7 @@ function applyDemoPayment(
         cashier: transaction.recordedBy ?? props.persona.name,
         shift: transaction.shift || props.persona.shift || unassignedShiftLabel,
         customer: order.customer,
+        customerStatus: order.customerId === null ? 'Non-member' : 'Member',
         vehicle: order.vehicle,
         plate: order.plate,
         items: order.items,
@@ -1778,6 +1780,7 @@ function transactionReceipt(
         cashier: settlement ? paymentTransactionRecorder(settlement) : '—',
         shift: settlement ? paymentTransactionShift(settlement) : '—',
         customer: order.customer,
+        customerStatus: order.customerId === null ? 'Non-member' : 'Member',
         vehicle: order.vehicle,
         plate: order.plate,
         items: order.items,

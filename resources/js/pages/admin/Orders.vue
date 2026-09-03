@@ -47,6 +47,7 @@ import type {
     CarwashCartItem,
     CarwashCrewMember,
     CarwashCustomer,
+    CarwashLeadOption,
     CarwashOrder,
     CarwashPersona,
     CarwashService,
@@ -67,6 +68,11 @@ const props = defineProps<{
     serviceCategories: string[];
     customers: CarwashCustomer[];
     crew: CarwashCrewMember[];
+    /**
+     * Only ever present on a partial reload: the walk-in tab searches leads
+     * against the server, because they grow with every non-member visit.
+     */
+    leadOptions?: CarwashLeadOption[];
     paymentMethods: string[];
     capabilities: {
         create: boolean;
@@ -151,6 +157,18 @@ const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
+const selectedLead = ref<CarwashLeadOption | null>(null);
+const isLeadSearching = ref<boolean>(false);
+
+let leadSearchTimer: ReturnType<typeof setTimeout> | undefined;
+
+/**
+ * Leads the current search turned up. The list is server-side and only reaches
+ * this page through a partial reload, so it is empty until the cashier types.
+ */
+const leadOptions = computed<CarwashLeadOption[]>(
+    () => props.leadOptions ?? [],
+);
 
 const draft = ref({
     customerId: null as number | null,
@@ -620,10 +638,47 @@ function updateCustomerQuery(query: string): void {
     customerQuery.value = query;
 }
 
+/**
+ * Prefill only. The order still travels as a plain walk-in: the server files
+ * the lead by plate, so a cashier who types the details out by hand and one who
+ * picks a row here land on the same lead.
+ */
+function pickLead(option: CarwashLeadOption): void {
+    selectedLead.value = option;
+    draft.value.plate = option.vehiclePlate;
+    draft.value.vehicle = option.vehicleName;
+    draft.value.walkInName = option.name;
+    draft.value.customerPhone = option.phone;
+}
+
+function searchLeads(query: string): void {
+    clearTimeout(leadSearchTimer);
+
+    if (query.trim() === '') {
+        isLeadSearching.value = false;
+
+        return;
+    }
+
+    isLeadSearching.value = true;
+    leadSearchTimer = setTimeout(() => {
+        router.reload({
+            only: ['leadOptions'],
+            data: { leadQuery: query },
+            onFinish: () => {
+                isLeadSearching.value = false;
+            },
+        });
+    }, 300);
+}
+
 /** Clears whichever customer the previous tab captured so tabs never mix input. */
 function clearCustomer(): void {
+    clearTimeout(leadSearchTimer);
     customerQuery.value = '';
     selectedCustomerOption.value = null;
+    selectedLead.value = null;
+    isLeadSearching.value = false;
     draft.value.customerId = null;
     draft.value.walkInName = '';
     draft.value.customerPhone = '';
@@ -1491,6 +1546,88 @@ const statusForm = useForm({ status: '' });
                     </div>
                 </div>
                 <div v-else class="mt-3 space-y-3">
+                    <!--
+                        Leads are searched against the server, so the box only
+                        offers rows once the cashier has typed something.
+                    -->
+                    <div v-if="mode === 'live'" class="relative">
+                        <Search
+                            class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
+                        />
+                        <Multiselect
+                            id="order-lead"
+                            v-model="selectedLead"
+                            class="customer-search"
+                            :options="leadOptions"
+                            :internal-search="false"
+                            :allow-empty="false"
+                            :show-labels="false"
+                            :loading="isLeadSearching"
+                            :max-height="260"
+                            track-by="id"
+                            label="name"
+                            placeholder="Cari lead lama: plat, nama, atau telepon"
+                            @search-change="searchLeads"
+                            @select="pickLead"
+                        >
+                            <template #singleLabel="{ option }">
+                                <span
+                                    class="block truncate text-sm text-slate-700"
+                                >
+                                    <span
+                                        class="font-bold tracking-wide text-slate-950"
+                                    >
+                                        {{ formatPlate(option.vehiclePlate) }}
+                                    </span>
+                                    · {{ option.name }}
+                                </span>
+                            </template>
+                            <template #option="{ option }">
+                                <div
+                                    class="flex items-center justify-between gap-3 px-3 py-2.5"
+                                >
+                                    <div class="min-w-0 shrink-0">
+                                        <p
+                                            class="text-base font-bold tracking-wide text-slate-950"
+                                        >
+                                            {{
+                                                formatPlate(option.vehiclePlate)
+                                            }}
+                                        </p>
+                                        <p
+                                            class="truncate text-xs font-medium text-slate-600"
+                                        >
+                                            {{ option.vehicleName || '—' }}
+                                        </p>
+                                    </div>
+                                    <div class="min-w-0 text-right">
+                                        <p
+                                            class="truncate text-sm font-medium text-slate-800"
+                                        >
+                                            {{ option.name }}
+                                        </p>
+                                        <p
+                                            class="truncate text-xs text-slate-500"
+                                        >
+                                            {{ option.phone }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </template>
+                            <template #noResult>
+                                <p class="px-3 py-3 text-sm text-slate-500">
+                                    Lead belum ada. Isi datanya di bawah — lead
+                                    baru otomatis dibuat saat order disimpan.
+                                </p>
+                            </template>
+                            <template #noOptions>
+                                <p class="px-3 py-3 text-sm text-slate-500">
+                                    Ketik plat, nama, atau telepon untuk mencari
+                                    lead yang pernah datang.
+                                </p>
+                            </template>
+                        </Multiselect>
+                    </div>
                     <div class="grid grid-cols-2 gap-3">
                         <div class="space-y-1.5">
                             <label

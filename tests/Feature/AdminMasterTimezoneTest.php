@@ -55,12 +55,12 @@ test('an owner sees the three indonesian zones with the configured one selected'
                 ->where('timezones.1.code', 'WITA')
                 ->where('timezones.2.code', 'WIT')
                 ->where('capabilities.update', true)
-                ->where('modules.10.key', 'master')
-                ->where('modules.10.active', true)
-                ->where('modules.10.children.2.key', 'master_timezone')
-                ->where('modules.10.children.2.active', true)
+                ->where('modules.11.key', 'master')
+                ->where('modules.11.active', true)
+                ->where('modules.11.children.2.key', 'master_timezone')
+                ->where('modules.11.children.2.active', true)
                 ->where(
-                    'modules.10.children.2.href',
+                    'modules.11.children.2.href',
                     route('admin.master.timezone.index', absolute: false),
                 ),
         );

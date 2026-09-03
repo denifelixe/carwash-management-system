@@ -2,7 +2,9 @@
 import { ChevronLeft, ChevronRight } from '@lucide/vue';
 import type { CarwashPaginationMeta } from '@/types/demo';
 
-defineProps<{ meta: CarwashPaginationMeta }>();
+withDefaults(defineProps<{ meta: CarwashPaginationMeta; label?: string }>(), {
+    label: 'member',
+});
 
 const emit = defineEmits<{
     change: [page: number];
@@ -16,7 +18,7 @@ const emit = defineEmits<{
     >
         <p class="text-xs text-slate-500">
             Menampilkan {{ meta.from }}–{{ meta.to }} dari {{ meta.total }}
-            member
+            {{ label }}
         </p>
         <div class="flex items-center gap-2">
             <button
