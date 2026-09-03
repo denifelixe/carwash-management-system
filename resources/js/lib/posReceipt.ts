@@ -289,11 +289,8 @@ ${outstandingBlock(receipt)}
 }
 
 /**
- * Printed copies only. On screen the slip is already being read at its own
- * verification URL, and the PDF spells the link out in text, so the QR would be
- * a third copy of the same address — it earns its space only on paper, which
- * cannot be tapped. Hidden by stylesheet rather than left out of the markup so
- * a plain Ctrl+P still prints it.
+ * Kept in the markup so the printed QR can be restored after the receipt test.
+ * It is temporarily hidden on both screen and paper by receiptStyles().
  */
 function verificationBlock(receipt: PosReceipt): string {
     if (receipt.publicUrl === null || receipt.verificationQr === '') {
@@ -441,8 +438,8 @@ ${toolbarStyles()}
     .verification-caption { color: #000000; }
     .block, .footer, .verification, .history + .amount,
     .amount.grand { border-color: #000000; }
-    /* The QR is worth its space only on paper, which cannot be tapped. */
-    .verification { display: block; }
+    /* Temporarily hidden for receipt testing. Change to display: block to restore it. */
+    .verification { display: none; }
 }`;
 }
 

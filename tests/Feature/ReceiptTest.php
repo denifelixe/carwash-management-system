@@ -122,12 +122,7 @@ test('the verification link is clickable in the downloaded PDF', function () {
         ->toContain('export const LINK: [number, number, number] = [29, 78, 216]');
 });
 
-/*
- * Three copies of one address is two too many: the screen is already at the
- * verification URL, the PDF spells it out as a clickable link, and the QR is
- * left to the printout that cannot be tapped.
- */
-test('the QR is printed only, the file carries the link, and the screen shows neither', function () {
+test('the receipt QR markup is retained while it is temporarily hidden from print', function () {
     expect(file_get_contents(resource_path('js/lib/posReceiptPdf.ts')))
         ->toContain('Verifikasi struk:')
         ->not->toContain('verificationQr')
@@ -136,9 +131,12 @@ test('the QR is printed only, the file carries the link, and the screen shows ne
     $receiptModule = file_get_contents(resource_path('js/lib/posReceipt.ts'));
 
     expect($receiptModule)
-        // Kept in the markup and hidden, so a plain Ctrl+P prints it too.
+        ->toContain('function verificationBlock(receipt: PosReceipt): string')
+        ->toContain('class="verification-qr-image"')
+        ->toContain('Pindai untuk memeriksa keabsahan struk')
         ->toContain('.verification { border-top: 1px dashed #94a3b8; display: none;')
-        ->toContain('.verification { display: block; }')
+        ->toContain('.verification { display: none; }')
+        ->not->toContain('.verification { display: block; }')
         // The link is gone from the slip's own page; the page is that link.
         ->not->toContain('verification-link')
         ->not->toContain('Verifikasi struk:')
