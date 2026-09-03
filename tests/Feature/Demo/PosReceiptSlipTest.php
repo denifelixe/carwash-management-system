@@ -26,11 +26,17 @@ function printDocumentModule(): string
 
 test('the slip is laid out at the printable width of the 80mm roll', function () {
     expect(posReceiptModule())
-        // 78mm printable area, in a frame wide enough for the print prompt.
-        ->toContain("const PAPER_WIDTH = '78mm'")
+        // The driver receives the real media size and never scales the layout.
+        ->toContain("const PAPER_WIDTH = '80mm'")
+        // TM-T82's 576-dot print head exposes 72mm on 80mm stock.
+        ->toContain("const PRINTABLE_WIDTH = '72mm'")
         ->toContain('const WINDOW_WIDTH = 520')
         ->toContain('width: ${PAPER_WIDTH}')
         ->toContain('@page { margin: 0; size: ${PAPER_WIDTH} auto; }')
+        // Only the printer's thin mechanical margins remain on paper.
+        ->toContain('padding: 0 5mm 6mm 3mm;')
+        ->toContain('color: #000000;')
+        ->toContain('font-size: 12px;')
         // The roll must never widen, so long references wrap instead.
         ->toContain('overflow-wrap: anywhere');
 });

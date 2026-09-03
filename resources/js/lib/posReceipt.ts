@@ -18,19 +18,22 @@ import type { CarwashBrand } from '@/types/demo';
 /**
  * Thermal receipt rendered outside the SPA.
  *
- * The cashier station prints on an 80mm roll whose printable area is 78mm, so
- * the slip is laid out at that exact width and opened in its own window sized
- * to match. The document is self-contained because it is written once and
- * never re-renders, which also keeps it printable without the app bundle.
+ * The cashier station prints on an 80mm roll. Epson TM-T82 printers expose a
+ * 72mm (576-dot) printable area, so the page uses the physical roll width while
+ * its content stays inside that native area. This prevents the Windows driver
+ * from shrinking the whole receipt and making the text faint and undersized.
  */
 
-/** Printable width of the 80mm roll the cashier station is loaded with. */
-const PAPER_WIDTH = '78mm';
+/** Physical width selected in the printer driver. */
+const PAPER_WIDTH = '80mm';
+
+/** Native 576-dot print-head width of an Epson TM-T82 on 80mm stock. */
+const PRINTABLE_WIDTH = '72mm';
 
 /**
- * The slip itself only needs ~295px (78mm at 96dpi), but the browser's print
+ * The slip itself only needs ~302px (80mm at 96dpi), but the browser's print
  * prompt is drawn inside this window and gets clipped at that width, so the
- * frame is opened wide enough to show the whole dialog. The paper stays 78mm
+ * frame is opened wide enough to show the whole dialog. The paper stays 80mm
  * and sits centred on the backdrop.
  */
 const WINDOW_WIDTH = 520;
@@ -414,9 +417,30 @@ ${toolbarStyles()}
 .verification-caption { color: #64748b; font-size: 9px; }
 @page { margin: 0; size: ${PAPER_WIDTH} auto; }
 @media print {
-    body { background: #ffffff; padding: 0; }
+    body {
+        background: #ffffff;
+        color: #000000;
+        font-size: 12px;
+        font-weight: 500;
+        line-height: 1.4;
+        padding: 0;
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+    }
     .toolbar, .toast { display: none; }
-    .paper { box-shadow: none; padding: 0 3mm 6mm; }
+    .paper {
+        box-shadow: none;
+        margin: 0;
+        padding: 0 5mm 6mm 3mm;
+        width: ${PAPER_WIDTH};
+    }
+    .paper > * { max-width: ${PRINTABLE_WIDTH}; }
+    .paper > *, .contact, .contact-icon.whatsapp, .contact-icon.instagram,
+    .copy, .meta > span:first-child,
+    .reference, .detail, .amount > span:first-child, .fineprint,
+    .verification-caption { color: #000000; }
+    .block, .footer, .verification, .history + .amount,
+    .amount.grand { border-color: #000000; }
     /* The QR is worth its space only on paper, which cannot be tapped. */
     .verification { display: block; }
 }`;

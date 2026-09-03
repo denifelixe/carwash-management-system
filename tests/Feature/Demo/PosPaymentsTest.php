@@ -233,7 +233,7 @@ test('the cashier summary only shows settlement balance and received payments', 
 
     expect($posPage)
         ->toContain('<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">')
-        ->toContain('label="Pembayaran Sisa/Lunas (Order Selesai)"')
+        ->toContain('label="Order Berjalan"')
         ->toContain('label="Pembayaran diterima"')
         ->not->toContain('label="Order menggantung"')
         ->not->toContain('depositCount')

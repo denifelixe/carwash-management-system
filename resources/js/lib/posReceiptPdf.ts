@@ -24,7 +24,7 @@ import type { CarwashBrand } from '@/types/demo';
  * The file is drawn from the receipt itself rather than snapshotted off the
  * rendered HTML, so its text stays text: the customer can select the total,
  * search the reference, and tap the verification link. It is laid out at the
- * same 78mm as the roll and on one continuous page, so the file reads as the
+ * same 80mm as the roll and on one continuous page, so the file reads as the
  * slip the printer would produce.
  *
  * The trade-off is that this is the second layout of the same document, next to
@@ -34,7 +34,7 @@ import type { CarwashBrand } from '@/types/demo';
 
 /** The roll the slip is laid out at, matching PAPER_WIDTH in posReceipt.ts. */
 const ROLL: PageMetrics = {
-    width: 78,
+    width: 80,
     margin: 4,
     bodySize: 8,
     font: 'courier',

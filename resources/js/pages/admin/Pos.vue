@@ -1879,9 +1879,9 @@ const memberForm = useForm({
         <!-- Summary -->
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatCard
-                label="Pembayaran Sisa/Lunas (Order Selesai)"
+                label="Order Berjalan"
                 :value="formatCurrency(outstandingTotal)"
-                caption="sisa tagihan seluruh order"
+                caption="order yang sedang berlangsung dan belum melakukan pembayaran"
                 :icon="Clock"
                 tone="amber"
             />

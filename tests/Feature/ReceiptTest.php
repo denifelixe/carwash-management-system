@@ -78,8 +78,8 @@ test('downloading draws a real text PDF rather than a picture of the slip', func
         ->toContain("import { jsPDF } from 'jspdf'")
         ->toContain('renderPosReceiptPdf(receipt, brand, logo).save(')
         ->toContain('return pdfFileName(`Struk-${number}`);')
-        // One continuous page at the roll's printable width, like the printer.
-        ->toContain("const ROLL: PageMetrics = {\n    width: 78,")
+        // One continuous page at the physical roll width, like the printer.
+        ->toContain("const ROLL: PageMetrics = {\n    width: 80,")
         ->toContain('format: [PAGE_WIDTH, height]')
         // The layout is measured on a throwaway page, then cut to that height.
         ->toContain('const height = layoutSlip(measured, receipt, brand, logo)')
