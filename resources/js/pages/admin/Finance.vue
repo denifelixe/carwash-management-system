@@ -99,8 +99,24 @@ type Ledger = 'in' | 'out';
 /** 'all', the id of one of the shifts this console was given, or the bucket below. */
 type Shift = string;
 
+interface TransactionChannelDraft {
+    label: string;
+    amount: number;
+    provider: string;
+    reference: string;
+}
+
 const allShiftsKey = 'all';
 const unassignedShiftKey = 'tanpa-shift';
+const transactionBankPaymentMethods = ['Kredit', 'Debit', 'Transfer'];
+const transactionBankOptions = [
+    'BCA',
+    'Mandiri',
+    'BNI',
+    'BRI',
+    'CIMB Niaga',
+    'Bank lainnya',
+];
 
 const activeLedger = ref<Ledger>('in');
 /*
@@ -184,11 +200,7 @@ const deleteForm = useForm({});
 
 const transactionForm = useForm<{
     amount: number;
-    channels: Array<{
-        label: string;
-        amount: number;
-        reference: string;
-    }>;
+    channels: TransactionChannelDraft[];
 }>({
     amount: 0,
     channels: [],
@@ -737,11 +749,16 @@ function openEditForm(entry: CarwashMoneyEntry): void {
         editingPosEntry.value = entry;
         transactionForm.clearErrors();
         transactionForm.amount = entry.amount;
-        transactionForm.channels = entry.channelBreakdown.map((channel) => ({
-            label: channel.label,
-            amount: channel.amount,
-            reference: channel.reference ?? '',
-        }));
+        transactionForm.channels = entry.channelBreakdown.map((channel) => {
+            const [method, ...providerParts] = channel.label.split(' · ');
+
+            return {
+                label: method,
+                amount: channel.amount,
+                provider: providerParts.join(' · '),
+                reference: channel.reference ?? '',
+            };
+        });
 
         return;
     }
@@ -824,7 +841,11 @@ const canSavePosTransaction = computed<boolean>(
         transactionForm.amount > 0 &&
         transactionForm.channels.length > 0 &&
         transactionForm.channels.every(
-            (channel) => channel.label !== '' && channel.amount > 0,
+            (channel) =>
+                channel.label !== '' &&
+                channel.amount > 0 &&
+                (!requiresTransactionBank(channel.label) ||
+                    channel.provider !== ''),
         ) &&
         transactionChannelTotal.value === transactionForm.amount,
 );
@@ -844,6 +865,7 @@ function addTransactionChannel(): void {
     transactionForm.channels.push({
         label: method,
         amount: 0,
+        provider: '',
         reference: '',
     });
 }
@@ -861,6 +883,16 @@ function isTransactionMethodDisabled(method: string, index: number): boolean {
         (channel, channelIndex) =>
             channelIndex !== index && channel.label === method,
     );
+}
+
+function requiresTransactionBank(method: string): boolean {
+    return transactionBankPaymentMethods.includes(method);
+}
+
+function handleTransactionMethodChange(channel: TransactionChannelDraft): void {
+    if (!requiresTransactionBank(channel.label)) {
+        channel.provider = '';
+    }
 }
 
 function closePosTransactionForm(): void {
@@ -2342,6 +2374,9 @@ function applyDate(date: string): void {
                                     :id="`transaction-channel-${channelIndex}`"
                                     v-model="channel.label"
                                     class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                    @change="
+                                        handleTransactionMethodChange(channel)
+                                    "
                                 >
                                     <option
                                         v-if="
@@ -2367,6 +2402,14 @@ function applyDate(date: string): void {
                                         {{ method }}
                                     </option>
                                 </select>
+                                <InputError
+                                    class="mt-1.5"
+                                    :message="
+                                        transactionForm.errors[
+                                            `channels.${channelIndex}.label`
+                                        ]
+                                    "
+                                />
                             </div>
                             <div>
                                 <label
@@ -2391,6 +2434,38 @@ function applyDate(date: string): void {
                             >
                                 <Trash2 class="h-4 w-4" />
                             </button>
+                        </div>
+
+                        <div v-if="requiresTransactionBank(channel.label)">
+                            <label
+                                class="text-[11px] font-medium text-slate-500"
+                                :for="`transaction-channel-bank-${channelIndex}`"
+                            >
+                                Bank
+                            </label>
+                            <select
+                                :id="`transaction-channel-bank-${channelIndex}`"
+                                v-model="channel.provider"
+                                required
+                                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                            >
+                                <option value="" disabled>Pilih bank</option>
+                                <option
+                                    v-for="bank in transactionBankOptions"
+                                    :key="bank"
+                                    :value="bank"
+                                >
+                                    {{ bank }}
+                                </option>
+                            </select>
+                            <InputError
+                                class="mt-1.5"
+                                :message="
+                                    transactionForm.errors[
+                                        `channels.${channelIndex}.provider`
+                                    ]
+                                "
+                            />
                         </div>
 
                         <div>

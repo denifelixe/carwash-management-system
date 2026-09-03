@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Actions\Admin\UpdateDailyBalance;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\PaymentChannelBreakdown;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -33,7 +34,12 @@ class OrderTransactionFactory extends Factory
     public function withDailyBalance(): static
     {
         return $this->afterCreating(function (OrderTransaction $transaction): void {
-            $amounts = UpdateDailyBalance::channelAmounts($transaction->channel_breakdown);
+            $amounts = UpdateDailyBalance::channelAmounts(
+                PaymentChannelBreakdown::financial(
+                    $transaction->channel_breakdown,
+                    (int) $transaction->amount,
+                ),
+            );
 
             app(UpdateDailyBalance::class)->handle(
                 $transaction->paid_at->toDateString(),

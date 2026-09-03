@@ -27,6 +27,9 @@ function cloneOrder(order: CarwashOrder): CarwashOrder {
             channelBreakdown: transaction.channelBreakdown.map((channel) => ({
                 ...channel,
             })),
+            tenderBreakdown: transaction.tenderBreakdown.map((channel) => ({
+                ...channel,
+            })),
         })),
     };
 }

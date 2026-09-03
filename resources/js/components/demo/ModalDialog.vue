@@ -4,7 +4,7 @@ let openModalCount = 0;
 
 <script setup lang="ts">
 import { X } from '@lucide/vue';
-import { onBeforeUnmount, onMounted, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = defineProps<{
     open: boolean;
@@ -31,6 +31,13 @@ const layers: Record<NonNullable<typeof props.layer>, string> = {
     top: 'z-[70]',
 };
 
+/*
+ * Laravel's Inertia root does not inject Vue's SSR teleport buffers into the
+ * body. Waiting until mount keeps the server HTML and the hydration pass
+ * identical; the dialog moves to the body immediately afterwards.
+ */
+const canTeleport = ref(false);
+
 /** Each mounted dialog owns one lock so stacked modals cannot unlock each other. */
 let ownsPageScrollLock = false;
 
@@ -47,6 +54,7 @@ function syncPageScrollLock(locked: boolean): void {
 }
 
 onMounted(() => {
+    canTeleport.value = true;
     watch(() => props.open, syncPageScrollLock, { immediate: true });
 });
 
@@ -54,7 +62,7 @@ onBeforeUnmount(() => syncPageScrollLock(false));
 </script>
 
 <template>
-    <Teleport to="body">
+    <Teleport v-if="canTeleport" to="body">
         <div
             v-if="open"
             class="fixed inset-0 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"

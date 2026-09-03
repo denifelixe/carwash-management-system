@@ -5,6 +5,7 @@ namespace App\Http\Requests\Admin;
 use App\Models\AdminShift;
 use App\Models\Order;
 use App\Support\Admin\OrderQueries;
+use App\Support\Admin\PaymentChannelBreakdown;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -61,7 +62,17 @@ class StoreOrderPaymentRequest extends FormRequest
             $due = max((int) $order->total - (int) $order->paid_amount, 0);
             $discount = $this->integer('discount');
             $amount = $this->integer('amount');
-            $tendered = array_sum(array_column($this->channelInput(), 'amount'));
+            $channels = $this->channelInput();
+            $tendered = PaymentChannelBreakdown::tenderedTotal($channels);
+
+            foreach ($channels as $index => $channel) {
+                if ($channel['method'] === 'Debit' && $channel['provider'] === '') {
+                    $validator->errors()->add(
+                        "channels.{$index}.provider",
+                        'Bank wajib dipilih untuk pembayaran debit.',
+                    );
+                }
+            }
 
             if ($order->status === 'selesai') {
                 $validator->errors()->add('amount', 'Order ini sudah lunas dan tidak bisa dibayar lagi.');
@@ -89,6 +100,11 @@ class StoreOrderPaymentRequest extends FormRequest
 
             if ($tendered < $amount) {
                 $validator->errors()->add('channels', 'Uang yang diterima kurang dari jumlah pembayaran.');
+            }
+
+            if (PaymentChannelBreakdown::change($channels, $amount)
+                > PaymentChannelBreakdown::cashTendered($channels)) {
+                $validator->errors()->add('channels', 'Kembalian hanya dapat diberikan dari pembayaran tunai.');
             }
 
             if ($amount > 0 && $tendered === 0) {

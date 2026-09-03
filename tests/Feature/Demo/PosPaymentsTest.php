@@ -418,6 +418,9 @@ test('payment recap rows reveal their transaction and order details', function (
         ->toContain("layer?: 'default' | 'nested' | 'top';")
         ->toContain("top: 'z-[70]'")
         ->toContain("layers[layer ?? 'default']")
+        ->toContain('const canTeleport = ref(false);')
+        ->toContain('canTeleport.value = true;')
+        ->toContain('<Teleport v-if="canTeleport" to="body">')
         ->toContain('let openModalCount = 0;')
         ->toContain('onMounted(() => {')
         ->toContain('watch(() => props.open, syncPageScrollLock, { immediate: true })');
@@ -717,6 +720,15 @@ test('every order carries a paid amount within its total', function () {
                     ->toBeLessThanOrEqual($order['total']);
             }
         });
+});
+
+test('cash must cover all change before a payment can be submitted', function () {
+    $pos = file_get_contents(resource_path('js/pages/admin/Pos.vue'));
+
+    expect($pos)
+        ->toContain(".filter((payment) => payment.method === 'Tunai')")
+        ->toContain('changeAmount.value <= cashTenderedTotal.value')
+        ->toContain('changeIsCoveredByCash.value &&');
 });
 
 test('the payment status always agrees with how much was collected', function () {

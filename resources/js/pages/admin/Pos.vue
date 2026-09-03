@@ -37,6 +37,7 @@ import {
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import { matchingTransactionShifts } from '@/composables/useTransactionShift';
+import { financialPaymentBreakdown } from '@/lib/paymentChannelBreakdown';
 import { openPosReceiptWindow, paymentChannelLabel } from '@/lib/posReceipt';
 import type {
     PosPaymentBreakdown,
@@ -1031,6 +1032,16 @@ const changeAmount = computed<number>(() =>
     Math.max(tenderedTotal.value - paymentTotal.value, 0),
 );
 
+const cashTenderedTotal = computed<number>(() =>
+    paymentBreakdown.value
+        .filter((payment) => payment.method === 'Tunai')
+        .reduce((total, payment) => total + payment.amount, 0),
+);
+
+const changeIsCoveredByCash = computed<boolean>(
+    () => changeAmount.value <= cashTenderedTotal.value,
+);
+
 const canSubmit = computed<boolean>(() => {
     if (!selectedOrder.value || dueAmount.value <= 0) {
         return false;
@@ -1043,6 +1054,7 @@ const canSubmit = computed<boolean>(() => {
         isPaidByDiscount ||
         (paymentTotal.value > 0 &&
             tenderedTotal.value >= paymentTotal.value &&
+            changeIsCoveredByCash.value &&
             paymentProvidersAreValid.value)
     );
 });
@@ -1587,7 +1599,12 @@ function applyDemoPayment(
     const transactionChannelBreakdown = snapshot.breakdown.map((payment) => ({
         label: paymentChannelLabel(payment),
         amount: payment.amount,
+        ...(payment.reference === '' ? {} : { reference: payment.reference }),
     }));
+    const financialChannelBreakdown = financialPaymentBreakdown(
+        transactionChannelBreakdown,
+        amount,
+    );
     const fallbackChannel = reward ? 'Reward' : 'Diskon';
     const transactionShiftName =
         props.transactionShift.mode === 'schedule'
@@ -1632,9 +1649,15 @@ function applyDemoPayment(
         amount,
         channels: usedPaymentMethods.join(' + ') || fallbackChannel,
         channelBreakdown:
+            financialChannelBreakdown.length > 0
+                ? financialChannelBreakdown
+                : [{ label: fallbackChannel, amount }],
+        tenderBreakdown:
             transactionChannelBreakdown.length > 0
                 ? transactionChannelBreakdown
                 : [{ label: fallbackChannel, amount }],
+        tenderedAmount: snapshot.tendered,
+        changeAmount: snapshot.change,
         recordedBy: props.persona.name,
         shift: transactionShiftName,
     };
@@ -1793,8 +1816,8 @@ function transactionReceipt(
         rewardDiscount: 0,
         cashierDiscount: 0,
         total: order.total,
-        tenderedTotal: settlement?.amount ?? order.paidAmount,
-        change: 0,
+        tenderedTotal: settlement?.tenderedAmount ?? order.paidAmount,
+        change: settlement?.changeAmount ?? 0,
         history: history.map((entry) => ({
             date: entry.date,
             time: entry.time,
@@ -1812,11 +1835,11 @@ function transactionReceipt(
         timezone: props.filters.timezone,
         payment: order.payment,
         paymentBreakdown:
-            settlement?.channelBreakdown.map((channel) => ({
+            settlement?.tenderBreakdown.map((channel) => ({
                 method: channel.label,
                 amount: channel.amount,
                 provider: '',
-                reference: '',
+                reference: channel.reference ?? '',
             })) ?? [],
         reward: order.reward,
         publicUrl: settlement?.receiptUrl ?? null,

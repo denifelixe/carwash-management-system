@@ -4,6 +4,7 @@ namespace App\Actions\Admin;
 
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\PaymentChannelBreakdown;
 use Illuminate\Support\Facades\DB;
 
 class UpdateOrderTransaction
@@ -11,7 +12,7 @@ class UpdateOrderTransaction
     public function __construct(private UpdateDailyBalance $updateDailyBalance) {}
 
     /**
-     * @param  array{amount: int, channels: list<array{label: string, amount: int, reference: string}>}  $payment
+     * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>}  $payment
      */
     public function handle(OrderTransaction $orderTransaction, array $payment): void
     {
@@ -42,14 +43,21 @@ class UpdateOrderTransaction
             );
 
             $channels = array_map(
-                fn (array $channel): array => array_filter([
-                    'label' => $channel['label'],
-                    'amount' => $channel['amount'],
-                    'reference' => $channel['reference'],
-                ], fn (mixed $value): bool => $value !== ''),
+                fn (array $channel): array => $channel['reference'] === ''
+                    ? ['label' => $channel['label'], 'amount' => $channel['amount']]
+                    : [
+                        'label' => $channel['label'],
+                        'amount' => $channel['amount'],
+                        'reference' => $channel['reference'],
+                    ],
                 $payment['channels'],
             );
-            $previousAmounts = UpdateDailyBalance::channelAmounts($transaction->channel_breakdown);
+            $previousAmounts = UpdateDailyBalance::channelAmounts(
+                PaymentChannelBreakdown::financial(
+                    $transaction->channel_breakdown,
+                    (int) $transaction->amount,
+                ),
+            );
             $correctedAmounts = UpdateDailyBalance::channelAmounts($channels);
 
             $transaction->update([

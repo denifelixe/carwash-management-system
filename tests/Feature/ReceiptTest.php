@@ -66,6 +66,30 @@ test('a receipt identifies an order that belongs to a member', function () {
             ->etc());
 });
 
+test('a receipt preserves the tender and cash change', function () {
+    $order = Order::factory()->create([
+        'status' => 'selesai',
+        'subtotal' => 60000,
+        'total' => 60000,
+        'paid_amount' => 60000,
+    ]);
+    $transaction = OrderTransaction::factory()->for($order)->create([
+        'type' => 'Pembayaran Lunas',
+        'amount' => 60000,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 80000]],
+    ]);
+
+    $this->get(URL::signedRoute('receipts.show', $transaction))
+        ->assertSuccessful()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('receipt.total', 60000)
+            ->where('receipt.tenderedTotal', 80000)
+            ->where('receipt.change', 20000)
+            ->where('receipt.paymentBreakdown.0.method', 'Tunai')
+            ->where('receipt.paymentBreakdown.0.amount', 80000)
+            ->etc());
+});
+
 test('the flagged legacy receipt path is no longer available', function () {
     $transaction = OrderTransaction::factory()->create();
     $receiptUrl = URL::signedRoute('receipts.show', $transaction);

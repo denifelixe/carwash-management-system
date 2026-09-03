@@ -17,7 +17,7 @@ use Illuminate\Support\Carbon;
  * @property string $type
  * @property string|null $shift_name
  * @property int $amount
- * @property list<array{label: string, amount: int}> $channel_breakdown
+ * @property list<array{label: string, amount: int, reference?: string}> $channel_breakdown Tendered amounts before cash change
  * @property Carbon $paid_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at

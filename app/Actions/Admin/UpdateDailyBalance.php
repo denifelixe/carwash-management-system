@@ -95,7 +95,7 @@ class UpdateDailyBalance
     }
 
     /**
-     * @param  list<array{label: string, amount: int}>  $channels
+     * @param  list<array{label: string, amount: int, reference?: string}>  $channels
      * @return array{cash: int, nonCash: int}
      */
     public static function channelAmounts(array $channels): array

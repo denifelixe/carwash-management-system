@@ -2,6 +2,8 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\PaymentChannelBreakdown;
+
 /**
  * Daily operations: orders/transactions (BR-05), live queue, and bookings (BR-08).
  */
@@ -82,10 +84,26 @@ class Operations
         return [
             ...$order,
             'transactions' => array_map(
-                fn (array $transaction): array => [
-                    ...$transaction,
-                    'shift' => self::shiftFor($transaction['time']),
-                ],
+                function (array $transaction): array {
+                    $tenderBreakdown = $transaction['tenderBreakdown'] ?? $transaction['channelBreakdown'];
+                    $financialBreakdown = PaymentChannelBreakdown::financial(
+                        $tenderBreakdown,
+                        $transaction['amount'],
+                    );
+
+                    return [
+                        ...$transaction,
+                        'channels' => collect($financialBreakdown)->pluck('label')->join(' + '),
+                        'channelBreakdown' => $financialBreakdown,
+                        'tenderBreakdown' => $tenderBreakdown,
+                        'tenderedAmount' => PaymentChannelBreakdown::tenderedTotal($tenderBreakdown),
+                        'changeAmount' => PaymentChannelBreakdown::change(
+                            $tenderBreakdown,
+                            $transaction['amount'],
+                        ),
+                        'shift' => self::shiftFor($transaction['time']),
+                    ];
+                },
                 $order['transactions'],
             ),
         ];

@@ -202,3 +202,50 @@ test('the backfill builds daily totals from source rows without factory callback
         ->and($balances[1]->cash_balance)->toBe(45000)
         ->and($balances[1]->non_cash_balance)->toBe(45000);
 });
+
+test('the net income rebuild removes historical cash change from every later balance', function () {
+    $order = Order::factory()->create();
+    $now = now();
+
+    DB::table('order_transactions')->insert([
+        'order_id' => $order->id,
+        'recorded_by_admin_id' => null,
+        'reference' => 'NET-REBUILD-POS-001',
+        'type' => 'Pembayaran Lunas',
+        'amount' => 60000,
+        'channel_breakdown' => json_encode([
+            ['label' => 'Tunai', 'amount' => 80000],
+        ], JSON_THROW_ON_ERROR),
+        'paid_at' => '2026-08-30 10:00:00',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    DB::table('cash_entries')->insert([
+        'direction' => 'in',
+        'reference' => 'NET-REBUILD-MANUAL-IN',
+        'category' => 'Pendapatan Lain',
+        'description' => 'Pemasukan hari berikutnya',
+        'amount' => 10000,
+        'method' => 'Tunai',
+        'entry_date' => '2026-08-31',
+        'occurred_at' => '2026-08-31 09:00:00',
+        'created_at' => $now,
+        'updated_at' => $now,
+    ]);
+    DailyBalance::query()->create([
+        'date' => '2026-08-30',
+        'cash_income' => 80000,
+        'cash_balance' => 80000,
+    ]);
+
+    $migration = require database_path('migrations/2026_09_03_205426_rebuild_daily_balance_with_net_pos_income.php');
+    $migration->up();
+
+    $balances = DailyBalance::query()->oldest('date')->get();
+
+    expect($balances)->toHaveCount(2)
+        ->and($balances[0]->cash_income)->toBe(60000)
+        ->and($balances[0]->cash_balance)->toBe(60000)
+        ->and($balances[1]->cash_income)->toBe(10000)
+        ->and($balances[1]->cash_balance)->toBe(70000);
+});

@@ -30,6 +30,10 @@ class FinancePresenter
         $category = $transaction->type === 'Pembayaran Sebagian'
             ? 'Pembayaran Sebagian/Booking Order'
             : 'Pembayaran Sisa/Lunas (Order Selesai)';
+        $financialChannels = PaymentChannelBreakdown::financial(
+            $transaction->channel_breakdown,
+            (int) $transaction->amount,
+        );
 
         return [
             /* Prefixed so the page can tell a booked payment from a hand-written
@@ -46,8 +50,8 @@ class FinancePresenter
             'category' => $category,
             'description' => $order->serviceVariations->pluck('pivot.service_name')->join(', '),
             'amount' => (int) $transaction->amount,
-            'method' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
-            'channelBreakdown' => $transaction->channel_breakdown,
+            'method' => collect($financialChannels)->pluck('label')->join(' + '),
+            'channelBreakdown' => $financialChannels,
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : '—',
             'shift' => $transaction->shift_name,
             'source' => 'pos',

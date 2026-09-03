@@ -236,6 +236,52 @@ test('an owner can correct the payment channel of a settled POS transaction', fu
         ->and(DailyBalance::query()->sole()->non_cash_balance)->toBe(150000);
 });
 
+test('an owner must choose a bank when correcting a transaction to debit', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($owner);
+    $transaction = $order->transactions()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 150000,
+            'channels' => [[
+                'label' => 'Debit',
+                'amount' => 150000,
+                'provider' => '',
+                'reference' => '',
+            ]],
+        ])
+        ->assertSessionHasErrors('channels.0.provider');
+
+    expect($transaction->refresh()->channel_breakdown)->toBe([
+        ['label' => 'Tunai', 'amount' => 150000],
+    ]);
+});
+
+test('an owner can choose a bank when correcting a transaction to debit', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($owner);
+    $transaction = $order->transactions()->sole();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 150000,
+            'channels' => [[
+                'label' => 'Debit',
+                'amount' => 150000,
+                'provider' => 'BCA',
+                'reference' => 'EDC-001',
+            ]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($transaction->refresh()->channel_breakdown)->toBe([[
+        'label' => 'Debit · BCA',
+        'amount' => 150000,
+        'reference' => 'EDC-001',
+    ]])->and($order->refresh()->payment_method)->toBe('Debit · BCA');
+});
+
 test('an owner can correct a partial POS transaction amount', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create([

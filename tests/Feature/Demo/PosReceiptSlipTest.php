@@ -207,7 +207,7 @@ test('settled orders stay reachable so their slip can be reprinted', function ()
         ->toContain('Cetak ulang struk')
         // The last payment is the settlement; the rest is history.
         ->toContain('isReprint: true')
-        ->toContain('change: 0')
+        ->toContain('change: settlement?.changeAmount ?? 0')
         // Seeded payments carry no shift, so the clock stands in.
         ->toContain('function paymentTransactionShift(transaction: CarwashTransaction): string')
         ->toContain('shift: settlement ? paymentTransactionShift(settlement) : ');
@@ -270,6 +270,13 @@ test('the tender and change are read before the order is settled', function () {
     $mutation = strpos($pos, 'order.paidAmount += amount;');
 
     expect($snapshot)->toBeLessThan($mutation);
+});
+
+test('a reprinted payment uses its preserved tender and change', function () {
+    expect(posModule())
+        ->toContain('tenderedTotal: settlement?.tenderedAmount ?? order.paidAmount,')
+        ->toContain('change: settlement?.changeAmount ?? 0,')
+        ->toContain('settlement?.tenderBreakdown.map((channel) => ({');
 });
 
 /*

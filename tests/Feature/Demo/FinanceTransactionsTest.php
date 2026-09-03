@@ -435,6 +435,9 @@ test('finance transaction summary exposes permitted editing and the recorded shi
         ->toContain('Ubah transaksi')
         ->toContain('updateOrderTransaction(transactionId)')
         ->toContain('title="Ubah Transaksi"')
+        ->toContain('v-if="requiresTransactionBank(channel.label)"')
+        ->toContain('v-model="channel.provider"')
+        ->toContain('<option value="" disabled>Pilih bank</option>')
         ->toContain("selectedTransactionEntry.shift ?? 'Tanpa shift'");
 });
 

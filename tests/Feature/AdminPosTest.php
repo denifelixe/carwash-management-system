@@ -11,6 +11,7 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Support\Admin\FinanceQueries;
 use Inertia\Testing\AssertableInertia;
 
 test('guests cannot open the live cashier module', function () {
@@ -120,6 +121,110 @@ test('a partial payment leaves the order open and records its channels', functio
         ->and($dailyBalance->non_cash_income)->toBe(15000)
         ->and($dailyBalance->non_cash_balance)->toBe(15000);
 });
+
+test('a debit payment requires a bank', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 40000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 40000,
+            'channels' => [[
+                'method' => 'Debit',
+                'amount' => 40000,
+                'provider' => '',
+                'reference' => '',
+            ]],
+        ])
+        ->assertSessionHasErrors('channels.0.provider');
+
+    expect($order->refresh()->paid_amount)->toBe(0)
+        ->and(OrderTransaction::query()->count())->toBe(0);
+});
+
+test('cash change is excluded from finance while the original tender is preserved', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 60000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 60000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 80000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $transaction = OrderTransaction::query()->sole();
+    $moneyIn = FinanceQueries::ledgerForDate($transaction->paid_at->toDateString())['moneyIn'];
+
+    expect($order->refresh()->paid_amount)->toBe(60000)
+        ->and($transaction->amount)->toBe(60000)
+        ->and($transaction->channel_breakdown)->toBe([
+            ['label' => 'Tunai', 'amount' => 80000],
+        ])
+        ->and($moneyIn[0]['amount'])->toBe(60000)
+        ->and($moneyIn[0]['channelBreakdown'])->toBe([
+            ['label' => 'Tunai', 'amount' => 60000],
+        ])
+        ->and(DailyBalance::query()->sole()->cash_income)->toBe(60000)
+        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(60000);
+});
+
+test('cash change is removed from the cash side of a split payment', function () {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 60000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 60000,
+            'channels' => [
+                ['method' => 'QRIS', 'amount' => 50000],
+                ['method' => 'Tunai', 'amount' => 30000],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $transaction = OrderTransaction::query()->sole();
+    $moneyIn = FinanceQueries::ledgerForDate($transaction->paid_at->toDateString())['moneyIn'];
+    $dailyBalance = DailyBalance::query()->sole();
+
+    expect($moneyIn[0]['channelBreakdown'])->toBe([
+        ['label' => 'QRIS', 'amount' => 50000],
+        ['label' => 'Tunai', 'amount' => 10000],
+    ])->and($dailyBalance->cash_income)->toBe(10000)
+        ->and($dailyBalance->non_cash_income)->toBe(50000);
+});
+
+test('non cash tender cannot fund change', function (array $channels) {
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['status' => 'pelunasan', 'total' => 60000]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 60000,
+            'channels' => $channels,
+        ])
+        ->assertSessionHasErrors('channels');
+
+    expect($order->refresh()->paid_amount)->toBe(0)
+        ->and(OrderTransaction::query()->count())->toBe(0)
+        ->and(DailyBalance::query()->count())->toBe(0);
+})->with([
+    'QRIS only' => [[['method' => 'QRIS', 'amount' => 80000]]],
+    'cash is less than the change' => [[
+        ['method' => 'QRIS', 'amount' => 70000],
+        ['method' => 'Tunai', 'amount' => 10000],
+    ]],
+]);
 
 test('the cashier page exposes the current overlap status and selectable windows', function () {
     $this->travelTo('2026-08-31 14:30:00');

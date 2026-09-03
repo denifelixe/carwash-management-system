@@ -115,6 +115,11 @@ class OrderPresenter
     public static function transaction(OrderTransaction $transaction, Order $order): array
     {
         $recordedBy = $transaction->getRelation('recordedBy');
+        $tenderBreakdown = $transaction->channel_breakdown;
+        $financialBreakdown = PaymentChannelBreakdown::financial(
+            $tenderBreakdown,
+            (int) $transaction->amount,
+        );
 
         return [
             'id' => $transaction->reference,
@@ -123,8 +128,11 @@ class OrderPresenter
             'time' => $transaction->paid_at->format('H.i'),
             'type' => $transaction->type,
             'amount' => (int) $transaction->amount,
-            'channels' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
-            'channelBreakdown' => $transaction->channel_breakdown,
+            'channels' => collect($financialBreakdown)->pluck('label')->join(' + '),
+            'channelBreakdown' => $financialBreakdown,
+            'tenderBreakdown' => $tenderBreakdown,
+            'tenderedAmount' => PaymentChannelBreakdown::tenderedTotal($tenderBreakdown),
+            'changeAmount' => PaymentChannelBreakdown::change($tenderBreakdown, (int) $transaction->amount),
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : null,
             'shift' => $transaction->shift_name,
             'receiptUrl' => URL::signedRoute('receipts.show', $transaction),
@@ -174,8 +182,11 @@ class OrderPresenter
             'rewardDiscount' => 0,
             'cashierDiscount' => (int) $order->discount,
             'total' => (int) $order->total,
-            'tenderedTotal' => (int) $transaction->amount,
-            'change' => 0,
+            'tenderedTotal' => PaymentChannelBreakdown::tenderedTotal($transaction->channel_breakdown),
+            'change' => PaymentChannelBreakdown::change(
+                $transaction->channel_breakdown,
+                (int) $transaction->amount,
+            ),
             'history' => $history->map(fn (OrderTransaction $entry): array => [
                 'date' => $entry->paid_at->toDateString(),
                 'time' => $entry->paid_at->format('H.i'),

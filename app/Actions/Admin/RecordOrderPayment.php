@@ -5,6 +5,7 @@ namespace App\Actions\Admin;
 use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\PaymentChannelBreakdown;
 use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Support\Facades\DB;
 
@@ -76,7 +77,8 @@ class RecordOrderPayment
                 'paid_at' => $paidAt,
             ]);
 
-            $channelAmounts = UpdateDailyBalance::channelAmounts($channels);
+            $financialChannels = PaymentChannelBreakdown::financial($channels, $amount);
+            $channelAmounts = UpdateDailyBalance::channelAmounts($financialChannels);
             $this->updateDailyBalance->handle(
                 $paidAt->toDateString(),
                 cashIncomeDelta: $channelAmounts['cash'],
@@ -108,14 +110,20 @@ class RecordOrderPayment
     private static function channelBreakdown(array $channels, int $amount): array
     {
         $breakdown = array_map(
-            fn (array $channel): array => array_filter([
-                'label' => $channel['provider'] === ''
+            function (array $channel): array {
+                $label = $channel['provider'] === ''
                     ? $channel['method']
-                    : $channel['method'].' · '.$channel['provider'],
-                'amount' => $channel['amount'],
+                    : $channel['method'].' · '.$channel['provider'];
+
                 /* Kept beside the channel so an EDC trace stays reprintable. */
-                'reference' => $channel['reference'],
-            ], fn (mixed $value): bool => $value !== ''),
+                return $channel['reference'] === ''
+                    ? ['label' => $label, 'amount' => $channel['amount']]
+                    : [
+                        'label' => $label,
+                        'amount' => $channel['amount'],
+                        'reference' => $channel['reference'],
+                    ];
+            },
             $channels,
         );
 

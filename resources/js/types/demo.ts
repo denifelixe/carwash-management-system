@@ -278,7 +278,12 @@ export interface CarwashTransaction {
     type: 'Pembayaran Sebagian' | 'Pembayaran Lunas';
     amount: number;
     channels: string;
+    /** Net revenue allocation; its total always equals `amount`. */
     channelBreakdown: CarwashTransactionChannel[];
+    /** Amounts physically tendered before cash change was returned. */
+    tenderBreakdown: CarwashTransactionChannel[];
+    tenderedAmount: number;
+    changeAmount: number;
     /** User and shift that accepted the payment in this browser session. */
     recordedBy?: string | null;
     shift?: string | null;

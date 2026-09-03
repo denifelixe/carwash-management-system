@@ -31,6 +31,7 @@ class UpdateOrderTransactionRequest extends FormRequest
             'channels' => ['required', 'array', 'min:1', 'max:'.count(OrderQueries::PAYMENT_METHODS)],
             'channels.*.label' => ['required', 'string', 'max:100', 'distinct'],
             'channels.*.amount' => ['required', 'integer', 'min:1', 'max:999999999'],
+            'channels.*.provider' => ['nullable', 'string', 'max:60'],
             'channels.*.reference' => ['nullable', 'string', 'max:60'],
         ];
     }
@@ -51,6 +52,13 @@ class UpdateOrderTransactionRequest extends FormRequest
 
                 if (! in_array($method, OrderQueries::PAYMENT_METHODS, true)) {
                     $validator->errors()->add("channels.{$index}.label", 'Kanal pembayaran tidak valid.');
+                }
+
+                if ($method === 'Debit' && $channel['provider'] === '') {
+                    $validator->errors()->add(
+                        "channels.{$index}.provider",
+                        'Bank wajib dipilih untuk pembayaran debit.',
+                    );
                 }
             }
 
@@ -75,7 +83,7 @@ class UpdateOrderTransactionRequest extends FormRequest
     }
 
     /**
-     * @return list<array{label: string, amount: int, reference: string}>
+     * @return list<array{label: string, amount: int, provider: string, reference: string}>
      */
     public function channels(): array
     {
@@ -83,11 +91,21 @@ class UpdateOrderTransactionRequest extends FormRequest
         $channels = $this->input('channels', []);
 
         return array_values(array_map(
-            fn (array $channel): array => [
-                'label' => trim((string) ($channel['label'] ?? '')),
-                'amount' => (int) ($channel['amount'] ?? 0),
-                'reference' => trim((string) ($channel['reference'] ?? '')),
-            ],
+            function (array $channel): array {
+                $submittedLabel = trim((string) ($channel['label'] ?? ''));
+                $method = Str::before($submittedLabel, ' · ');
+                $embeddedProvider = Str::contains($submittedLabel, ' · ')
+                    ? Str::after($submittedLabel, ' · ')
+                    : '';
+                $provider = trim((string) ($channel['provider'] ?? $embeddedProvider));
+
+                return [
+                    'label' => $provider === '' ? $method : $method.' · '.$provider,
+                    'amount' => (int) ($channel['amount'] ?? 0),
+                    'provider' => $provider,
+                    'reference' => trim((string) ($channel['reference'] ?? '')),
+                ];
+            },
             $channels,
         ));
     }
