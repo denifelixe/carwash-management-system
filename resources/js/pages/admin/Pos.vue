@@ -13,7 +13,7 @@ import {
     Trash2,
     Wallet,
 } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
     index as indexPos,
     store as storePosPayment,
@@ -179,10 +179,13 @@ const selectedPaymentRecapOrder = ref<PaymentRecapOrderDetail | null>(null);
  * is read straight off the query rather than through props. That is what makes
  * a printed recap's link land on the shift it was taken from.
  */
-const activePaymentRecapShift = ref<PaymentRecapShift>(
-    new URLSearchParams(window.location.search).get('shift') ??
-        paymentRecapTotalKey,
-);
+const activePaymentRecapShift = ref<PaymentRecapShift>(paymentRecapTotalKey);
+
+onMounted(() => {
+    activePaymentRecapShift.value =
+        new URLSearchParams(window.location.search).get('shift') ??
+        paymentRecapTotalKey;
+});
 const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
 const selectedRewardId = ref<number | null>(null);

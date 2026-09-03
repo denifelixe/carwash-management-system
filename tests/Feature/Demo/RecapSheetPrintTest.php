@@ -28,6 +28,11 @@ function recapPosPage(): string
     return file_get_contents(resource_path('js/pages/admin/Pos.vue'));
 }
 
+function recapPrintDocumentModule(): string
+{
+    return file_get_contents(resource_path('js/lib/printDocument.ts'));
+}
+
 test('the recap prints on either A4 or the 78mm roll', function () {
     expect(recapSheetModule())
         ->toContain("export type RecapPaper = 'a4' | 'struk';")
@@ -157,7 +162,7 @@ test('the print stamp reads the outlet clock, not the machine', function () {
     expect(recapFinancePage())->toContain('timezone: props.filters.timezone,');
     expect(recapPosPage())->toContain('timezone: props.filters.timezone,');
 
-    expect(printDocumentModule())
+    expect(recapPrintDocumentModule())
         ->toContain('export function printedAt(timeZone: string): string')
         ->toContain('timeZone,');
 });
@@ -336,6 +341,14 @@ test('the recap carries a deep link back to the day and shift it was taken from'
             // The tab is client state, so the link reads it back off the query.
             ->toContain("new URLSearchParams(window.location.search).get('shift')");
     }
+
+    expect(recapFinancePage())
+        ->toContain('const activeShift = ref<Shift>(allShiftsKey);')
+        ->toContain("onMounted(() => {\n    activeShift.value =");
+
+    expect(recapPosPage())
+        ->toContain('const activePaymentRecapShift = ref<PaymentRecapShift>(paymentRecapTotalKey);')
+        ->toContain("onMounted(() => {\n    activePaymentRecapShift.value =");
 });
 
 test('the recap toolbar can copy that link, and says so', function () {

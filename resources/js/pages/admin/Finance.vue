@@ -108,9 +108,7 @@ const activeLedger = ref<Ledger>('in');
  * is read straight off the query rather than through props.filters. That is
  * what makes a printed recap's link land on the shift it was taken from.
  */
-const activeShift = ref<Shift>(
-    new URLSearchParams(window.location.search).get('shift') ?? allShiftsKey,
-);
+const activeShift = ref<Shift>(allShiftsKey);
 const search = ref<string>('');
 const categoryFilters = ref<string[]>(['Semua']);
 const isFormOpen = ref<boolean>(false);
@@ -1152,6 +1150,9 @@ async function bindAttachmentLightbox(): Promise<void> {
 }
 
 onMounted(() => {
+    activeShift.value =
+        new URLSearchParams(window.location.search).get('shift') ??
+        allShiftsKey;
     void bindAttachmentLightbox();
 });
 
