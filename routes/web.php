@@ -23,7 +23,7 @@ if ($generateAllRoutes || in_array($applicationType, ['LIVE', 'STAGING', 'ALL'],
 
     Route::domain($appDomain)->group(function (): void {
         Route::get('/', fn (): RedirectResponse => to_route('member.home'))->name('home');
-        Route::get('struk/{orderTransaction}', ReceiptController::class)
+        Route::get('receipt/{orderTransaction}', ReceiptController::class)
             ->middleware('signed')
             ->name('receipts.show');
     });

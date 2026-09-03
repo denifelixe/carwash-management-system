@@ -34,7 +34,11 @@ test('a signed receipt link is publicly viewable without login', function () {
         'paid_at' => '2026-09-01 19:02:00',
     ]);
 
-    $response = $this->get(URL::signedRoute('receipts.show', $transaction));
+    $receiptUrl = URL::signedRoute('receipts.show', $transaction);
+    $response = $this->get($receiptUrl);
+
+    expect(parse_url($receiptUrl, PHP_URL_PATH))
+        ->toBe("/receipt/{$transaction->getRouteKey()}");
 
     $response->assertSuccessful()
         ->assertInertia(fn (AssertableInertia $page) => $page
@@ -46,6 +50,14 @@ test('a signed receipt link is publicly viewable without login', function () {
             ->where('receipt.publicUrl', URL::signedRoute('receipts.show', $transaction))
             ->where('receipt.verificationQr', fn (string $qrCode): bool => str_starts_with($qrCode, 'data:image/svg+xml;base64,'))
             ->etc());
+});
+
+test('the flagged legacy receipt path is no longer available', function () {
+    $transaction = OrderTransaction::factory()->create();
+    $receiptUrl = URL::signedRoute('receipts.show', $transaction);
+    $legacyReceiptUrl = str_replace('/receipt/', '/struk/', $receiptUrl);
+
+    $this->get($legacyReceiptUrl)->assertNotFound();
 });
 
 test('a receipt cannot be viewed through a tampered unsigned link', function () {
