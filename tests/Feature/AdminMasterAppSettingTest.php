@@ -92,10 +92,10 @@ test('an owner sees app setting in the master sidebar', function () {
                 ->where('capabilities.update', true)
                 ->where('modules.11.key', 'master')
                 ->where('modules.11.active', true)
-                ->where('modules.11.children.3.key', 'master_app_settings')
-                ->where('modules.11.children.3.active', true)
+                ->where('modules.11.children.0.key', 'master_app_settings')
+                ->where('modules.11.children.0.active', true)
                 ->where(
-                    'modules.11.children.3.href',
+                    'modules.11.children.0.href',
                     route('admin.master.app-settings.index', absolute: false),
                 ),
         );

@@ -36,7 +36,7 @@ import type { CarwashBrand } from '@/types/demo';
 const ROLL: PageMetrics = {
     width: 80,
     margin: 4,
-    bodySize: 8,
+    bodySize: 9,
     font: 'courier',
     dashedRules: true,
     blockGap: 1.8,
@@ -48,9 +48,9 @@ const CONTENT_WIDTH = PAGE_WIDTH - ROLL.margin * 2;
 
 const CENTER = PAGE_WIDTH / 2;
 
-const HEADING_SIZE = 10;
+const HEADING_SIZE = 11;
 
-const FINE_SIZE = 6.5;
+const FINE_SIZE = 7.5;
 
 /** A figure row, spelled the way the slip spells money. */
 function amountRow(

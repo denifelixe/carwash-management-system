@@ -36,10 +36,10 @@ test('the slip is laid out at the printable width of the 80mm roll', function ()
         // Shift the 72mm print area right, away from this printer's clipped edge.
         ->toContain('padding: 0 3mm 6mm 5mm;')
         ->toContain('color: #000000;')
-        ->toContain('font-size: 13px;')
-        ->toContain('.contact, .copy { font-size: 11px; }')
-        ->toContain('.reference, .detail, .fineprint, .verification-caption { font-size: 10px; }')
-        ->toContain('.name, .amount.grand, .status { font-size: 14px; }')
+        ->toContain('font-size: 14px;')
+        ->toContain('.contact, .copy { font-size: 12px; }')
+        ->toContain('.reference, .detail, .fineprint, .verification-caption { font-size: 11px; }')
+        ->toContain('.name, .amount.grand, .status { font-size: 15px; }')
         // The roll must never widen, so long references wrap instead.
         ->toContain('overflow-wrap: anywhere');
 });
@@ -60,6 +60,9 @@ test('the slip is dressed by the receipt settings', function () {
         ->not->toContain('Temporarily hidden for receipt testing');
 
     expect(file_get_contents(resource_path('js/lib/posReceiptPdf.ts')))
+        ->toContain('bodySize: 9,')
+        ->toContain('const HEADING_SIZE = 11;')
+        ->toContain('const FINE_SIZE = 7.5;')
         ->toContain("slip.paragraph(brand.receipt.name, 'center', {")
         ->toContain("slip.meta('Status', receipt.customerStatus)")
         ->toContain("if (brand.receipt.footerNote !== '') {")

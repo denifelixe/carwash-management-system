@@ -50,12 +50,12 @@ test('the master module is nested under an expandable sidebar group', function (
                 ->where('modules.10.key', 'master')
                 ->where('modules.10.href', null)
                 ->where('modules.10.active', true)
-                ->where('modules.10.children.0.key', 'master_services')
-                ->where('modules.10.children.0.href', route('demo.admin.master.services', absolute: false))
-                ->where('modules.10.children.2.key', 'master_timezone')
-                ->where('modules.10.children.2.href', route('demo.admin.master.timezone', absolute: false))
-                ->where('modules.10.children.3.key', 'master_app_settings')
-                ->where('modules.10.children.3.href', route('demo.admin.master.app-settings', absolute: false))
+                ->where('modules.10.children.0.key', 'master_app_settings')
+                ->where('modules.10.children.0.href', route('demo.admin.master.app-settings', absolute: false))
+                ->where('modules.10.children.1.key', 'master_services')
+                ->where('modules.10.children.1.href', route('demo.admin.master.services', absolute: false))
+                ->where('modules.10.children.3.key', 'master_timezone')
+                ->where('modules.10.children.3.href', route('demo.admin.master.timezone', absolute: false))
         );
 });
 

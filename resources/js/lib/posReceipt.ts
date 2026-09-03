@@ -321,7 +321,7 @@ body {
     background: #eef2f7;
     color: #0f172a;
     font-family: 'Consolas', 'Courier New', ui-monospace, monospace;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1.45;
     padding: 14px 0 28px;
 }
@@ -340,9 +340,9 @@ ${toolbarStyles()}
 .brand { text-align: center; }
 .logo { font-size: ${(logoWidth * 0.35).toFixed(1)}mm; line-height: 1.2; }
 .logo-image { display: block; height: auto; margin: 0 auto 4px; max-height: ${logoHeight}mm; max-width: ${logoWidth}mm; object-fit: contain; }
-.name { font-size: 13px; font-weight: 700; letter-spacing: 0.04em; }
+.name { font-size: 14px; font-weight: 700; letter-spacing: 0.04em; }
 .contacts { align-items: center; display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
-.contact { align-items: center; color: #475569; display: inline-flex; font-size: 10px; gap: 4px; }
+.contact { align-items: center; color: #475569; display: inline-flex; font-size: 11px; gap: 4px; }
 .contact-icon { display: inline-flex; height: 11px; width: 11px; }
 .contact-icon svg { height: 100%; width: 100%; }
 .contact-icon.whatsapp { color: #16a34a; }
@@ -366,7 +366,7 @@ ${toolbarStyles()}
 }
 .copy {
     color: #b45309;
-    font-size: 10px;
+    font-size: 11px;
     font-weight: 700;
     letter-spacing: 0.06em;
     margin-bottom: 4px;
@@ -385,12 +385,12 @@ ${toolbarStyles()}
 .line { align-items: flex-start; }
 .line-name { flex: 1 1 auto; }
 .wrap { overflow-wrap: anywhere; }
-.reference { color: #64748b; display: block; font-size: 9px; }
+.reference { color: #64748b; display: block; font-size: 10px; }
 .history { margin-bottom: 6px; }
 .history + .amount { border-top: 1px dotted #cbd5e1; padding-top: 4px; }
 .detail {
     color: #64748b;
-    font-size: 9px;
+    font-size: 10px;
     line-height: 1.35;
     overflow-wrap: anywhere;
     padding-left: 6px;
@@ -401,7 +401,7 @@ ${toolbarStyles()}
 .amount.strong > span:first-child { color: #0f172a; }
 .amount.grand {
     border-top: 1px solid #0f172a;
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     margin-top: 4px;
     padding-top: 4px;
@@ -414,21 +414,21 @@ ${toolbarStyles()}
     text-align: center;
 }
 .status {
-    font-size: 13px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.18em;
     margin-bottom: 4px;
 }
-.fineprint { color: #64748b; font-size: 9px; margin-top: 6px; }
+.fineprint { color: #64748b; font-size: 10px; margin-top: 6px; }
 .verification { border-top: 1px dashed #94a3b8; break-inside: avoid; display: none; margin-top: 8px; page-break-inside: avoid; padding-top: 8px; }
 .verification-qr-image { display: block; height: 30mm; margin: 0 auto 3px; width: 30mm; }
-.verification-caption { color: #64748b; font-size: 9px; }
+.verification-caption { color: #64748b; font-size: 10px; }
 @page { margin: 0; size: ${PAPER_WIDTH} auto; }
 @media print {
     body {
         background: #ffffff;
         color: #000000;
-        font-size: 13px;
+        font-size: 14px;
         font-weight: 500;
         line-height: 1.4;
         padding: 0;
@@ -447,9 +447,9 @@ ${toolbarStyles()}
     .copy, .meta > span:first-child,
     .reference, .detail, .amount > span:first-child, .fineprint,
     .verification-caption { color: #000000; }
-    .contact, .copy { font-size: 11px; }
-    .reference, .detail, .fineprint, .verification-caption { font-size: 10px; }
-    .name, .amount.grand, .status { font-size: 14px; }
+    .contact, .copy { font-size: 12px; }
+    .reference, .detail, .fineprint, .verification-caption { font-size: 11px; }
+    .name, .amount.grand, .status { font-size: 15px; }
     .block, .footer, .verification, .history + .amount,
     .amount.grand { border-color: #000000; }
     .verification { display: block; }

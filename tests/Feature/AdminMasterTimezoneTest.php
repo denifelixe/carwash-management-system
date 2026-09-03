@@ -57,10 +57,10 @@ test('an owner sees the three indonesian zones with the configured one selected'
                 ->where('capabilities.update', true)
                 ->where('modules.11.key', 'master')
                 ->where('modules.11.active', true)
-                ->where('modules.11.children.2.key', 'master_timezone')
-                ->where('modules.11.children.2.active', true)
+                ->where('modules.11.children.3.key', 'master_timezone')
+                ->where('modules.11.children.3.active', true)
                 ->where(
-                    'modules.11.children.2.href',
+                    'modules.11.children.3.href',
                     route('admin.master.timezone.index', absolute: false),
                 ),
         );

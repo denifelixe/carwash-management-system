@@ -101,7 +101,7 @@ test('an owner sees logical services and their variation matrix', function () {
             ->where('services.0.variations.Ukuran.0', 'Small')
             ->has('services.0.service_variations', 2)
             ->where('capabilities.create', true)
-            ->where('modules.11.children.0.key', 'master_services'));
+            ->where('modules.11.children.1.key', 'master_services'));
 });
 
 test('an owner can create a service without variation axes and it still gets one price row', function () {

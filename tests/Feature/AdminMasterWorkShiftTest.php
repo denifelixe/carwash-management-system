@@ -65,9 +65,9 @@ test('an owner sees work shifts in the expandable master sidebar group', functio
                 ->where('capabilities.delete', true)
                 ->where('modules.11.key', 'master')
                 ->where('modules.11.active', true)
-                ->where('modules.11.children.1.key', 'master_work_shifts')
-                ->where('modules.11.children.1.active', true)
-                ->where('modules.11.children.1.href', route('admin.master.work-shifts.index', absolute: false)),
+                ->where('modules.11.children.2.key', 'master_work_shifts')
+                ->where('modules.11.children.2.active', true)
+                ->where('modules.11.children.2.href', route('admin.master.work-shifts.index', absolute: false)),
         );
 });
 

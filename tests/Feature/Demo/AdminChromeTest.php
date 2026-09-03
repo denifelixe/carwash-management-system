@@ -84,10 +84,10 @@ test('the sidebar modules follow the operational menu order', function () {
         'rewards',
         'reports',
         'users',
+        'master_app_settings',
         'master_services',
         'master_work_shifts',
         'master_timezone',
-        'master_app_settings',
         'master_receipt',
     ]);
 });
