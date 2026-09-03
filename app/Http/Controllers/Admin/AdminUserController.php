@@ -12,6 +12,7 @@ use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\RoleIcons;
 use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Pivot;
@@ -50,6 +51,7 @@ class AdminUserController extends Controller
             [
                 'staff' => $admins->map(fn (Admin $admin): array => $this->staffData($admin))->all(),
                 'roles' => $roles->map(fn (AdminRole $role): array => $this->roleData($role, $modules))->all(),
+                'roleIcons' => RoleIcons::options(),
                 'shifts' => AdminShift::query()->where('is_active', true)->orderBy('starts_at')->get(['id', 'name']),
                 'allModules' => $modules->map(fn (AdminModule $module): array => [
                     'id' => $module->id,
@@ -61,6 +63,7 @@ class AdminUserController extends Controller
                     'key' => 'owner',
                     'name' => 'Owner',
                     'description' => 'Akses penuh ke seluruh modul sistem.',
+                    'icon' => '👑',
                     'staff_count' => $admins->where('is_owner', true)->count(),
                     'module_count' => $modules->count(),
                 ],
@@ -170,6 +173,7 @@ class AdminUserController extends Controller
             'key' => $role->key,
             'name' => $role->name,
             'description' => $role->description ?? '',
+            'icon' => $role->icon,
             'is_active' => $role->is_active,
             'staff_count' => $role->admins_count,
             'permissions' => $modules->map(function (AdminModule $module) use ($assignedModules): array {

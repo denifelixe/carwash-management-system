@@ -33,8 +33,8 @@ test('the slip is laid out at the printable width of the 80mm roll', function ()
         ->toContain('const WINDOW_WIDTH = 520')
         ->toContain('width: ${PAPER_WIDTH}')
         ->toContain('@page { margin: 0; size: ${PAPER_WIDTH} auto; }')
-        // Shift the 72mm print area right, away from this printer's clipped edge.
-        ->toContain('padding: 0 3mm 6mm 5mm;')
+        // Keep the 72mm print area inside the centred TM-T82 print head.
+        ->toContain('padding: 0 4mm 6mm;')
         ->toContain('color: #000000;')
         ->toContain('font-size: 14px;')
         ->toContain('.contact, .copy { font-size: 12px; }')

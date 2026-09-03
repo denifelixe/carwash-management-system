@@ -64,7 +64,9 @@ class AdminShell
                     ? 'Akses penuh ke seluruh modul sistem.'
                     : ($role instanceof AdminRole ? ($role->description ?? 'Akses staf belum ditentukan.') : 'Akses staf belum ditentukan.'),
                 'accent' => '#0891b2',
-                'icon' => $admin->is_owner ? '👑' : '🛡️',
+                'icon' => $admin->is_owner
+                    ? '👑'
+                    : ($role instanceof AdminRole ? $role->icon : RoleIcons::DEFAULT),
             ],
             'modules' => $this->modulesFor($admin, $activeModuleKey),
             'persona' => [

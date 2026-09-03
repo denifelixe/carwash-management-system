@@ -2,6 +2,8 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\RoleIcons;
+
 /**
  * Role-based access control for the admin console (BR-11).
  *
@@ -173,6 +175,7 @@ class RoleAccess
                 'key' => $role['key'],
                 'name' => $role['name'],
                 'description' => $role['description'],
+                'icon' => $role['icon'],
                 'is_active' => true,
                 'staff_count' => count(array_filter(
                     self::staff(),
@@ -214,6 +217,7 @@ class RoleAccess
                 'avatar' => null,
             ], self::staff()),
             'roles' => $roles,
+            'roleIcons' => RoleIcons::options(),
             'shifts' => array_map(
                 fn (string $shift, int $index): array => ['id' => $index + 1, 'name' => $shift],
                 self::shifts(),
@@ -224,6 +228,7 @@ class RoleAccess
                 'key' => 'owner',
                 'name' => 'Owner',
                 'description' => self::role('owner')['description'],
+                'icon' => self::role('owner')['icon'],
                 'staff_count' => count(array_filter(
                     self::staff(),
                     fn (array $staff): bool => $staff['role'] === 'owner',

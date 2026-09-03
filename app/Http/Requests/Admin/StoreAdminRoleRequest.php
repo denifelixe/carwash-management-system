@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\AdminModule;
+use App\Support\Admin\RoleIcons;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
@@ -27,6 +28,7 @@ class StoreAdminRoleRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:100', Rule::unique('admin_roles', 'name')],
             'description' => ['nullable', 'string', 'max:500'],
+            'icon' => ['required', 'string', Rule::in(RoleIcons::values())],
             'is_active' => ['required', 'boolean'],
             'permissions' => ['required', 'array'],
             'permissions.*.module_id' => ['required', 'integer', 'distinct', Rule::exists(AdminModule::class, 'id')->where('is_active', true)],

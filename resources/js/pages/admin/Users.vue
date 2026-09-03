@@ -50,9 +50,15 @@ type Role = {
     key: string;
     name: string;
     description: string;
+    icon: string;
     is_active: boolean;
     staff_count: number;
     permissions: Permission[];
+};
+
+type RoleIcon = {
+    value: string;
+    label: string;
 };
 
 type Module = {
@@ -72,12 +78,14 @@ const props = defineProps<{
     brand: CarwashBrand;
     staff: Staff[];
     roles: Role[];
+    roleIcons: RoleIcon[];
     shifts: Shift[];
     allModules: Module[];
     ownerSummary: {
         key: string;
         name: string;
         description: string;
+        icon: string;
         staff_count: number;
         module_count: number;
     };
@@ -158,6 +166,7 @@ const userShiftSelection = computed({
 const roleForm = useForm({
     name: '',
     description: '',
+    icon: props.roleIcons[0]?.value ?? '🛡️',
     is_active: true,
     permissions: [] as Permission[],
 });
@@ -425,6 +434,7 @@ function openCreateRole(): void {
     roleForm.defaults({
         name: '',
         description: '',
+        icon: props.roleIcons[0]?.value ?? '🛡️',
         is_active: true,
         permissions: blankPermissions(),
     });
@@ -442,6 +452,7 @@ function openEditRole(role: Role): void {
     roleForm.defaults({
         name: role.name,
         description: role.description,
+        icon: role.icon,
         is_active: role.is_active,
         permissions: role.permissions.map((permission) => ({ ...permission })),
     });
@@ -492,6 +503,7 @@ function saveDemoRole(): void {
             key: key || `role_${id}`,
             name: roleForm.name,
             description: roleForm.description,
+            icon: roleForm.icon,
             is_active: roleForm.is_active,
             staff_count: 0,
             permissions: roleForm.permissions.map((permission) => ({
@@ -507,6 +519,7 @@ function saveDemoRole(): void {
             Object.assign(role, {
                 name: roleForm.name,
                 description: roleForm.description,
+                icon: roleForm.icon,
                 is_active: roleForm.is_active,
                 permissions: roleForm.permissions.map((permission) => ({
                     ...permission,
@@ -599,7 +612,9 @@ function saveDemoRole(): void {
                                 {{ ownerSummary.module_count }} modul
                             </p>
                         </div>
-                        <ShieldCheck class="h-5 w-5 text-cyan-600" />
+                        <span class="text-lg" aria-hidden="true">
+                            {{ ownerSummary.icon }}
+                        </span>
                     </div>
                     <p class="mt-2 text-[11px] leading-relaxed text-slate-500">
                         {{ ownerSummary.description }}
@@ -617,18 +632,23 @@ function saveDemoRole(): void {
                     @click="openEditRole(role)"
                 >
                     <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0">
-                            <p
-                                class="truncate text-sm font-semibold text-slate-900"
-                            >
-                                {{ role.name }}
-                            </p>
-                            <p
-                                class="text-[11px]"
-                                :style="{ color: roleAccent(role.key) }"
-                            >
-                                {{ readableModuleCount(role) }} modul
-                            </p>
+                        <div class="flex min-w-0 items-start gap-2.5">
+                            <span class="text-lg" aria-hidden="true">
+                                {{ role.icon }}
+                            </span>
+                            <div class="min-w-0">
+                                <p
+                                    class="truncate text-sm font-semibold text-slate-900"
+                                >
+                                    {{ role.name }}
+                                </p>
+                                <p
+                                    class="text-[11px]"
+                                    :style="{ color: roleAccent(role.key) }"
+                                >
+                                    {{ readableModuleCount(role) }} modul
+                                </p>
+                            </div>
                         </div>
                         <StatusPill
                             :status="role.is_active ? 'aktif' : 'nonaktif'"
@@ -1130,6 +1150,33 @@ function saveDemoRole(): void {
                     Role aktif
                 </label>
             </div>
+            <fieldset>
+                <legend class="text-xs font-medium text-slate-600">
+                    Icon role
+                </legend>
+                <div
+                    class="mt-1.5 grid grid-cols-7 gap-2 rounded-xl border border-slate-200 p-3 sm:grid-cols-10"
+                >
+                    <button
+                        v-for="icon in roleIcons"
+                        :key="icon.value"
+                        type="button"
+                        class="flex aspect-square items-center justify-center rounded-lg bg-slate-50 text-xl transition hover:bg-cyan-50 focus:ring-2 focus:ring-cyan-300 focus:outline-none"
+                        :class="
+                            roleForm.icon === icon.value
+                                ? 'bg-cyan-50 ring-2 ring-cyan-500'
+                                : ''
+                        "
+                        :title="icon.label"
+                        :aria-label="icon.label"
+                        :aria-pressed="roleForm.icon === icon.value"
+                        @click="roleForm.icon = icon.value"
+                    >
+                        {{ icon.value }}
+                    </button>
+                </div>
+                <InputError class="mt-1" :message="roleForm.errors.icon" />
+            </fieldset>
             <div>
                 <label
                     for="role-description"

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Admin\RoleIcons;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -13,13 +14,19 @@ use Illuminate\Support\Carbon;
  * @property string $key
  * @property string $name
  * @property string|null $description
+ * @property string $icon
  * @property bool $is_active
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['key', 'name', 'description', 'is_active'])]
+#[Fillable(['key', 'name', 'description', 'icon', 'is_active'])]
 class AdminRole extends Model
 {
+    /** @var array<string, mixed> */
+    protected $attributes = [
+        'icon' => RoleIcons::DEFAULT,
+    ];
+
     /**
      * @return HasMany<Admin, $this>
      */

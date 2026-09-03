@@ -439,7 +439,7 @@ ${toolbarStyles()}
     .paper {
         box-shadow: none;
         margin: 0;
-        padding: 0 3mm 6mm 5mm;
+        padding: 0 4mm 6mm;
         width: ${PAPER_WIDTH};
     }
     .paper > * { max-width: ${PRINTABLE_WIDTH}; }

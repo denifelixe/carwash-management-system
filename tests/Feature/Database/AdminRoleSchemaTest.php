@@ -26,6 +26,7 @@ test('admin and role schema contains the required tables columns and indexes', f
             'key',
             'name',
             'description',
+            'icon',
             'is_active',
             'created_at',
             'updated_at',

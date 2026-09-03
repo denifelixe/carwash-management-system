@@ -40,6 +40,11 @@ test('an owner sees live staff roles shifts permissions and an enabled sidebar i
                 ->where('mode', 'live')
                 ->has('staff', 1)
                 ->has('roles', 4)
+                ->has('roleIcons', 14)
+                ->where('roles.0.icon', '🎧')
+                ->where('roles.1.icon', '🧾')
+                ->where('roles.2.icon', '💳')
+                ->where('roles.3.icon', '🧑‍💼')
                 ->has('shifts', 2)
                 ->has('allModules', 16)
                 ->where('capabilities.create', true)
@@ -75,6 +80,26 @@ test('hidden admins are absent from the staff directory and role counts', functi
         ->not->toContain($hiddenCashier->id, $hiddenOwner->id)
         ->and($cashier['staff_count'])->toBe(1)
         ->and($response->inertiaProps('ownerSummary.staff_count'))->toBe(1);
+});
+
+test('a staff role icon is exposed to the admin shell', function () {
+    $usersModule = AdminModule::query()->where('key', 'users_and_roles')->firstOrFail();
+    $role = AdminRole::query()->create([
+        'key' => 'supervisor_icon',
+        'name' => 'Supervisor Icon',
+        'description' => 'Supervisor with a selected icon.',
+        'icon' => '👔',
+        'is_active' => true,
+    ]);
+    $role->modules()->attach($usersModule, ['can_read' => true]);
+    $admin = Admin::factory()->create(['role_id' => $role->id]);
+
+    $this->actingAs($admin, 'admin')
+        ->get(route('admin.users.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('role.name', 'Supervisor Icon')
+            ->where('role.icon', '👔'));
 });
 
 test('an owner can create a staff user with a role and shift', function () {
@@ -324,6 +349,7 @@ test('an owner can create and update a role permission matrix', function () {
         ->post(route('admin.roles.store'), [
             'name' => 'Supervisor Operasional',
             'description' => 'Mengawasi operasional harian.',
+            'icon' => '👔',
             'is_active' => true,
             'permissions' => $permissions,
         ])
@@ -332,7 +358,8 @@ test('an owner can create and update a role permission matrix', function () {
 
     $role = AdminRole::query()->where('key', 'supervisor_operasional')->firstOrFail();
 
-    expect($role->modules()->wherePivot('can_read', true)->count())->toBe(16);
+    expect($role->modules()->wherePivot('can_read', true)->count())->toBe(16)
+        ->and($role->icon)->toBe('👔');
 
     $permissions[1]['can_read'] = false;
 
@@ -340,6 +367,7 @@ test('an owner can create and update a role permission matrix', function () {
         ->patch(route('admin.roles.update', $role), [
             'name' => 'Supervisor',
             'description' => 'Supervisor yang diperbarui.',
+            'icon' => '🏆',
             'is_active' => false,
             'permissions' => $permissions,
         ])
@@ -348,8 +376,27 @@ test('an owner can create and update a role permission matrix', function () {
 
     expect($role->refresh())
         ->name->toBe('Supervisor')
+        ->icon->toBe('🏆')
         ->is_active->toBeFalse()
         ->and($role->modules()->wherePivot('can_read', true)->count())->toBe(15);
+});
+
+test('a role icon must come from the role icon options', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.users.index'))
+        ->post(route('admin.roles.store'), [
+            'name' => 'Invalid Icon Role',
+            'description' => null,
+            'icon' => '😀',
+            'is_active' => true,
+            'permissions' => rolePermissions(),
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasErrors('icon');
+
+    expect(AdminRole::query()->where('name', 'Invalid Icon Role')->exists())->toBeFalse();
 });
 
 test('read-only staff can view the module but cannot mutate users', function () {
