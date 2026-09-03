@@ -6,6 +6,7 @@ use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\ServiceVariation;
+use App\Support\Admin\OperationalDataWindow;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -20,6 +21,7 @@ class SaveBooking
         return DB::transaction(function () use ($data, $adminId, $booking): Order {
             if ($booking !== null) {
                 $booking = Order::query()->lockForUpdate()->findOrFail($booking->id);
+                OperationalDataWindow::ensureAllows($booking->service_date);
 
                 abort_if(
                     $booking->source !== 'booking' || $booking->status !== 'booking',

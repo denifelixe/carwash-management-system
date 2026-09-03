@@ -25,6 +25,7 @@ class FinancePresenter
         /** @var Order $order */
         $order = $transaction->getRelation('order');
         $recordedBy = $transaction->getRelation('recordedBy');
+        $updatedBy = $transaction->getRelation('updatedBy');
         $paidAt = $transaction->paid_at;
         $time = $paidAt->format('H.i');
         $category = $transaction->type === 'Pembayaran Sebagian'
@@ -53,8 +54,16 @@ class FinancePresenter
             'method' => collect($financialChannels)->pluck('label')->join(' + '),
             'channelBreakdown' => $financialChannels,
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : '—',
+            'updatedBy' => $updatedBy instanceof Admin ? $updatedBy->name : null,
+            'updatedAt' => $updatedBy instanceof Admin && $transaction->updated_at !== null
+                ? [
+                    'date' => $transaction->updated_at->toDateString(),
+                    'time' => $transaction->updated_at->format('H.i'),
+                ]
+                : null,
             'shift' => $transaction->shift_name,
             'source' => 'pos',
+            'isMutable' => OperationalDataWindow::allows($paidAt),
             'orderId' => $order->id,
             'orderNo' => $order->number,
             'customer' => $order->customer_name,
@@ -88,6 +97,7 @@ class FinancePresenter
             'updatedBy' => $updatedBy instanceof Admin ? $updatedBy->name : null,
             'shift' => $entry->shift_name,
             'source' => 'manual',
+            'isMutable' => OperationalDataWindow::allows($entry->entry_date),
             'orderId' => null,
             'orderNo' => null,
             'customer' => null,

@@ -11,6 +11,7 @@ import {
     Pencil,
     Plus,
     Search,
+    Trash2,
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
@@ -18,6 +19,7 @@ import { computed, nextTick, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
 import {
+    destroy as destroyOrder,
     index as indexOrder,
     store as storeOrder,
     updateHandler as updateOrderHandler,
@@ -77,6 +79,7 @@ const props = defineProps<{
     capabilities: {
         create: boolean;
         update: boolean;
+        delete: boolean;
     };
 }>();
 
@@ -151,6 +154,7 @@ const scopedOrders = computed<CarwashOrder[]>(() =>
 const search = ref<string>('');
 const statusFilter = ref<string>('menunggu');
 const detailOrderId = ref<number | null>(null);
+const deletingOrder = ref<CarwashOrder | null>(null);
 const isCreateOpen = ref<boolean>(false);
 const isStaffOpen = ref<boolean>(false);
 const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
@@ -292,7 +296,9 @@ const detailOrder = computed<CarwashOrder | null>(
 
 /** Only cashier-settled orders are locked; a cancellation can be corrected. */
 const isDetailReadOnly = computed<boolean>(
-    () => detailOrder.value?.status === 'selesai',
+    () =>
+        detailOrder.value?.status === 'selesai' ||
+        detailOrder.value?.isMutable === false,
 );
 
 /** The dropdown edits a draft so nothing moves before the user saves. */
@@ -521,7 +527,11 @@ function setStatus(order: CarwashOrder, status: string): void {
  * the cashier, so only that one is left to the read-only chip.
  */
 function canEditStatus(order: CarwashOrder): boolean {
-    return props.capabilities.update && order.status !== 'selesai';
+    return (
+        props.capabilities.update &&
+        order.status !== 'selesai' &&
+        order.isMutable !== false
+    );
 }
 
 /**
@@ -598,6 +608,32 @@ function saveHandler(): void {
     handlerForm.handled_by = handledBy;
     handlerForm.submit(updateOrderHandler(detailOrder.value.id), {
         preserveScroll: true,
+    });
+}
+
+function openDeleteOrder(order: CarwashOrder): void {
+    if (
+        props.mode !== 'live' ||
+        !props.capabilities.delete ||
+        order.isDeletable !== true
+    ) {
+        return;
+    }
+
+    deletingOrder.value = order;
+}
+
+function confirmDeleteOrder(): void {
+    if (deletingOrder.value === null) {
+        return;
+    }
+
+    deleteForm.submit(destroyOrder(deletingOrder.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            detailOrderId.value = null;
+            deletingOrder.value = null;
+        },
     });
 }
 
@@ -846,6 +882,7 @@ const orderForm = useForm({
 });
 
 const statusForm = useForm({ status: '' });
+const deleteForm = useForm({});
 </script>
 
 <template>
@@ -1085,7 +1122,11 @@ const statusForm = useForm({ status: '' });
                 <div v-if="isDetailReadOnly" class="mt-2 flex gap-2">
                     <StatusPill :status="detailOrder.status" />
                 </div>
-                <template v-else-if="capabilities.update">
+                <template
+                    v-else-if="
+                        capabilities.update && detailOrder.isMutable !== false
+                    "
+                >
                     <div class="mt-2 flex gap-2">
                         <select
                             v-model="statusDraft"
@@ -1155,7 +1196,13 @@ const statusForm = useForm({ status: '' });
                         <dt class="text-[11px] text-slate-500">
                             Dihandle oleh
                         </dt>
-                        <dd v-if="capabilities.update" class="mt-1">
+                        <dd
+                            v-if="
+                                capabilities.update &&
+                                detailOrder.isMutable !== false
+                            "
+                            class="mt-1"
+                        >
                             <div class="flex gap-2">
                                 <input
                                     v-if="!isDetailHandlerSelf"
@@ -1334,19 +1381,84 @@ const statusForm = useForm({ status: '' });
                 <Ban class="h-4 w-4 shrink-0" />
                 Order dibatalkan — tidak ada tagihan yang ditutup.
             </p>
+            <p
+                v-if="detailOrder.isMutable === false"
+                class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
+            >
+                Data lebih dari 30 hari telah dikunci dan tidak dapat diubah
+                atau dihapus.
+            </p>
+            <p
+                v-else-if="
+                    mode === 'live' &&
+                    capabilities.delete &&
+                    detailOrder.isDeletable === false
+                "
+                class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
+            >
+                Order tidak dapat dihapus karena memiliki transaksi yang sudah
+                lebih dari 30 hari.
+            </p>
         </div>
 
         <template #footer>
             <button
+                v-if="
+                    detailOrder &&
+                    mode === 'live' &&
+                    capabilities.delete &&
+                    detailOrder.isDeletable === true
+                "
+                type="button"
+                class="flex-1 rounded-xl border border-rose-200 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                @click="openDeleteOrder(detailOrder)"
+            >
+                <Trash2 class="mr-1.5 inline h-4 w-4" />
+                Hapus order
+            </button>
+            <button
                 v-if="detailOrder"
                 type="button"
-                class="w-full rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                 @click="detailOrderId = null"
             >
                 Tutup
             </button>
         </template>
     </SlideOver>
+
+    <ModalDialog
+        :open="deletingOrder !== null"
+        title="Hapus order"
+        caption="Order dan seluruh transaksi terkait akan disembunyikan dari operasional."
+        size="sm"
+        @close="deletingOrder = null"
+    >
+        <p v-if="deletingOrder" class="text-sm text-slate-600">
+            Yakin ingin menghapus
+            <span class="font-semibold text-slate-900">
+                {{ deletingOrder.orderNo }}
+            </span>
+            ? Saldo harian akan dihitung ulang.
+        </p>
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="deletingOrder = null"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="deleteForm.processing"
+                @click="confirmDeleteOrder"
+            >
+                {{ deleteForm.processing ? 'Menghapus...' : 'Hapus order' }}
+            </button>
+        </template>
+    </ModalDialog>
 
     <!-- Create order -->
     <ModalDialog

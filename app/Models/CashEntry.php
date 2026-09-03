@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
@@ -23,11 +24,13 @@ use Illuminate\Support\Carbon;
  * @property string $method
  * @property int|null $recorded_by_admin_id
  * @property int|null $updated_by_admin_id
+ * @property int|null $deleted_by_admin_id
  * @property string|null $shift_name
  * @property Carbon $entry_date
  * @property Carbon $occurred_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  */
 #[Fillable([
     'direction',
@@ -38,6 +41,7 @@ use Illuminate\Support\Carbon;
     'method',
     'recorded_by_admin_id',
     'updated_by_admin_id',
+    'deleted_by_admin_id',
     'shift_name',
     'entry_date',
     'occurred_at',
@@ -45,7 +49,7 @@ use Illuminate\Support\Carbon;
 class CashEntry extends Model
 {
     /** @use HasFactory<CashEntryFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /** @return BelongsTo<Admin, $this> */
     public function recordedBy(): BelongsTo
@@ -57,6 +61,12 @@ class CashEntry extends Model
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'updated_by_admin_id');
+    }
+
+    /** @return BelongsTo<Admin, $this> */
+    public function deletedBy(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'deleted_by_admin_id');
     }
 
     /** @return HasMany<CashEntryAttachment, $this> */

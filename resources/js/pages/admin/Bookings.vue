@@ -8,12 +8,14 @@ import {
     Phone,
     Plus,
     Search,
+    Trash2,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
 import {
+    destroy as destroyBooking,
     store as storeBooking,
     update as updateBooking,
 } from '@/actions/App/Http/Controllers/Admin/BookingController';
@@ -46,6 +48,7 @@ const props = defineProps<{
     capabilities: {
         create: boolean;
         update: boolean;
+        delete: boolean;
     };
 }>();
 
@@ -92,6 +95,7 @@ const customerOptions: CustomerOption[] = customerList.value.flatMap(
 );
 
 const detailBookingId = ref<number | null>(null);
+const deletingBooking = ref<CarwashBooking | null>(null);
 const isCreateOpen = ref<boolean>(false);
 const editingBookingId = ref<number | null>(null);
 const customerQuery = ref<string>('');
@@ -99,6 +103,7 @@ const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
 const bookingDateInput = ref<HTMLInputElement | null>(null);
 const bookingForm = useForm({});
+const deleteForm = useForm({});
 
 const draft = ref({
     customerId: null as number | null,
@@ -208,7 +213,8 @@ const detailBooking = computed<CarwashBooking | null>(
 const canEditDetailBooking = computed<boolean>(
     () =>
         props.capabilities.update &&
-        detailBooking.value?.orderStatus === 'booking',
+        detailBooking.value?.orderStatus === 'booking' &&
+        detailBooking.value?.isMutable !== false,
 );
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
@@ -404,7 +410,11 @@ function closeBookingForm(): void {
 function startEditingBooking(): void {
     const booking = detailBooking.value;
 
-    if (booking === null || booking.orderStatus !== 'booking') {
+    if (
+        booking === null ||
+        booking.orderStatus !== 'booking' ||
+        booking.isMutable === false
+    ) {
         return;
     }
 
@@ -434,6 +444,33 @@ function startEditingBooking(): void {
     };
     detailBookingId.value = null;
     isCreateOpen.value = true;
+}
+
+function openDeleteBooking(booking: CarwashBooking | null): void {
+    if (
+        booking === null ||
+        props.mode !== 'live' ||
+        !props.capabilities.delete ||
+        booking.isDeletable !== true
+    ) {
+        return;
+    }
+
+    deletingBooking.value = booking;
+}
+
+function confirmDeleteBooking(): void {
+    if (deletingBooking.value === null) {
+        return;
+    }
+
+    deleteForm.submit(destroyBooking(deletingBooking.value.id), {
+        preserveScroll: true,
+        onSuccess: () => {
+            detailBookingId.value = null;
+            deletingBooking.value = null;
+        },
+    });
 }
 
 function saveBooking(): void {
@@ -705,6 +742,24 @@ function saveBooking(): void {
                     </dd>
                 </div>
             </dl>
+            <p
+                v-if="detailBooking.isMutable === false"
+                class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
+            >
+                Data lebih dari 30 hari telah dikunci dan tidak dapat diubah
+                atau dihapus.
+            </p>
+            <p
+                v-else-if="
+                    mode === 'live' &&
+                    capabilities.delete &&
+                    detailBooking.isDeletable === false
+                "
+                class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
+            >
+                Booking tidak dapat dihapus karena memiliki transaksi yang sudah
+                lebih dari 30 hari.
+            </p>
         </div>
 
         <template #footer>
@@ -717,6 +772,19 @@ function saveBooking(): void {
                 Edit Booking
             </button>
             <button
+                v-if="
+                    mode === 'live' &&
+                    capabilities.delete &&
+                    detailBooking?.isDeletable === true
+                "
+                type="button"
+                class="flex-1 rounded-xl border border-rose-200 py-2.5 text-sm font-semibold text-rose-700 transition hover:bg-rose-50"
+                @click="openDeleteBooking(detailBooking)"
+            >
+                <Trash2 class="mr-1.5 inline h-4 w-4" />
+                Hapus
+            </button>
+            <button
                 type="button"
                 class="flex-1 rounded-xl bg-slate-900 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
                 @click="detailBookingId = null"
@@ -725,6 +793,39 @@ function saveBooking(): void {
             </button>
         </template>
     </SlideOver>
+
+    <ModalDialog
+        :open="deletingBooking !== null"
+        title="Hapus booking"
+        caption="Booking dan seluruh transaksi terkait akan disembunyikan dari operasional."
+        size="sm"
+        @close="deletingBooking = null"
+    >
+        <p v-if="deletingBooking" class="text-sm text-slate-600">
+            Yakin ingin menghapus
+            <span class="font-semibold text-slate-900">
+                {{ deletingBooking.code }}
+            </span>
+            ? Saldo harian akan dihitung ulang.
+        </p>
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="deletingBooking = null"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="deleteForm.processing"
+                @click="confirmDeleteBooking"
+            >
+                {{ deleteForm.processing ? 'Menghapus...' : 'Hapus booking' }}
+            </button>
+        </template>
+    </ModalDialog>
 
     <!-- Create booking: the order form plus the date the customer is coming -->
     <ModalDialog

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\DeleteCashEntry;
+use App\Actions\Admin\DeleteOrderTransaction;
 use App\Actions\Admin\UpdateDailyBalance;
 use App\Actions\Admin\UpdateOrderTransaction;
 use App\Http\Controllers\Controller;
@@ -18,6 +20,7 @@ use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\FinancePresenter;
 use App\Support\Admin\FinanceQueries;
 use App\Support\Admin\FinanceReference;
+use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
 use App\Support\Admin\TransactionShiftResolver;
@@ -166,6 +169,7 @@ class FinanceController extends Controller
         CashEntry $cashEntry,
         UpdateDailyBalance $updateDailyBalance,
     ): RedirectResponse {
+        OperationalDataWindow::ensureAllows($cashEntry->entry_date);
         $data = $request->validated();
         /** @var Admin $admin */
         $admin = $request->user('admin');
@@ -251,7 +255,10 @@ class FinanceController extends Controller
         OrderTransaction $orderTransaction,
         UpdateOrderTransaction $updateOrderTransaction,
     ): RedirectResponse {
-        $updateOrderTransaction->handle($orderTransaction, [
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+
+        $updateOrderTransaction->handle($orderTransaction, $admin, [
             'amount' => $request->integer('amount'),
             'channels' => $request->channels(),
         ]);
@@ -261,41 +268,39 @@ class FinanceController extends Controller
     }
 
     public function destroy(
+        Request $request,
         CashEntry $cashEntry,
-        UpdateDailyBalance $updateDailyBalance,
+        DeleteCashEntry $deleteCashEntry,
     ): RedirectResponse {
         Gate::authorize('admin.finance.delete');
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
 
-        $entryDate = $cashEntry->entry_date->toDateString();
-        $cashEntry->loadMissing('attachments');
-        $storedFiles = $cashEntry->attachments
-            ->map(fn (CashEntryAttachment $attachment): array => [
-                'disk' => $attachment->disk,
-                'path' => $attachment->path,
-            ])
-            ->all();
-
-        DB::transaction(function () use ($cashEntry, $updateDailyBalance): void {
-            $amounts = UpdateDailyBalance::methodAmounts($cashEntry->method, (int) $cashEntry->amount);
-
-            $updateDailyBalance->handle(
-                $cashEntry->entry_date->toDateString(),
-                cashIncomeDelta: $cashEntry->direction === 'in' ? -$amounts['cash'] : 0,
-                cashExpenseDelta: $cashEntry->direction === 'out' ? -$amounts['cash'] : 0,
-                nonCashIncomeDelta: $cashEntry->direction === 'in' ? -$amounts['nonCash'] : 0,
-                nonCashExpenseDelta: $cashEntry->direction === 'out' ? -$amounts['nonCash'] : 0,
-            );
-            $cashEntry->delete();
-        });
-        $this->deleteStoredFiles($storedFiles);
+        $entryDate = $deleteCashEntry->handle($cashEntry, $admin);
 
         return to_route('admin.finance.index', ['date' => $entryDate])
             ->with('success', 'Catatan keuangan berhasil dihapus.');
     }
 
+    public function destroyTransaction(
+        Request $request,
+        OrderTransaction $orderTransaction,
+        DeleteOrderTransaction $deleteOrderTransaction,
+    ): RedirectResponse {
+        Gate::authorize('admin.finance.delete');
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+
+        $paidDate = $deleteOrderTransaction->handle($orderTransaction, $admin);
+
+        return to_route('admin.finance.index', ['date' => $paidDate])
+            ->with('success', 'Transaksi pembayaran berhasil dihapus.');
+    }
+
     public function attachment(CashEntryAttachment $cashEntryAttachment): StreamedResponse
     {
         Gate::authorize('admin.finance.read');
+        abort_unless($cashEntryAttachment->cashEntry()->exists(), 404);
 
         $disk = Storage::disk($cashEntryAttachment->disk);
 

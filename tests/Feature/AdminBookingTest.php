@@ -45,7 +45,10 @@ test('the live booking page uses the shared component and database records', fun
                 ->where('bookings.0.orderStatus', 'booking')
                 ->where('bookings.0.serviceIds.0', $service->id)
                 ->where('capabilities.create', true)
-                ->where('capabilities.update', true),
+                ->where('capabilities.update', true)
+                ->where('capabilities.delete', true)
+                ->where('bookings.0.isMutable', true)
+                ->where('bookings.0.isDeletable', true),
         );
 });
 
@@ -192,6 +195,54 @@ test('a booking cannot be moved to the past or edited after processing starts', 
             'service_date' => now()->addDays(2)->toDateString(),
         ])
         ->assertUnprocessable();
+});
+
+test('a booking older than H-30 cannot be edited or deleted', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->subDays(31),
+        'arrived_at' => null,
+    ]);
+    $payload = [
+        'customer_mode' => 'walk-in',
+        'customer_name' => 'Tamu Booking',
+        'customer_phone' => '081234567890',
+        'vehicle_name' => 'Toyota Calya',
+        'vehicle_plate' => 'B1234ABC',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        'service_date' => now()->addDay()->toDateString(),
+    ];
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), $payload)
+        ->assertUnprocessable();
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.bookings.destroy', $booking))
+        ->assertUnprocessable();
+
+    $this->assertNotSoftDeleted($booking);
+});
+
+test('an owner can soft delete a booking inside the mutation window', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->subDays(30),
+        'arrived_at' => null,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.bookings.destroy', $booking))
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasNoErrors();
+
+    $this->assertSoftDeleted($booking);
+    expect(Order::withTrashed()->findOrFail($booking->id)->deleted_by_admin_id)->toBe($owner->id);
 });
 
 test('demo and live booking pages have one frontend source of truth', function () {

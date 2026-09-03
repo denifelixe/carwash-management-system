@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\DeleteOrder;
 use App\Actions\Admin\SaveBooking;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreBookingRequest;
@@ -40,6 +41,7 @@ class BookingController extends Controller
             'capabilities' => [
                 'create' => Gate::allows('admin.bookings.create'),
                 'update' => Gate::allows('admin.bookings.update'),
+                'delete' => Gate::allows('admin.bookings.delete'),
             ],
         ]);
     }
@@ -66,5 +68,17 @@ class BookingController extends Controller
         );
 
         return to_route('admin.bookings.index')->with('success', 'Booking berhasil diperbarui.');
+    }
+
+    public function destroy(Request $request, Order $order, DeleteOrder $deleteOrder): RedirectResponse
+    {
+        Gate::authorize('admin.bookings.delete');
+        abort_unless($order->source === 'booking', 404);
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+
+        $deleteOrder->handle($order, $admin);
+
+        return to_route('admin.bookings.index')->with('success', 'Booking berhasil dihapus.');
     }
 }

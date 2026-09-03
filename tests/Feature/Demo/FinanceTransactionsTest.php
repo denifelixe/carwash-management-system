@@ -438,6 +438,8 @@ test('finance transaction summary exposes permitted editing and the recorded shi
         ->toContain('v-if="requiresTransactionBank(channel.label)"')
         ->toContain('v-model="channel.provider"')
         ->toContain('<option value="" disabled>Pilih bank</option>')
+        ->toContain('v-if="entry.updatedAt"')
+        ->toContain('{{ entry.updatedAt.time }}')
         ->toContain("selectedTransactionEntry.shift ?? 'Tanpa shift'");
 });
 

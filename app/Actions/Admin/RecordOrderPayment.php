@@ -68,7 +68,9 @@ class RecordOrderPayment
 
             $transaction = $order->transactions()->create([
                 'recorded_by_admin_id' => $cashier->getKey(),
-                'reference' => $order->number.'-TRX-'.($order->transactions()->count() + 1),
+                'reference' => $order->number.'-TRX-'.(
+                    OrderTransaction::withTrashed()->whereBelongsTo($order)->count() + 1
+                ),
                 'type' => $completesOrder ? 'Pembayaran Lunas' : 'Pembayaran Sebagian',
                 'shift_name' => $shift?->name,
                 'amount' => $amount,

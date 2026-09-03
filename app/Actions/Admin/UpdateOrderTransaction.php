@@ -2,8 +2,10 @@
 
 namespace App\Actions\Admin;
 
+use App\Models\Admin;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\PaymentChannelBreakdown;
 use Illuminate\Support\Facades\DB;
 
@@ -14,9 +16,9 @@ class UpdateOrderTransaction
     /**
      * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>}  $payment
      */
-    public function handle(OrderTransaction $orderTransaction, array $payment): void
+    public function handle(OrderTransaction $orderTransaction, Admin $admin, array $payment): void
     {
-        DB::transaction(function () use ($orderTransaction, $payment): void {
+        DB::transaction(function () use ($orderTransaction, $admin, $payment): void {
             $order = Order::query()
                 ->whereKey($orderTransaction->order_id)
                 ->lockForUpdate()
@@ -26,6 +28,7 @@ class UpdateOrderTransaction
                 ->whereKey($orderTransaction->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
+            OperationalDataWindow::ensureAllows($transaction->paid_at);
             $paidAmount = (int) OrderTransaction::query()
                 ->whereBelongsTo($order)
                 ->where('id', '!=', $transaction->id)
@@ -63,6 +66,7 @@ class UpdateOrderTransaction
             $transaction->update([
                 'amount' => $payment['amount'],
                 'channel_breakdown' => $channels,
+                'updated_by_admin_id' => $admin->getKey(),
             ]);
 
             $this->updateDailyBalance->handle(

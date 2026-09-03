@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\CaptureOrderLead;
+use App\Actions\Admin\DeleteOrder;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderHandlerRequest;
@@ -14,6 +15,7 @@ use App\Models\Order;
 use App\Models\ServiceVariation;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\LeadQueries;
+use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
 use App\Support\Demo\DateFilter;
@@ -77,6 +79,7 @@ class OrderController extends Controller
             'capabilities' => [
                 'create' => Gate::allows('admin.orders.create'),
                 'update' => Gate::allows('admin.orders.update'),
+                'delete' => Gate::allows('admin.orders.delete'),
             ],
         ]);
     }
@@ -172,6 +175,7 @@ class OrderController extends Controller
 
     public function updateHandler(UpdateOrderHandlerRequest $request, Order $order): RedirectResponse
     {
+        OperationalDataWindow::ensureAllows($order->service_date);
         $order->update($request->validated());
 
         return back()->with('success', 'Handler order berhasil diperbarui.');
@@ -179,10 +183,23 @@ class OrderController extends Controller
 
     public function updateStatus(UpdateOrderStatusRequest $request, Order $order): RedirectResponse
     {
+        OperationalDataWindow::ensureAllows($order->service_date);
         abort_if($order->status === 'selesai', 422, 'Order yang sudah selesai tidak dapat diubah.');
 
         $order->update(['status' => $request->validated('status')]);
 
         return back()->with('success', 'Status order berhasil diperbarui.');
+    }
+
+    public function destroy(Request $request, Order $order, DeleteOrder $deleteOrder): RedirectResponse
+    {
+        Gate::authorize('admin.orders.delete');
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+
+        $serviceDate = $deleteOrder->handle($order, $admin);
+
+        return to_route('admin.orders.index', ['date' => $serviceDate])
+            ->with('success', 'Order berhasil dihapus.');
     }
 }

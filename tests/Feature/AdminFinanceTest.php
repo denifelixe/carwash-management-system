@@ -177,6 +177,8 @@ test('a payment taken by the cashier is read back as money in', function () {
                 ->where('moneyIn.0.amount', 150000)
                 ->where('moneyIn.0.orderNo', $order->number)
                 ->where('moneyIn.0.shift', 'Shift Pagi')
+                ->where('moneyIn.0.updatedBy', null)
+                ->where('moneyIn.0.updatedAt', null)
                 ->where('moneyIn.0.id', 'pos-'.$order->number.'-TRX-1')
                 ->where('moneyIn.0.transactionId', $order->transactions()->sole()->id)
                 ->where('cashSummary.todayIn', 150000)
@@ -206,11 +208,14 @@ test('hidden admins are absent from the roster but remain visible in transaction
 });
 
 test('an owner can correct the payment channel of a settled POS transaction', function () {
-    $owner = Admin::factory()->create(['is_owner' => true]);
-    $order = paidOrder($owner);
+    $recorder = Admin::factory()->create(['is_owner' => true]);
+    $editor = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($recorder);
     $transaction = $order->transactions()->sole();
 
-    $this->actingAs($owner, 'admin')
+    expect($transaction->updated_by_admin_id)->toBeNull();
+
+    $this->actingAs($editor, 'admin')
         ->patch(route('admin.finance.transactions.update', $transaction), [
             'amount' => 150000,
             'channels' => [[
@@ -227,6 +232,8 @@ test('an owner can correct the payment channel of a settled POS transaction', fu
         'amount' => 150000,
         'reference' => 'QR-REV-001',
     ]])
+        ->and($transaction->recorded_by_admin_id)->toBe($recorder->id)
+        ->and($transaction->updated_by_admin_id)->toBe($editor->id)
         ->and($order->refresh()->paid_amount)->toBe(150000)
         ->and($order->payment_method)->toBe('QRIS')
         ->and($order->status)->toBe('selesai')
@@ -234,6 +241,33 @@ test('an owner can correct the payment channel of a settled POS transaction', fu
         ->and(DailyBalance::query()->sole()->cash_balance)->toBe(0)
         ->and(DailyBalance::query()->sole()->non_cash_income)->toBe(150000)
         ->and(DailyBalance::query()->sole()->non_cash_balance)->toBe(150000);
+
+    $lastEditor = Admin::factory()->create(['is_owner' => true]);
+    $this->travelTo(CarbonImmutable::parse('2026-08-30 11:45', 'Asia/Jakarta'));
+
+    $this->actingAs($lastEditor, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'amount' => 150000,
+            'channels' => [[
+                'label' => 'QRIS',
+                'amount' => 150000,
+                'reference' => 'QR-REV-002',
+            ]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($transaction->refresh()->recorded_by_admin_id)->toBe($recorder->id)
+        ->and($transaction->updated_by_admin_id)->toBe($lastEditor->id);
+
+    $this->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('moneyIn.0.recordedBy', $recorder->name)
+                ->where('moneyIn.0.updatedBy', $lastEditor->name)
+                ->where('moneyIn.0.updatedAt.date', '2026-08-30')
+                ->where('moneyIn.0.updatedAt.time', '11.45'),
+        );
 });
 
 test('an owner must choose a bank when correcting a transaction to debit', function () {
@@ -729,7 +763,7 @@ test('an attachment from another entry cannot be removed', function () {
     expect($otherEntry->attachments()->sole()->is($otherAttachment))->toBeTrue();
 });
 
-test('an owner can delete an entry along with its document', function () {
+test('an owner can soft delete an entry while preserving its document', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
     $entry = CashEntry::factory()->moneyOut()->withDailyBalance()->create();
@@ -740,11 +774,129 @@ test('an owner can delete an entry along with its document', function () {
         ->delete(route('admin.finance.destroy', $entry))
         ->assertSessionHasNoErrors();
 
-    expect(CashEntry::query()->count())->toBe(0);
-    expect(CashEntryAttachment::query()->count())->toBe(0);
-    expect(DailyBalance::query()->sole()->cash_expense)->toBe(0)
-        ->and(DailyBalance::query()->sole()->cash_balance)->toBe(0);
-    Storage::assertMissing($attachment->path);
+    $this->assertSoftDeleted($entry);
+    expect(CashEntry::withTrashed()->sole()->deleted_by_admin_id)->toBe($owner->id)
+        ->and(CashEntry::withTrashed()->sole()->deletedBy->is($owner))->toBeTrue()
+        ->and(CashEntry::withTrashed()->count())->toBe(1)
+        ->and(CashEntryAttachment::query()->count())->toBe(1)
+        ->and(DailyBalance::query()->count())->toBe(0);
+    Storage::assertExists($attachment->path);
+    $this->get(route('admin.finance.attachment', $attachment))->assertNotFound();
+});
+
+test('deleting a POS transaction reopens its order and rebuilds later balances', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'total' => 150000,
+        'paid_amount' => 150000,
+        'payment_method' => 'Tunai + QRIS',
+        'status' => 'selesai',
+        'invoice_number' => 'ZW-KEEP-001',
+    ]);
+    $deletedTransaction = OrderTransaction::factory()->withDailyBalance()->create([
+        'order_id' => $order->id,
+        'reference' => $order->number.'-TRX-1',
+        'type' => 'Pembayaran Sebagian',
+        'amount' => 50000,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 50000]],
+        'paid_at' => now()->subDay(),
+    ]);
+    $remainingTransaction = OrderTransaction::factory()->withDailyBalance()->create([
+        'order_id' => $order->id,
+        'reference' => $order->number.'-TRX-2',
+        'type' => 'Pembayaran Lunas',
+        'amount' => 100000,
+        'channel_breakdown' => [['label' => 'QRIS', 'amount' => 100000]],
+        'paid_at' => now(),
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.transactions.destroy', $deletedTransaction))
+        ->assertRedirect(route('admin.finance.index', ['date' => now()->subDay()->toDateString()]))
+        ->assertSessionHasNoErrors();
+
+    $this->assertSoftDeleted($deletedTransaction);
+    expect(OrderTransaction::withTrashed()->findOrFail($deletedTransaction->id)->deleted_by_admin_id)->toBe($owner->id)
+        ->and($order->refresh())
+        ->paid_amount->toBe(100000)
+        ->payment_method->toBe('QRIS')
+        ->status->toBe('pelunasan')
+        ->invoice_number->toBe('ZW-KEEP-001')
+        ->and($remainingTransaction->refresh()->type)->toBe('Pembayaran Sebagian')
+        ->and(DailyBalance::query()->count())->toBe(1)
+        ->and(DailyBalance::query()->sole()->date->toDateString())->toBe(now()->toDateString())
+        ->and(DailyBalance::query()->sole()->cash_income)->toBe(0)
+        ->and(DailyBalance::query()->sole()->non_cash_income)->toBe(100000)
+        ->and(DailyBalance::query()->sole()->non_cash_balance)->toBe(100000);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [['method' => 'Tunai', 'amount' => 50000]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(OrderTransaction::withTrashed()->where('order_id', $order->id)->count())->toBe(3)
+        ->and(OrderTransaction::query()->latest('id')->firstOrFail()->reference)
+        ->toBe($order->number.'-TRX-3');
+});
+
+test('financial records are mutable through H-30 and locked on H-31', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['total' => 200000, 'paid_amount' => 50000]);
+    $allowedTransaction = OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'paid_at' => now()->subDays(30),
+    ]);
+    $lockedTransaction = OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'paid_at' => now()->subDays(31),
+    ]);
+    $allowedEntry = CashEntry::factory()->withDailyBalance()->create([
+        'entry_date' => now()->subDays(30),
+        'occurred_at' => now()->subDays(30),
+    ]);
+    $lockedEntry = CashEntry::factory()->withDailyBalance()->create([
+        'entry_date' => now()->subDays(31),
+        'occurred_at' => now()->subDays(31),
+    ]);
+
+    $payload = [
+        'amount' => 20000,
+        'channels' => [['label' => 'Tunai', 'amount' => 20000]],
+    ];
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $allowedTransaction), $payload)
+        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $lockedTransaction), $payload)
+        ->assertUnprocessable();
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $allowedEntry), cashEntryPayload())
+        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $lockedEntry), cashEntryPayload())
+        ->assertUnprocessable();
+
+    expect($allowedTransaction->refresh()->amount)->toBe(20000)
+        ->and($lockedTransaction->refresh()->amount)->toBe(20000)
+        ->and($allowedEntry->refresh()->updated_by_admin_id)->toBe($owner->id)
+        ->and($lockedEntry->refresh()->updated_by_admin_id)->toBeNull();
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.destroy', $allowedEntry))
+        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.destroy', $lockedEntry))
+        ->assertUnprocessable();
+
+    $this->assertSoftDeleted($allowedEntry);
+    $this->assertNotSoftDeleted($lockedEntry);
+    expect(CashEntry::withTrashed()->findOrFail($allowedEntry->id)->deleted_by_admin_id)->toBe($owner->id)
+        ->and($lockedEntry->refresh()->deleted_by_admin_id)->toBeNull();
 });
 
 test('a staff member without update or delete access cannot change an entry', function () {

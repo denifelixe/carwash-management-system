@@ -63,15 +63,18 @@ Route::domain((string) config('domains.admin'))
             Route::post('orders', [OrderController::class, 'store'])->name('orders.store');
             Route::patch('orders/{order}/handler', [OrderController::class, 'updateHandler'])->name('orders.handler.update');
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
+            Route::delete('orders/{order}', [OrderController::class, 'destroy'])->name('orders.destroy');
             Route::get('bookings', [BookingController::class, 'index'])->name('bookings.index');
             Route::post('bookings', [BookingController::class, 'store'])->name('bookings.store');
             Route::patch('bookings/{order}', [BookingController::class, 'update'])->name('bookings.update');
+            Route::delete('bookings/{order}', [BookingController::class, 'destroy'])->name('bookings.destroy');
             Route::get('pos', [PosController::class, 'index'])->name('pos.index');
             Route::post('pos/{order}/payments', [PosController::class, 'store'])->name('pos.payments.store');
             Route::post('pos/{order}/member', [PosController::class, 'storeMember'])->name('pos.member.store');
             Route::get('finance', [FinanceController::class, 'index'])->name('finance.index');
             Route::post('finance', [FinanceController::class, 'store'])->name('finance.store');
             Route::patch('finance/transactions/{orderTransaction}', [FinanceController::class, 'updateTransaction'])->name('finance.transactions.update');
+            Route::delete('finance/transactions/{orderTransaction}', [FinanceController::class, 'destroyTransaction'])->name('finance.transactions.destroy');
             Route::patch('finance/{cashEntry}', [FinanceController::class, 'update'])->name('finance.update');
             Route::delete('finance/{cashEntry}', [FinanceController::class, 'destroy'])->name('finance.destroy');
             Route::get('finance/attachments/{cashEntryAttachment}', [FinanceController::class, 'attachment'])->name('finance.attachment');

@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
 /**
@@ -21,6 +22,7 @@ use Illuminate\Support\Carbon;
  * @property int|null $member_vehicle_id
  * @property int|null $lead_id
  * @property int|null $created_by_admin_id
+ * @property int|null $deleted_by_admin_id
  * @property int|null $crew_admin_id
  * @property int|null $handled_by_admin_id
  * @property string|null $handled_by
@@ -44,12 +46,13 @@ use Illuminate\Support\Carbon;
  * @property string|null $notes
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  */
-#[Fillable(['number', 'invoice_number', 'member_id', 'member_vehicle_id', 'lead_id', 'created_by_admin_id', 'crew_admin_id', 'handled_by_admin_id', 'handled_by', 'customer_name', 'customer_phone', 'vehicle_name', 'vehicle_plate', 'service_date', 'arrived_at', 'booking_date', 'source', 'status', 'subtotal', 'discount', 'total', 'paid_amount', 'stamps_earned', 'reward_name', 'payment_method', 'bay', 'notes'])]
+#[Fillable(['number', 'invoice_number', 'member_id', 'member_vehicle_id', 'lead_id', 'created_by_admin_id', 'deleted_by_admin_id', 'crew_admin_id', 'handled_by_admin_id', 'handled_by', 'customer_name', 'customer_phone', 'vehicle_name', 'vehicle_plate', 'service_date', 'arrived_at', 'booking_date', 'source', 'status', 'subtotal', 'discount', 'total', 'paid_amount', 'stamps_earned', 'reward_name', 'payment_method', 'bay', 'notes'])]
 class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     /** @return BelongsTo<Member, $this> */
     public function member(): BelongsTo
@@ -73,6 +76,12 @@ class Order extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'created_by_admin_id');
+    }
+
+    /** @return BelongsTo<Admin, $this> */
+    public function deletedBy(): BelongsTo
+    {
+        return $this->belongsTo(Admin::class, 'deleted_by_admin_id');
     }
 
     /** @return BelongsTo<Admin, $this> */

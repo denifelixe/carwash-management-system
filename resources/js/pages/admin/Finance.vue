@@ -20,6 +20,7 @@ import '@fancyapps/ui/dist/fancybox/fancybox.css';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import {
     destroy as destroyCashEntry,
+    destroyTransaction as destroyOrderTransaction,
     index as indexFinance,
     store as storeCashEntry,
     update as updateCashEntry,
@@ -652,6 +653,7 @@ const attachmentError = computed<string | undefined>(() => {
 function isEditable(entry: CarwashMoneyEntry): boolean {
     return (
         props.mode === 'live' &&
+        entry.isMutable === true &&
         (cashEntryId(entry) !== null || posTransactionId(entry) !== null)
     );
 }
@@ -776,7 +778,7 @@ function openEditForm(entry: CarwashMoneyEntry): void {
 }
 
 function openDeleteEntry(entry: CarwashMoneyEntry): void {
-    if (cashEntryId(entry) === null || !props.capabilities.delete) {
+    if (!isEditable(entry) || !props.capabilities.delete) {
         return;
     }
 
@@ -785,14 +787,26 @@ function openDeleteEntry(entry: CarwashMoneyEntry): void {
 }
 
 function confirmDeleteEntry(): void {
-    const entryId =
-        deletingEntry.value === null ? null : cashEntryId(deletingEntry.value);
+    const entry = deletingEntry.value;
 
-    if (entryId === null) {
+    if (entry === null) {
         return;
     }
 
-    deleteForm.submit(destroyCashEntry(entryId), {
+    const transactionId = posTransactionId(entry);
+    const entryId = cashEntryId(entry);
+    const action =
+        transactionId !== null
+            ? destroyOrderTransaction(transactionId)
+            : entryId !== null
+              ? destroyCashEntry(entryId)
+              : null;
+
+    if (action === null) {
+        return;
+    }
+
+    deleteForm.submit(action, {
         preserveScroll: true,
         onSuccess: () => {
             deletingEntry.value = null;
@@ -1690,7 +1704,16 @@ function applyDate(date: string): void {
                                     v-if="entry.updatedBy"
                                     class="mt-0.5 text-[11px] text-cyan-600"
                                 >
-                                    Diperbarui: {{ entry.updatedBy }}
+                                    <span class="block">
+                                        Diperbarui: {{ entry.updatedBy }}
+                                    </span>
+                                    <span
+                                        v-if="entry.updatedAt"
+                                        class="mt-0.5 block text-slate-400"
+                                    >
+                                        {{ formatDate(entry.updatedAt.date) }} ·
+                                        {{ entry.updatedAt.time }}
+                                    </span>
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
@@ -1775,7 +1798,9 @@ function applyDate(date: string): void {
                                     <button
                                         v-if="
                                             capabilities.delete &&
-                                            cashEntryId(entry) !== null
+                                            (cashEntryId(entry) !== null ||
+                                                posTransactionId(entry) !==
+                                                    null)
                                         "
                                         type="button"
                                         class="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
@@ -1789,7 +1814,11 @@ function applyDate(date: string): void {
                                     v-else
                                     class="block text-right text-[11px] text-slate-400"
                                 >
-                                    Dari kasir
+                                    {{
+                                        entry.isMutable === false
+                                            ? 'Terkunci (>30 hari)'
+                                            : 'Dari kasir'
+                                    }}
                                 </span>
                             </td>
                         </tr>
@@ -2026,7 +2055,20 @@ function applyDate(date: string): void {
                         Terakhir diperbarui oleh
                     </dt>
                     <dd class="mt-1 text-xs font-medium text-slate-700">
-                        {{ selectedTransactionEntry.updatedBy }}
+                        <span class="block">
+                            {{ selectedTransactionEntry.updatedBy }}
+                        </span>
+                        <span
+                            v-if="selectedTransactionEntry.updatedAt"
+                            class="mt-0.5 block text-[11px] font-normal text-slate-500"
+                        >
+                            {{
+                                formatDate(
+                                    selectedTransactionEntry.updatedAt.date,
+                                )
+                            }}
+                            · {{ selectedTransactionEntry.updatedAt.time }}
+                        </span>
                     </dd>
                 </div>
                 <div class="sm:col-span-2">
@@ -2805,8 +2847,12 @@ function applyDate(date: string): void {
 
     <ModalDialog
         :open="deletingEntry !== null"
-        title="Hapus catatan keuangan"
-        caption="Catatan yang dihapus tidak dapat dikembalikan."
+        :title="
+            deletingEntry?.source === 'pos'
+                ? 'Hapus transaksi pembayaran'
+                : 'Hapus catatan keuangan'
+        "
+        caption="Data akan disembunyikan dari operasional dan saldo dihitung ulang."
         size="sm"
         @close="deletingEntry = null"
     >
@@ -2820,6 +2866,9 @@ function applyDate(date: string): void {
                 {{ formatCurrency(deletingEntry.amount) }}
             </span>
             dari buku kas?
+            <span v-if="deletingEntry.source === 'pos'">
+                Tindakan ini dapat mengubah status pembayaran order.
+            </span>
         </p>
         <template #footer>
             <button

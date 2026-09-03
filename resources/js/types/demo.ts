@@ -276,6 +276,8 @@ export interface CarwashTransaction {
     date: string;
     time: string;
     type: 'Pembayaran Sebagian' | 'Pembayaran Lunas';
+    /** Whether this payment is still inside the correction window. */
+    isMutable?: boolean;
     amount: number;
     channels: string;
     /** Net revenue allocation; its total always equals `amount`. */
@@ -331,6 +333,8 @@ export interface CarwashOrder {
     payment: string;
     paymentStatus: CarwashPaymentStatus;
     status: string;
+    isMutable?: boolean;
+    isDeletable?: boolean;
     stampsEarned: number;
     inputBy: string | null;
     handledByAdminId: number | null;
@@ -372,6 +376,8 @@ export interface CarwashBooking {
     bookingDate: string;
     /** Where the job stands, read back from the order module. */
     orderStatus: string;
+    isMutable?: boolean;
+    isDeletable?: boolean;
     estimate: number;
     notes: string;
 }
@@ -397,11 +403,18 @@ export interface CarwashMoneyEntry {
     method: string;
     channelBreakdown: CarwashTransactionChannel[];
     recordedBy: string;
-    /** The admin who most recently changed a manual cash entry. */
+    /** The admin who most recently changed this ledger entry. */
     updatedBy?: string | null;
+    /** Local outlet date and time of the most recent audited change. */
+    updatedAt?: {
+        date: string;
+        time: string;
+    } | null;
     /** The shift resolved and stamped when the entry was created. */
     shift?: string | null;
     source?: string;
+    /** Whether this ledger row is still inside the correction window. */
+    isMutable?: boolean;
     orderId?: number | null;
     orderNo?: string | null;
     customer?: string | null;

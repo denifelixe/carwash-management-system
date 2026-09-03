@@ -42,6 +42,7 @@ class OrderController extends AdminController
             'capabilities' => [
                 'create' => true,
                 'update' => true,
+                'delete' => true,
             ],
         ]);
     }

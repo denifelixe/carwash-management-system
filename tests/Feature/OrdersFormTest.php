@@ -137,7 +137,7 @@ test('the order detail leads with its date and highlighted vehicle information',
         ->toContain('{{ detailOrder.phone }}');
 });
 
-test('the order detail shows transaction history and a full width close button', function () {
+test('the order detail shows transaction history and its close action', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
@@ -156,7 +156,7 @@ test('the order detail shows transaction history and a full width close button',
         ->toContain('{{ formatCurrency(transaction.amount) }}')
         ->toContain('Belum ada transaksi')
         ->not->toContain('stempel sudah masuk ke akun customer')
-        ->toContain('class="w-full rounded-xl bg-slate-900');
+        ->toContain('class="flex-1 rounded-xl bg-slate-900');
 });
 
 test('the order list and detail expose who input and handled the order', function () {
@@ -406,7 +406,9 @@ test('the status chip in a row changes the stage without opening the order', fun
         ->toContain('<ChevronDown')
         // Only the stages the floor owns, and never on a settled order.
         ->toContain('v-for="status in editableOrderStatuses"')
-        ->toContain("props.capabilities.update && order.status !== 'selesai'")
+        ->toContain('function canEditStatus(order: CarwashOrder): boolean')
+        ->toContain("order.status !== 'selesai'")
+        ->toContain('order.isMutable !== false')
         // Choosing a stage must not also open the detail panel.
         ->toContain('<td class="px-5 py-3.5" @click.stop>')
         // The row in flight is the only one that greys out.

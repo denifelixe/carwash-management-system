@@ -8,6 +8,7 @@ use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
+use App\Models\OrderTransaction;
 use App\Models\Service;
 use App\Models\ServiceVariation;
 use App\Support\Admin\OrderQueries;
@@ -63,6 +64,9 @@ test('the live order page uses the shared component and database records', funct
                 ->where('services.0.serviceVariations.0.variations.Ukuran', 'Small')
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
+                ->where('capabilities.delete', true)
+                ->where('orders.0.isMutable', true)
+                ->where('orders.0.isDeletable', true)
                 ->where('modules.1.key', 'orders')
                 ->where('modules.1.enabled', true)
                 ->where('modules.1.active', true),
@@ -381,6 +385,66 @@ test('order status can be updated except when cashier has completed it', functio
         ->assertUnprocessable();
 });
 
+test('orders remain mutable through H-30 and lock on H-31', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $allowed = Order::factory()->create(['service_date' => now()->subDays(30)]);
+    $locked = Order::factory()->create(['service_date' => now()->subDays(31)]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $allowed), ['status' => 'proses'])
+        ->assertSessionHasNoErrors();
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $locked), ['status' => 'proses'])
+        ->assertUnprocessable();
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $locked), ['handled_by' => 'Petugas Baru'])
+        ->assertUnprocessable();
+
+    expect($allowed->refresh()->status)->toBe('proses')
+        ->and($locked->refresh()->status)->toBe('menunggu')
+        ->and($locked->handled_by)->toBeNull();
+});
+
+test('deleting an order soft deletes its transactions', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['paid_amount' => 20000]);
+    $transaction = OrderTransaction::factory()->withDailyBalance()->create([
+        'order_id' => $order->id,
+        'amount' => 20000,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 20000]],
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.orders.destroy', $order))
+        ->assertSessionHasNoErrors();
+
+    $this->assertSoftDeleted($order);
+    $this->assertSoftDeleted($transaction);
+    expect(Order::withTrashed()->findOrFail($order->id)->deleted_by_admin_id)->toBe($owner->id)
+        ->and(OrderTransaction::withTrashed()->findOrFail($transaction->id)->deleted_by_admin_id)->toBe($owner->id)
+        ->and(Order::query()->count())->toBe(0)
+        ->and(OrderTransaction::query()->count())->toBe(0);
+    $this->assertDatabaseCount('daily_balance', 0);
+});
+
+test('an order cannot be deleted when one of its payments is older than H-30', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create();
+    $transaction = OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'paid_at' => now()->subDays(31),
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.orders.destroy', $order))
+        ->assertUnprocessable();
+
+    $this->assertNotSoftDeleted($order);
+    $this->assertNotSoftDeleted($transaction);
+    expect($order->refresh()->deleted_by_admin_id)->toBeNull()
+        ->and($transaction->refresh()->deleted_by_admin_id)->toBeNull();
+});
+
 test('order access follows the role permission matrix', function () {
     $module = AdminModule::query()->where('key', 'orders')->firstOrFail();
     $role = AdminRole::query()->create([
@@ -403,6 +467,10 @@ test('order access follows the role permission matrix', function () {
 
     $this->actingAs($admin, 'admin')
         ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas'])
+        ->assertForbidden();
+
+    $this->actingAs($admin, 'admin')
+        ->delete(route('admin.orders.destroy', $order))
         ->assertForbidden();
 });
 
