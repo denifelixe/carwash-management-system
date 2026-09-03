@@ -14,6 +14,7 @@ use App\Models\AdminShift;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\RoleIcons;
 use App\Support\Admin\TransactionShiftResolver;
+use App\Support\Auth\AccountSessions;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 use Illuminate\Http\RedirectResponse;
@@ -98,6 +99,10 @@ class AdminUserController extends Controller
         }
 
         $adminUser->update($data);
+
+        if ($adminUser->wasChanged('is_active') && ! $adminUser->is_active) {
+            AccountSessions::revoke($adminUser);
+        }
 
         if ($photo !== null) {
             $replaceAdminProfilePhoto->handle($adminUser, $photo);

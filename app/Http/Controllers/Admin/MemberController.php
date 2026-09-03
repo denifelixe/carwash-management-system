@@ -13,6 +13,7 @@ use App\Support\Admin\AdminShell;
 use App\Support\Admin\MemberQueries;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\Paginated;
+use App\Support\Auth\AccountSessions;
 use App\Support\Demo\Brand;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -70,6 +71,10 @@ class MemberController extends Controller
     public function updateStatus(UpdateMemberStatusRequest $request, Member $member): RedirectResponse
     {
         $member->update(['is_active' => $request->boolean('is_active')]);
+
+        if ($member->wasChanged('is_active') && ! $member->is_active) {
+            AccountSessions::revoke($member);
+        }
 
         return back()->with('success', 'Status member berhasil diperbarui.');
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
+import { Link, router, usePage } from '@inertiajs/vue3';
 import {
     Bell,
     Boxes,
@@ -19,6 +19,7 @@ import {
     PanelLeftClose,
     PanelLeftOpen,
     ReceiptText,
+    RefreshCw,
     ScanLine,
     ShieldCheck,
     UserPlus,
@@ -28,6 +29,7 @@ import {
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { toast } from 'vue-sonner';
 import { Toaster } from '@/components/ui/sonner';
 import type {
     CarwashAdminModule,
@@ -84,6 +86,7 @@ const isSidebarOpen = ref<boolean>(false);
 const isSidebarCollapsed = ref<boolean>(false);
 const expandedGroups = ref<string[]>([]);
 const isNotificationsOpen = ref<boolean>(false);
+const isRefreshing = ref<boolean>(false);
 const notifications = ref<CarwashNotification[]>([]);
 const currentTime = ref<string>('--:--:--');
 let clockTimer: ReturnType<typeof setInterval> | undefined;
@@ -161,6 +164,23 @@ function readNotification(notification: CarwashNotification): void {
 function readAllNotifications(): void {
     notifications.value.forEach((notification) => {
         notification.unread = false;
+    });
+}
+
+function refreshPageData(): void {
+    if (isRefreshing.value) {
+        return;
+    }
+
+    isRefreshing.value = true;
+
+    router.reload({
+        onSuccess: () => {
+            toast.success('Data diperbarui');
+        },
+        onFinish: () => {
+            isRefreshing.value = false;
+        },
     });
 }
 
@@ -542,12 +562,26 @@ function closeSidebar(module: CarwashAdminModule): void {
                         />
                     </button>
 
-                    <div class="min-w-0 flex-1">
+                    <div class="flex min-w-0 flex-1 items-center gap-2">
                         <h1
                             class="truncate text-base font-semibold text-slate-900 sm:text-lg"
                         >
                             {{ pageTitle }}
                         </h1>
+
+                        <button
+                            type="button"
+                            class="shrink-0 rounded-xl border border-slate-200 p-2 text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            aria-label="Segarkan data"
+                            title="Segarkan data"
+                            :disabled="isRefreshing"
+                            @click="refreshPageData"
+                        >
+                            <RefreshCw
+                                class="h-[18px] w-[18px]"
+                                :class="isRefreshing ? 'animate-spin' : ''"
+                            />
+                        </button>
                     </div>
 
                     <div

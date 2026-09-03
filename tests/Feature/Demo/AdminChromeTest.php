@@ -37,6 +37,20 @@ test('the admin header always shows the outlet clock timezone and current user s
         );
 });
 
+test('the admin header refreshes data in place instead of reloading the page', function () {
+    $layout = file_get_contents(
+        resource_path('js/layouts/admin/AdminLayout.vue'),
+    );
+
+    expect($layout)
+        ->toContain('aria-label="Segarkan data"')
+        ->toContain('@click="refreshPageData"')
+        ->toContain('router.reload(')
+        ->toContain("toast.success('Data diperbarui')")
+        ->toContain(":class=\"isRefreshing ? 'animate-spin' : ''\"")
+        ->not->toContain('window.location.reload');
+});
+
 test('the finance module is named keuangan throughout the console', function () {
     $financeModule = collect(RoleAccess::modules())->firstWhere('key', 'finance');
     $financePage = file_get_contents(

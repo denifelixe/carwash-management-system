@@ -1,9 +1,12 @@
 <?php
 
 use App\Models\Admin;
+use App\Models\AdminRole;
 use App\Support\AppSettings;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('login screen can be rendered', function () {
@@ -124,4 +127,51 @@ test('rate limit pages are rendered without an application layout', function () 
         ->and($rateLimitPageSource)
         ->toContain('{{ email }}')
         ->not->toContain('ERROR 429');
+});
+
+test('a deactivated admin is refused by every guard retrieval path', function () {
+    $admin = Admin::factory()->create(['remember_token' => Str::random(60)]);
+    $admin->update(['is_active' => false]);
+
+    $provider = Auth::guard('admin')->getProvider();
+
+    expect($provider->retrieveById($admin->id))->toBeNull()
+        ->and($provider->retrieveByToken($admin->id, (string) $admin->remember_token))->toBeNull();
+});
+
+test('a deactivated admin loses their remember token and stored sessions', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $role = AdminRole::query()->where('key', 'manager')->firstOrFail();
+    $staff = Admin::factory()->create([
+        'role_id' => $role->id,
+        'is_active' => true,
+        'remember_token' => Str::random(60),
+    ]);
+
+    DB::table('sessions')->insert([
+        'id' => 'staff-session',
+        'admin_id' => $staff->id,
+        'member_id' => null,
+        'ip_address' => '127.0.0.1',
+        'user_agent' => 'phpunit',
+        'payload' => base64_encode(serialize([])),
+        'last_activity' => now()->getTimestamp(),
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.users.update', $staff), [
+            'name' => $staff->name,
+            'email' => $staff->email,
+            'phone' => $staff->phone,
+            'role_id' => $role->id,
+            'shift_id' => null,
+            'password' => '',
+            'password_confirmation' => '',
+            'is_active' => false,
+        ])
+        ->assertRedirect(route('admin.users.index'));
+
+    expect($staff->refresh()->is_active)->toBeFalse()
+        ->and($staff->remember_token)->toBeNull()
+        ->and(DB::table('sessions')->where('admin_id', $staff->id)->exists())->toBeFalse();
 });

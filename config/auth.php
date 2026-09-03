@@ -64,11 +64,11 @@ return [
 
     'providers' => [
         'admins' => [
-            'driver' => 'eloquent',
+            'driver' => 'active_eloquent',
             'model' => Admin::class,
         ],
         'members' => [
-            'driver' => 'eloquent',
+            'driver' => 'active_eloquent',
             'model' => Member::class,
         ],
     ],

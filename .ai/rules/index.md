@@ -21,6 +21,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | {routes/member.php,app/Http/Middleware/EnsureMemberPortalIsAvailable.php,bootstrap/app.php} | .ai/rules/middleware.md |
 | database/migrations/** | .ai/rules/migrations.md |
 | {app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/Finance*.php,resources/js/pages/admin/Finance.vue} | .ai/rules/pages-admin.md |
+| {config/auth.php,app/Support/Auth/**,app/Providers/AppServiceProvider.php} | .ai/rules/providers.md |
 | {app/Actions/Admin/RegisterOrderMember.php,app/Models/Member.php,app/Http/Requests/Admin/StoreOrderMemberRequest.php} | .ai/rules/requests-admin.md |
 | {app/Http/Controllers/Admin/**,app/Actions/Admin/**,app/Support/Admin/**} | .ai/rules/support-admin.md |
 | {resources/js/lib/posReceipt*.ts,resources/js/lib/pdfDocument.ts,app/Support/AppSettings.php,app/Support/Demo/Brand.php} | .ai/rules/support-demo.md |

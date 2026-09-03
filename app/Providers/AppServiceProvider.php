@@ -4,12 +4,16 @@ namespace App\Providers;
 
 use App\Models\Admin;
 use App\Support\AppSettings;
+use App\Support\Auth\ActiveUserProvider;
 use App\Support\DangerousKeyManager;
 use App\Support\Demo\Brand;
 use App\Support\Session\DatabaseSessionHandler;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Database\DatabaseManager;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
@@ -41,6 +45,7 @@ class AppServiceProvider extends ServiceProvider
         AppSettings::applyBranding();
 
         $this->configureDatabaseSessions();
+        $this->configureAuthentication();
         $this->configureDefaults();
 
         Gate::before(fn (mixed $user): ?bool => $user instanceof Admin && $user->is_owner
@@ -76,6 +81,21 @@ class AppServiceProvider extends ServiceProvider
                 $app,
             );
         });
+    }
+
+    /**
+     * Refuse deactivated accounts on every guard retrieval path, not only at login.
+     */
+    protected function configureAuthentication(): void
+    {
+        Auth::provider(
+            'active_eloquent',
+            /** @param array{model: class-string<Model>} $config */
+            fn (Application $app, array $config): ActiveUserProvider => new ActiveUserProvider(
+                $app->make(Hasher::class),
+                $config['model'],
+            ),
+        );
     }
 
     /**
