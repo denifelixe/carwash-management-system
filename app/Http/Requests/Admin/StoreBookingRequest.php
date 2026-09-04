@@ -114,6 +114,22 @@ class StoreBookingRequest extends FormRequest
                 return;
             }
 
+            $existingQuantities = $booking->serviceVariations()->get()
+                ->mapWithKeys(fn (ServiceVariation $variation): array => [
+                    $variation->id => (int) $variation->pivot->quantity,
+                ]);
+
+            if ($booking->transactions()->exists()) {
+                if ($quantities->sortKeys()->all() !== $existingQuantities->sortKeys()->all()) {
+                    $validator->errors()->add(
+                        'items',
+                        'Layanan tidak dapat diubah karena booking sudah memiliki transaksi.',
+                    );
+                }
+
+                return;
+            }
+
             $subtotal = (int) $variations->sum(
                 fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
             );

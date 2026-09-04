@@ -49,6 +49,7 @@ class OrderPresenter
             'bookingDate' => $booking->booking_date?->toDateString() ?? $booking->created_at?->toDateString(),
             'orderStatus' => $booking->status,
             'isMutable' => OperationalDataWindow::allows($booking->service_date),
+            'canEditServices' => $booking->transactions->isEmpty(),
             'isDeletable' => OperationalDataWindow::orderCanBeDeleted($booking),
             'estimate' => (int) $booking->total,
             'notes' => $booking->notes ?? '—',

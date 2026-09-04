@@ -5,6 +5,7 @@ use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
+use App\Models\OrderTransaction;
 use App\Models\Service;
 use Inertia\Testing\AssertableInertia;
 
@@ -48,6 +49,7 @@ test('the live booking page uses the shared component and database records', fun
                 ->where('capabilities.update', true)
                 ->where('capabilities.delete', true)
                 ->where('bookings.0.isMutable', true)
+                ->where('bookings.0.canEditServices', true)
                 ->where('bookings.0.isDeletable', true),
         );
 });
@@ -138,6 +140,79 @@ test('an owner can update a booking that has not entered processing', function (
         ->service_date->toDateString()->toBe($newDate)
         ->total->toBe(80000)
         ->and($booking->serviceVariations()->sole()->is($newVariation))->toBeTrue();
+});
+
+test('a booking with a transaction can be rescheduled but its services cannot be changed', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $oldService = Service::factory()->create(['price' => 45000]);
+    $newService = Service::factory()->create(['price' => 80000]);
+    $oldVariation = $oldService->serviceVariations()->firstOrFail();
+    $newVariation = $newService->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->addDay()->toDateString(),
+        'arrived_at' => null,
+        'subtotal' => 45000,
+        'total' => 45000,
+        'paid_amount' => 20000,
+    ]);
+    $booking->serviceVariations()->attach($oldVariation, [
+        'service_name' => $oldService->name,
+        'variations' => null,
+        'unit_price' => 45000,
+        'quantity' => 1,
+        'total_price' => 45000,
+        'stamps' => $oldService->stamps,
+    ]);
+    OrderTransaction::factory()->for($booking)->create(['amount' => 20000]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('bookings.0.id', $booking->id)
+                ->where('bookings.0.canEditServices', false),
+        );
+
+    $payload = [
+        'customer_mode' => 'walk-in',
+        'customer_name' => $booking->customer_name,
+        'customer_phone' => $booking->customer_phone,
+        'vehicle_name' => $booking->vehicle_name,
+        'vehicle_plate' => $booking->vehicle_plate,
+        'items' => [['service_variation_id' => $newVariation->id, 'quantity' => 1]],
+        'service_date' => now()->addDays(2)->toDateString(),
+    ];
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), $payload)
+        ->assertSessionHasErrors('items');
+
+    expect($booking->refresh()->service_date->toDateString())->toBe(now()->addDay()->toDateString())
+        ->and($booking->serviceVariations()->sole()->is($oldVariation))->toBeTrue();
+
+    $oldVariation->update(['price' => 90000]);
+    $newDate = now()->addDays(3)->toDateString();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), [
+            ...$payload,
+            'items' => [['service_variation_id' => $oldVariation->id, 'quantity' => 1]],
+            'service_date' => $newDate,
+        ])
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasNoErrors();
+
+    $booking->refresh();
+    $pivot = $booking->serviceVariations()->sole()->pivot;
+
+    expect($booking->service_date->toDateString())->toBe($newDate)
+        ->and($booking->subtotal)->toBe(45000)
+        ->and($booking->total)->toBe(45000)
+        ->and((int) $pivot->unit_price)->toBe(45000)
+        ->and((int) $pivot->total_price)->toBe(45000);
 });
 
 test('booking totals include variation quantity and preserve its snapshots', function () {

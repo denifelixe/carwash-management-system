@@ -210,6 +210,17 @@ const detailBooking = computed<CarwashBooking | null>(
         ) ?? null,
 );
 
+const editingBooking = computed<CarwashBooking | null>(
+    () =>
+        bookingList.value.find(
+            (booking) => booking.id === editingBookingId.value,
+        ) ?? null,
+);
+
+const canEditDraftServices = computed<boolean>(
+    () => editingBooking.value?.canEditServices !== false,
+);
+
 const canEditDetailBooking = computed<boolean>(
     () =>
         props.capabilities.update &&
@@ -561,6 +572,7 @@ function saveBooking(): void {
             ...bookingFields,
             bookingDate: props.today,
             orderStatus: 'booking',
+            canEditServices: true,
             notes: '—',
         },
         ...bookingList.value,
@@ -1110,9 +1122,26 @@ function saveBooking(): void {
                     Layanan
                 </p>
                 <ServiceCartPicker
+                    v-if="canEditDraftServices"
                     v-model="draft.serviceItems"
                     :services="services"
                 />
+                <div
+                    v-else
+                    class="rounded-2xl border border-amber-200 bg-amber-50 p-4"
+                >
+                    <p class="text-sm font-semibold text-amber-800">
+                        Layanan terkunci
+                    </p>
+                    <p class="mt-1 text-xs leading-relaxed text-amber-700">
+                        Booking ini sudah memiliki transaksi. Layanan tidak
+                        dapat diubah, tetapi tanggal kedatangan tetap dapat
+                        dijadwalkan ulang.
+                    </p>
+                    <p class="mt-3 text-sm font-medium text-slate-800">
+                        {{ editingBooking?.service }}
+                    </p>
+                </div>
             </div>
 
             <!-- Booking date: the one field an order does not have -->

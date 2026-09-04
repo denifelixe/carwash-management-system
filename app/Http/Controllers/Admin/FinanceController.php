@@ -118,15 +118,16 @@ class FinanceController extends Controller
 
         /** @var Admin $admin */
         $admin = $request->user('admin');
-        $now = CarbonImmutable::now();
-        $entryDate = $data['entry_date'] ?? $now->toDateString();
-        $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $entryDate);
-        $occurredAt = $selectedDate->setTime(
-            $now->hour,
-            $now->minute,
-            $now->second,
-            $now->micro,
+        $canManageOccurrence = $admin->can(
+            'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
         );
+        $occurredAt = $canManageOccurrence
+            ? CarbonImmutable::createFromFormat(
+                '!Y-m-d H:i',
+                $data['entry_date'].' '.$data['entry_time'],
+            )
+            : CarbonImmutable::now();
+        $entryDate = $occurredAt->toDateString();
         $shift = $transactionShiftResolver->resolve(
             $admin,
             $request->integer('transaction_shift_id') ?: null,
@@ -230,7 +231,16 @@ class FinanceController extends Controller
                 &$storedFiles,
             ): void {
                 $previousEntryDate = $cashEntry->entry_date->toDateString();
-                $entryDate = $data['entry_date'];
+                $canManageOccurrence = $admin->can(
+                    'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+                );
+                $occurredAt = $canManageOccurrence
+                    ? CarbonImmutable::createFromFormat(
+                        '!Y-m-d H:i',
+                        $data['entry_date'].' '.$data['entry_time'],
+                    )
+                    : CarbonImmutable::instance($cashEntry->occurred_at);
+                $entryDate = $occurredAt->toDateString();
                 $dateChanged = $entryDate !== $previousEntryDate;
                 $previousAmounts = UpdateDailyBalance::methodAmounts(
                     $cashEntry->method,
@@ -240,18 +250,6 @@ class FinanceController extends Controller
                     $data['method'],
                     (int) $data['amount'],
                 );
-                $occurredAt = $cashEntry->occurred_at;
-
-                if ($dateChanged) {
-                    $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $entryDate);
-                    $occurredAt = $selectedDate->setTime(
-                        $occurredAt->hour,
-                        $occurredAt->minute,
-                        $occurredAt->second,
-                        $occurredAt->micro,
-                    );
-                }
-
                 $cashEntry->fill([
                     'category' => $data['category'],
                     'description' => $data['description'],

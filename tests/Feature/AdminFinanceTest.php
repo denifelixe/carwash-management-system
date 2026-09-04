@@ -58,6 +58,7 @@ function cashEntryPayload(array $overrides = []): array
 {
     return array_merge([
         'entry_date' => now()->toDateString(),
+        'entry_time' => now()->format('H:i'),
         'direction' => 'in',
         'category' => 'Penjualan Produk',
         'description' => 'Penjualan parfum mobil 6 botol',
@@ -551,6 +552,7 @@ test('an owner can record money on the selected finance date', function () {
     $this->actingAs($owner, 'admin')
         ->post(route('admin.finance.store'), cashEntryPayload([
             'entry_date' => '2026-08-27',
+            'entry_time' => '08:35',
         ]))
         ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-27']))
         ->assertSessionHasNoErrors();
@@ -559,10 +561,39 @@ test('an owner can record money on the selected finance date', function () {
 
     expect($entry->entry_date->toDateString())->toBe('2026-08-27')
         ->and($entry->occurred_at->format('Y-m-d H:i'))
-        ->toBe('2026-08-27 10:00')
+        ->toBe('2026-08-27 08:35')
         ->and($entry->reference)->toContain('TRX-PP-260827-')
         ->and(DailyBalance::query()->sole()->date->toDateString())
         ->toBe('2026-08-27');
+});
+
+test('staff without the extra action records a new cash entry at the current time', function () {
+    $staff = financeStaff(['create' => true, 'read' => true]);
+
+    $this->actingAs($staff, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload([
+            'entry_date' => '2026-08-27',
+            'entry_time' => '08:35',
+        ]))
+        ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-30']))
+        ->assertSessionHasNoErrors();
+
+    $entry = CashEntry::query()->sole();
+
+    expect($entry->entry_date->toDateString())->toBe('2026-08-30')
+        ->and($entry->occurred_at->format('Y-m-d H:i'))->toBe('2026-08-30 10:00');
+});
+
+test('a cash entry cannot be recorded in the future', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload([
+            'entry_time' => '10:01',
+        ]))
+        ->assertSessionHasErrors('entry_time');
+
+    expect(CashEntry::query()->count())->toBe(0);
 });
 
 test('money out is refused without its supporting document', function () {
@@ -774,6 +805,7 @@ test('changing a cash entry date rebuilds balances from the earliest affected da
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.finance.update', $movedEntry), cashEntryPayload([
             'entry_date' => '2026-08-30',
+            'entry_time' => '09:15',
             'amount' => 120000,
             'method' => 'Transfer',
         ]))
@@ -796,7 +828,7 @@ test('changing a cash entry date rebuilds balances from the earliest affected da
         ->and($balances['2026-08-30']->non_cash_balance)->toBe(120000);
 });
 
-test('staff without the extra action cannot change a cash entry date', function () {
+test('staff without the extra action can update details without changing the cash entry time', function () {
     $entry = CashEntry::factory()->withDailyBalance()->create([
         'entry_date' => '2026-08-29',
         'occurred_at' => '2026-08-29 09:15:00',
@@ -807,14 +839,20 @@ test('staff without the extra action cannot change a cash entry date', function 
         ->from(route('admin.finance.index', ['date' => '2026-08-29']))
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
             'entry_date' => '2026-08-30',
+            'entry_time' => '08:45',
+            'description' => 'Keterangan diperbarui',
         ]))
         ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-29']))
-        ->assertSessionHasErrors('entry_date');
+        ->assertSessionHasNoErrors();
 
-    expect($entry->refresh()->entry_date->toDateString())->toBe('2026-08-29');
+    $entry->refresh();
+
+    expect($entry->entry_date->toDateString())->toBe('2026-08-29')
+        ->and($entry->occurred_at->format('Y-m-d H:i'))->toBe('2026-08-29 09:15')
+        ->and($entry->description)->toBe('Keterangan diperbarui');
 });
 
-test('staff with the extra action can change a cash entry date', function () {
+test('staff with the extra action can change a cash entry date and time', function () {
     $entry = CashEntry::factory()->withDailyBalance()->create([
         'entry_date' => '2026-08-29',
         'occurred_at' => '2026-08-29 09:15:00',
@@ -828,10 +866,12 @@ test('staff with the extra action can change a cash entry date', function () {
     $this->actingAs($staff, 'admin')
         ->patch(route('admin.finance.update', $entry), cashEntryPayload([
             'entry_date' => '2026-08-30',
+            'entry_time' => '08:45',
         ]))
         ->assertSessionHasNoErrors();
 
-    expect($entry->refresh()->entry_date->toDateString())->toBe('2026-08-30');
+    expect($entry->refresh()->entry_date->toDateString())->toBe('2026-08-30')
+        ->and($entry->occurred_at->format('Y-m-d H:i'))->toBe('2026-08-30 08:45');
 
     $this->actingAs($staff, 'admin')
         ->get(route('admin.finance.index'))
@@ -1136,6 +1176,8 @@ test('a hand-written entry takes the shift of the admin who wrote it', function 
                 'description' => 'Parfum mobil',
                 'amount' => 50000,
                 'method' => 'Tunai',
+                'entry_date' => '2026-08-30',
+                'entry_time' => '10:00',
             ])
             ->assertRedirect();
     }
@@ -1166,6 +1208,8 @@ test('a scheduled hand-written entry requires a valid choice during overlapping 
         'description' => 'Parfum mobil',
         'amount' => 50000,
         'method' => 'Tunai',
+        'entry_date' => '2026-08-30',
+        'entry_time' => '14:30',
     ];
 
     $this->actingAs($admin, 'admin')

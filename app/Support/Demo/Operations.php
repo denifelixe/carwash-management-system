@@ -394,13 +394,18 @@ class Operations
      */
     public static function scheduledBookings(): array
     {
-        $statusByOrderNo = array_column(self::orders(), 'status', 'orderNo');
+        $ordersByOrderNo = collect(self::orders())->keyBy('orderNo');
 
         return array_map(
-            fn (array $booking): array => [
-                ...$booking,
-                'orderStatus' => $statusByOrderNo[$booking['code']] ?? 'booking',
-            ],
+            function (array $booking) use ($ordersByOrderNo): array {
+                $order = $ordersByOrderNo->get($booking['code']);
+
+                return [
+                    ...$booking,
+                    'orderStatus' => $order['status'] ?? 'booking',
+                    'canEditServices' => empty($order['transactions'] ?? []),
+                ];
+            },
             self::bookings(),
         );
     }

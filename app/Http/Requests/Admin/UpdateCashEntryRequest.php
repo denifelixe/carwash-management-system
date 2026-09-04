@@ -7,6 +7,7 @@ use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderQueries;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,13 +30,17 @@ class UpdateCashEntryRequest extends FormRequest
      */
     public function rules(): array
     {
+        $canManageOccurrence = $this->canManageOccurrence();
+
         return [
             'entry_date' => [
+                Rule::excludeIf(! $canManageOccurrence),
                 'required',
                 'date_format:Y-m-d',
                 'after_or_equal:'.OperationalDataWindow::cutoff()->toDateString(),
                 'before_or_equal:today',
             ],
+            'entry_time' => [Rule::excludeIf(! $canManageOccurrence), 'required', 'date_format:H:i'],
             'category' => [
                 'required',
                 'string',
@@ -74,6 +79,8 @@ class UpdateCashEntryRequest extends FormRequest
             'entry_date.date_format' => 'Format tanggal transaksi tidak valid.',
             'entry_date.after_or_equal' => 'Tanggal transaksi tidak dapat dipindahkan lebih dari 30 hari ke belakang.',
             'entry_date.before_or_equal' => 'Tanggal transaksi tidak boleh melewati hari ini.',
+            'entry_time.required' => 'Waktu transaksi wajib diisi.',
+            'entry_time.date_format' => 'Format waktu transaksi tidak valid.',
             'attachments.required' => 'Pengeluaran wajib menyertakan bukti pendukung.',
         ];
     }
@@ -86,19 +93,17 @@ class UpdateCashEntryRequest extends FormRequest
                 return;
             }
 
-            $entryDateChanged = $this->string('entry_date')->toString()
-                !== $this->entry()->entry_date->toDateString();
-            $canEditBackdate = $this->user('admin')?->can(
-                'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
-            ) ?? false;
-
-            if ($entryDateChanged && ! $canEditBackdate) {
-                $validator->errors()->add(
-                    'entry_date',
-                    'Role Anda tidak memiliki akses untuk mengubah tanggal transaksi.',
+            if ($this->canManageOccurrence()) {
+                $occurredAt = CarbonImmutable::createFromFormat(
+                    '!Y-m-d H:i',
+                    $this->string('entry_date').' '.$this->string('entry_time'),
                 );
 
-                return;
+                if ($occurredAt->isAfter(now())) {
+                    $validator->errors()->add('entry_time', 'Waktu transaksi tidak boleh melewati waktu sekarang.');
+
+                    return;
+                }
             }
 
             $removedCount = count($this->input('removed_attachment_ids', []));
@@ -122,5 +127,12 @@ class UpdateCashEntryRequest extends FormRequest
         $entry = $this->route('cashEntry');
 
         return $entry;
+    }
+
+    private function canManageOccurrence(): bool
+    {
+        return $this->user('admin')?->can(
+            'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+        ) ?? false;
     }
 }

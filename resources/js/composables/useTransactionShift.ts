@@ -45,11 +45,23 @@ export function matchingTransactionShifts(
     timezone: string,
     at: Date = new Date(),
 ): CarwashTransactionShiftOption[] {
+    return matchingShiftsForMinute(assignment, currentMinutes(timezone, at));
+}
+
+export function matchingTransactionShiftsAtClock(
+    assignment: CarwashTransactionShiftAssignment,
+    clock: string,
+): CarwashTransactionShiftOption[] {
+    return matchingShiftsForMinute(assignment, clockMinutes(clock));
+}
+
+function matchingShiftsForMinute(
+    assignment: CarwashTransactionShiftAssignment,
+    minute: number,
+): CarwashTransactionShiftOption[] {
     if (assignment.mode !== 'schedule') {
         return [];
     }
-
-    const minute = currentMinutes(timezone, at);
 
     return assignment.shifts.filter((shift) => containsMinute(shift, minute));
 }

@@ -43,7 +43,7 @@ import {
     formatLongDate,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
-import { matchingTransactionShifts } from '@/composables/useTransactionShift';
+import { matchingTransactionShiftsAtClock } from '@/composables/useTransactionShift';
 import { absoluteUrl, openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapTableRow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
@@ -181,6 +181,7 @@ const draft = ref({
 /** The live ledger posts the entry, including a real supporting document. */
 const entryForm = useForm<{
     entry_date: string;
+    entry_time: string;
     direction: Ledger;
     category: string;
     description: string;
@@ -191,6 +192,7 @@ const entryForm = useForm<{
     transaction_shift_id: number | null;
 }>({
     entry_date: props.filters.date,
+    entry_time: outletClock(),
     direction: 'in',
     category: props.incomeCategories[0],
     description: '',
@@ -654,7 +656,12 @@ const requiresAttachment = computed<boolean>(
 );
 
 const canSave = computed<boolean>(() => {
-    if (draft.value.description.trim() === '' || draft.value.amount <= 0) {
+    if (
+        entryForm.entry_date === '' ||
+        entryForm.entry_time === '' ||
+        draft.value.description.trim() === '' ||
+        draft.value.amount <= 0
+    ) {
         return false;
     }
 
@@ -759,7 +766,10 @@ function openForm(): void {
         method: activeMethods.value[0],
     };
     entryForm.clearErrors();
-    entryForm.entry_date = props.filters.date;
+    entryForm.entry_date = props.capabilities.edit_cash_entry_backdate
+        ? props.filters.date
+        : props.filters.today;
+    entryForm.entry_time = outletClock();
     isFormOpen.value = true;
 }
 
@@ -797,6 +807,7 @@ function openEditForm(entry: CarwashMoneyEntry): void {
         method: entry.method,
     };
     entryForm.entry_date = entry.date;
+    entryForm.entry_time = entry.time.replace('.', ':');
     entryForm.clearErrors();
     isFormOpen.value = true;
 }
@@ -1060,6 +1071,20 @@ function transactionReference(
     return `TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`;
 }
 
+function outletClock(): string {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+        timeZone: props.filters.timezone,
+    }).formatToParts(new Date());
+    const values = Object.fromEntries(
+        parts.map((part) => [part.type, part.value]),
+    );
+
+    return `${values.hour}:${values.minute}`;
+}
+
 function saveEntry(): void {
     if (!canSave.value) {
         return;
@@ -1071,9 +1096,14 @@ function saveEntry(): void {
         return;
     }
 
-    const matchingShifts = matchingTransactionShifts(
+    if (!props.capabilities.edit_cash_entry_backdate) {
+        entryForm.entry_date = props.filters.today;
+        entryForm.entry_time = outletClock();
+    }
+
+    const matchingShifts = matchingTransactionShiftsAtClock(
         props.transactionShift,
-        props.filters.timezone,
+        entryForm.entry_time,
     );
 
     if (matchingShifts.length > 1) {
@@ -1108,10 +1138,6 @@ function completeEntrySave(transactionShiftId: number | null): void {
 
 /** The live ledger writes to the database and re-reads the reloaded props. */
 function saveLiveEntry(transactionShiftId: number | null): void {
-    if (editingEntry.value === null) {
-        entryForm.entry_date = props.filters.date;
-    }
-
     entryForm.direction = activeLedger.value;
     entryForm.category = draft.value.category;
     entryForm.description = draft.value.description;
@@ -1152,18 +1178,11 @@ function saveDemoEntry(transactionShiftId: number | null): void {
         id: sequence,
         ref: transactionReference(
             draft.value.category,
-            props.filters.date,
+            entryForm.entry_date,
             sequence,
         ),
-        date: props.filters.date,
-        time: new Intl.DateTimeFormat('id-ID', {
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: false,
-            timeZone: props.filters.timezone,
-        })
-            .format(new Date())
-            .replace(':', '.'),
+        date: entryForm.entry_date,
+        time: entryForm.entry_time.replace(':', '.'),
         category: draft.value.category,
         description: draft.value.description,
         amount: draft.value.amount,
@@ -2642,24 +2661,52 @@ function applyDate(date: string): void {
         @close="closeEntryForm"
     >
         <div class="space-y-4">
-            <div v-if="editingEntry && capabilities.edit_cash_entry_backdate">
-                <label
-                    class="text-xs font-medium text-slate-600"
-                    for="fin-date"
-                >
-                    Tanggal transaksi
-                </label>
-                <input
-                    id="fin-date"
-                    v-model="entryForm.entry_date"
-                    type="date"
-                    :max="props.filters.today"
-                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                />
-                <InputError
-                    class="mt-1.5"
-                    :message="entryForm.errors.entry_date"
-                />
+            <div
+                v-if="capabilities.edit_cash_entry_backdate"
+                class="grid grid-cols-2 gap-3"
+            >
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="fin-date"
+                    >
+                        Tanggal transaksi
+                    </label>
+                    <input
+                        id="fin-date"
+                        v-model="entryForm.entry_date"
+                        type="date"
+                        :max="props.filters.today"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="entryForm.errors.entry_date"
+                    />
+                </div>
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="fin-time"
+                    >
+                        Waktu transaksi
+                    </label>
+                    <input
+                        id="fin-time"
+                        v-model="entryForm.entry_time"
+                        type="time"
+                        :max="
+                            entryForm.entry_date === props.filters.today
+                                ? outletClock()
+                                : undefined
+                        "
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="entryForm.errors.entry_time"
+                    />
+                </div>
             </div>
 
             <div>

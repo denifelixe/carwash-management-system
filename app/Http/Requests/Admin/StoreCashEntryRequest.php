@@ -3,11 +3,14 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\AdminShift;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\OrderQueries;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreCashEntryRequest extends FormRequest
 {
@@ -26,8 +29,16 @@ class StoreCashEntryRequest extends FormRequest
      */
     public function rules(): array
     {
+        $canManageOccurrence = $this->canManageOccurrence();
+
         return [
-            'entry_date' => ['nullable', 'date_format:Y-m-d'],
+            'entry_date' => [
+                Rule::excludeIf(! $canManageOccurrence),
+                'required',
+                'date_format:Y-m-d',
+                'before_or_equal:today',
+            ],
+            'entry_time' => [Rule::excludeIf(! $canManageOccurrence), 'required', 'date_format:H:i'],
             'direction' => ['required', Rule::in(['in', 'out'])],
             'category' => [
                 'required',
@@ -56,13 +67,42 @@ class StoreCashEntryRequest extends FormRequest
         ];
     }
 
+    /** @return list<callable(Validator): void> */
+    public function after(): array
+    {
+        return [function (Validator $validator): void {
+            if ($validator->errors()->isNotEmpty() || ! $this->canManageOccurrence()) {
+                return;
+            }
+
+            $occurredAt = CarbonImmutable::createFromFormat(
+                '!Y-m-d H:i',
+                $this->string('entry_date').' '.$this->string('entry_time'),
+            );
+
+            if ($occurredAt->isAfter(now())) {
+                $validator->errors()->add('entry_time', 'Waktu transaksi tidak boleh melewati waktu sekarang.');
+            }
+        }];
+    }
+
     /**
      * @return array<string, string>
      */
     public function messages(): array
     {
         return [
+            'entry_date.before_or_equal' => 'Tanggal transaksi tidak boleh melewati hari ini.',
+            'entry_time.required' => 'Waktu transaksi wajib diisi.',
+            'entry_time.date_format' => 'Format waktu transaksi tidak valid.',
             'attachments.required' => 'Pengeluaran wajib menyertakan bukti pendukung.',
         ];
+    }
+
+    private function canManageOccurrence(): bool
+    {
+        return $this->user('admin')?->can(
+            'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+        ) ?? false;
     }
 }

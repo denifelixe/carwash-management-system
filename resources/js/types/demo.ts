@@ -377,6 +377,7 @@ export interface CarwashBooking {
     /** Where the job stands, read back from the order module. */
     orderStatus: string;
     isMutable?: boolean;
+    canEditServices?: boolean;
     isDeletable?: boolean;
     estimate: number;
     notes: string;
