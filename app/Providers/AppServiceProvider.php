@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Models\Admin;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\AppSettings;
 use App\Support\Auth\ActiveUserProvider;
 use App\Support\DangerousKeyManager;
@@ -57,6 +58,15 @@ class AppServiceProvider extends ServiceProvider
                 Gate::define(
                     "admin.{$moduleKey}.{$permission}",
                     fn (Admin $admin): bool => $admin->hasModulePermission($moduleKey, $permission),
+                );
+            }
+        }
+
+        foreach (AdminModuleActions::definitions() as $moduleKey => $actions) {
+            foreach ($actions as $action) {
+                Gate::define(
+                    "admin.{$moduleKey}.{$action['key']}",
+                    fn (Admin $admin): bool => $admin->hasModuleAdditionalAction($moduleKey, $action['key']),
                 );
             }
         }

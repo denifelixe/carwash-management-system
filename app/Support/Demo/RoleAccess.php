@@ -2,6 +2,7 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\RoleIcons;
 
 /**
@@ -93,6 +94,20 @@ class RoleAccess
         return in_array($module, self::matrix()[$role] ?? [], true);
     }
 
+    public static function allowsAdditionalAction(string $role, string $module, string $action): bool
+    {
+        if ($role === 'owner') {
+            return true;
+        }
+
+        return $module === 'finance'
+            && in_array($action, [
+                AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+                AdminModuleActions::VIEW_NON_CASH_BALANCE,
+            ], true)
+            && $role === 'manager';
+    }
+
     public static function isValidRole(string $role): bool
     {
         return array_key_exists($role, self::matrix());
@@ -159,6 +174,9 @@ class RoleAccess
                 'key' => $module['key'] === 'users' ? 'users_and_roles' : $module['key'],
                 'label' => $module['label'],
                 'caption' => $module['caption'],
+                'additional_actions' => AdminModuleActions::for(
+                    $module['key'] === 'users' ? 'users_and_roles' : $module['key'],
+                ),
             ],
             self::modules(),
             array_keys(self::modules()),
@@ -181,7 +199,7 @@ class RoleAccess
                     self::staff(),
                     fn (array $staff): bool => $staff['role'] === $role['key'],
                 )),
-                'permissions' => array_map(function (array $module) use ($readableModules): array {
+                'permissions' => array_map(function (array $module) use ($readableModules, $role): array {
                     $demoModuleKey = $module['key'] === 'users_and_roles' ? 'users' : $module['key'];
                     $canRead = in_array($demoModuleKey, $readableModules, true);
 
@@ -191,6 +209,17 @@ class RoleAccess
                         'can_read' => $canRead,
                         'can_update' => $canRead && $demoModuleKey !== 'dashboard',
                         'can_delete' => false,
+                        'additional_actions' => array_values(array_map(
+                            fn (array $action): string => $action['key'],
+                            array_filter(
+                                $module['additional_actions'],
+                                fn (array $action): bool => self::allowsAdditionalAction(
+                                    $role['key'],
+                                    $module['key'],
+                                    $action['key'],
+                                ),
+                            ),
+                        )),
                     ];
                 }, $modules),
             ];

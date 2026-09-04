@@ -43,6 +43,7 @@ type Permission = {
     can_read: boolean;
     can_update: boolean;
     can_delete: boolean;
+    additional_actions: string[];
 };
 
 type Role = {
@@ -66,6 +67,10 @@ type Module = {
     key: string;
     label: string;
     caption: string;
+    additional_actions: {
+        key: string;
+        label: string;
+    }[];
 };
 
 type Shift = {
@@ -425,6 +430,7 @@ function blankPermissions(): Permission[] {
         can_read: module.key === 'dashboard',
         can_update: false,
         can_delete: false,
+        additional_actions: [],
     }));
 }
 
@@ -1195,7 +1201,7 @@ function saveDemoRole(): void {
                 />
             </div>
             <div class="overflow-x-auto rounded-xl border border-slate-200">
-                <table class="w-full min-w-[680px] text-sm">
+                <table class="w-full min-w-[880px] text-sm">
                     <thead>
                         <tr
                             class="border-b border-slate-200 bg-slate-50 text-[11px] tracking-wider text-slate-500 uppercase"
@@ -1205,6 +1211,7 @@ function saveDemoRole(): void {
                             <th class="px-3 py-3">Tambah</th>
                             <th class="px-3 py-3">Ubah</th>
                             <th class="px-3 py-3">Hapus</th>
+                            <th class="px-4 py-3 text-left">Action tambahan</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
@@ -1235,6 +1242,33 @@ function saveDemoRole(): void {
                                     type="checkbox"
                                     class="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
                                 />
+                            </td>
+                            <td class="px-4 py-3">
+                                <div
+                                    v-if="
+                                        allModules[index]?.additional_actions
+                                            .length
+                                    "
+                                    class="space-y-2"
+                                >
+                                    <label
+                                        v-for="action in allModules[index]
+                                            .additional_actions"
+                                        :key="action.key"
+                                        class="flex items-start gap-2 text-xs text-slate-600"
+                                    >
+                                        <input
+                                            v-model="
+                                                permission.additional_actions
+                                            "
+                                            type="checkbox"
+                                            :value="action.key"
+                                            class="mt-0.5 h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+                                        />
+                                        <span>{{ action.label }}</span>
+                                    </label>
+                                </div>
+                                <span v-else class="text-slate-300">—</span>
                             </td>
                         </tr>
                     </tbody>

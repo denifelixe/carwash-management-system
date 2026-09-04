@@ -3,7 +3,9 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\CashEntry;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\FinanceCategories;
+use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderQueries;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
@@ -28,6 +30,12 @@ class UpdateCashEntryRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'entry_date' => [
+                'required',
+                'date_format:Y-m-d',
+                'after_or_equal:'.OperationalDataWindow::cutoff()->toDateString(),
+                'before_or_equal:today',
+            ],
             'category' => [
                 'required',
                 'string',
@@ -62,6 +70,10 @@ class UpdateCashEntryRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'entry_date.required' => 'Tanggal transaksi wajib diisi.',
+            'entry_date.date_format' => 'Format tanggal transaksi tidak valid.',
+            'entry_date.after_or_equal' => 'Tanggal transaksi tidak dapat dipindahkan lebih dari 30 hari ke belakang.',
+            'entry_date.before_or_equal' => 'Tanggal transaksi tidak boleh melewati hari ini.',
             'attachments.required' => 'Pengeluaran wajib menyertakan bukti pendukung.',
         ];
     }
@@ -71,6 +83,21 @@ class UpdateCashEntryRequest extends FormRequest
     {
         return [function (Validator $validator): void {
             if ($validator->errors()->isNotEmpty()) {
+                return;
+            }
+
+            $entryDateChanged = $this->string('entry_date')->toString()
+                !== $this->entry()->entry_date->toDateString();
+            $canEditBackdate = $this->user('admin')?->can(
+                'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+            ) ?? false;
+
+            if ($entryDateChanged && ! $canEditBackdate) {
+                $validator->errors()->add(
+                    'entry_date',
+                    'Role Anda tidak memiliki akses untuk mengubah tanggal transaksi.',
+                );
+
                 return;
             }
 

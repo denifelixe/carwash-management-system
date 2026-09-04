@@ -93,6 +93,8 @@ const props = defineProps<{
         create: boolean;
         update: boolean;
         delete: boolean;
+        edit_cash_entry_backdate: boolean;
+        view_non_cash_balance: boolean;
     };
 }>();
 
@@ -334,7 +336,11 @@ const balanceHistoryOpen = ref(false);
 
 /** What the outlet holds across both channels, cash and non-cash together. */
 const dailyBalanceTotal = computed<number>(
-    () => props.dailyBalance.cash + props.dailyBalance.nonCash,
+    () =>
+        props.dailyBalance.cash +
+        (props.capabilities.view_non_cash_balance
+            ? props.dailyBalance.nonCash
+            : 0),
 );
 
 /** The balance is an accumulation, so the card names the day it stops at. */
@@ -440,20 +446,32 @@ function balanceRow(
     cash: number,
     nonCash: number,
 ): RecapTableRow {
-    const total = cash + nonCash;
+    const visibleNonCash = props.capabilities.view_non_cash_balance
+        ? nonCash
+        : 0;
+    const total = cash + visibleNonCash;
 
     return {
         label: `Saldo ${formatDate(date)}`,
-        values: [
-            formatCurrency(cash),
-            formatCurrency(nonCash),
-            formatCurrency(total),
-        ],
-        tones: [
-            cash < 0 ? ('negative' as const) : ('default' as const),
-            nonCash < 0 ? ('negative' as const) : ('default' as const),
-            total < 0 ? ('negative' as const) : ('default' as const),
-        ],
+        values: props.capabilities.view_non_cash_balance
+            ? [
+                  formatCurrency(cash),
+                  formatCurrency(visibleNonCash),
+                  formatCurrency(total),
+              ]
+            : [formatCurrency(cash), formatCurrency(total)],
+        tones: props.capabilities.view_non_cash_balance
+            ? [
+                  cash < 0 ? ('negative' as const) : ('default' as const),
+                  visibleNonCash < 0
+                      ? ('negative' as const)
+                      : ('default' as const),
+                  total < 0 ? ('negative' as const) : ('default' as const),
+              ]
+            : [
+                  cash < 0 ? ('negative' as const) : ('default' as const),
+                  total < 0 ? ('negative' as const) : ('default' as const),
+              ],
     };
 }
 
@@ -588,7 +606,9 @@ function financeRecapSheet(): RecapSheet {
                  */
                 heading: 'Saldo Kas',
                 caption: balanceCaption.value,
-                columns: ['Saldo', 'Tunai', 'Non-Tunai', 'Total Saldo'],
+                columns: props.capabilities.view_non_cash_balance
+                    ? ['Saldo', 'Tunai', 'Non-Tunai', 'Total Saldo']
+                    : ['Saldo', 'Tunai', 'Total Saldo'],
                 rows: [
                     balanceRow(
                         props.dailyBalance.previous.date,
@@ -739,6 +759,7 @@ function openForm(): void {
         method: activeMethods.value[0],
     };
     entryForm.clearErrors();
+    entryForm.entry_date = props.filters.date;
     isFormOpen.value = true;
 }
 
@@ -775,6 +796,7 @@ function openEditForm(entry: CarwashMoneyEntry): void {
         amount: entry.amount,
         method: entry.method,
     };
+    entryForm.entry_date = entry.date;
     entryForm.clearErrors();
     isFormOpen.value = true;
 }
@@ -1086,7 +1108,10 @@ function completeEntrySave(transactionShiftId: number | null): void {
 
 /** The live ledger writes to the database and re-reads the reloaded props. */
 function saveLiveEntry(transactionShiftId: number | null): void {
-    entryForm.entry_date = props.filters.date;
+    if (editingEntry.value === null) {
+        entryForm.entry_date = props.filters.date;
+    }
+
     entryForm.direction = activeLedger.value;
     entryForm.category = draft.value.category;
     entryForm.description = draft.value.description;
@@ -1315,6 +1340,10 @@ function applyDate(date: string): void {
                     <div class="mt-4 grid grid-cols-2 gap-3">
                         <div
                             class="rounded-xl border border-emerald-100/80 bg-emerald-50/70 p-3"
+                            :class="{
+                                'col-span-2':
+                                    !capabilities.view_non_cash_balance,
+                            }"
                         >
                             <div
                                 class="flex items-center gap-1.5 text-emerald-700"
@@ -1336,6 +1365,7 @@ function applyDate(date: string): void {
                             </p>
                         </div>
                         <div
+                            v-if="capabilities.view_non_cash_balance"
                             class="rounded-xl border border-sky-100/80 bg-sky-50/70 p-3"
                         >
                             <div class="flex items-center gap-1.5 text-sky-700">
@@ -1355,7 +1385,6 @@ function applyDate(date: string): void {
                                 {{ formatCurrency(dailyBalance.nonCash) }}
                             </p>
                         </div>
-                        <!-- The two above, added up: what the outlet holds. -->
                         <div
                             class="col-span-2 rounded-xl border border-slate-200/80 bg-slate-50/70 p-3"
                         >
@@ -1849,7 +1878,14 @@ function applyDate(date: string): void {
             v-if="dailyBalanceHistory.length > 0"
             class="overflow-x-auto rounded-2xl border border-slate-200"
         >
-            <table class="w-full min-w-[720px] text-sm">
+            <table
+                class="w-full text-sm"
+                :class="
+                    capabilities.view_non_cash_balance
+                        ? 'min-w-[720px]'
+                        : 'min-w-[420px]'
+                "
+            >
                 <thead>
                     <tr
                         class="border-b border-slate-100 bg-slate-50/70 text-[11px] font-medium tracking-wider text-slate-400 uppercase"
@@ -1862,6 +1898,7 @@ function applyDate(date: string): void {
                             Tunai
                         </th>
                         <th
+                            v-if="capabilities.view_non_cash_balance"
                             colspan="3"
                             class="border-l border-slate-100 px-4 py-2 text-center text-sky-700"
                         >
@@ -1879,12 +1916,23 @@ function applyDate(date: string): void {
                         <th class="px-4 py-2 text-right">Keluar</th>
                         <th class="px-4 py-2 text-right">Saldo</th>
                         <th
+                            v-if="capabilities.view_non_cash_balance"
                             class="border-l border-slate-100 px-4 py-2 text-right"
                         >
                             Masuk
                         </th>
-                        <th class="px-4 py-2 text-right">Keluar</th>
-                        <th class="px-4 py-2 text-right">Saldo</th>
+                        <th
+                            v-if="capabilities.view_non_cash_balance"
+                            class="px-4 py-2 text-right"
+                        >
+                            Keluar
+                        </th>
+                        <th
+                            v-if="capabilities.view_non_cash_balance"
+                            class="px-4 py-2 text-right"
+                        >
+                            Saldo
+                        </th>
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-slate-50">
@@ -1930,16 +1978,19 @@ function applyDate(date: string): void {
                             {{ formatCurrency(day.cashBalance) }}
                         </td>
                         <td
+                            v-if="capabilities.view_non_cash_balance"
                             class="border-l border-slate-100 px-4 py-3 text-right text-emerald-700 tabular-nums"
                         >
                             {{ formatCurrency(day.nonCashIncome) }}
                         </td>
                         <td
+                            v-if="capabilities.view_non_cash_balance"
                             class="px-4 py-3 text-right text-rose-600 tabular-nums"
                         >
                             {{ formatCurrency(day.nonCashExpense) }}
                         </td>
                         <td
+                            v-if="capabilities.view_non_cash_balance"
                             class="px-4 py-3 text-right font-semibold tabular-nums"
                             :class="
                                 day.nonCashBalance < 0
@@ -2591,6 +2642,26 @@ function applyDate(date: string): void {
         @close="closeEntryForm"
     >
         <div class="space-y-4">
+            <div v-if="editingEntry && capabilities.edit_cash_entry_backdate">
+                <label
+                    class="text-xs font-medium text-slate-600"
+                    for="fin-date"
+                >
+                    Tanggal transaksi
+                </label>
+                <input
+                    id="fin-date"
+                    v-model="entryForm.entry_date"
+                    type="date"
+                    :max="props.filters.today"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                />
+                <InputError
+                    class="mt-1.5"
+                    :message="entryForm.errors.entry_date"
+                />
+            </div>
+
             <div>
                 <label class="text-xs font-medium text-slate-600" for="fin-cat">
                     Kategori

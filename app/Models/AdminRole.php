@@ -41,7 +41,7 @@ class AdminRole extends Model
     public function modules(): BelongsToMany
     {
         return $this->belongsToMany(AdminModule::class, 'admin_role_module')
-            ->withPivot(['can_create', 'can_read', 'can_update', 'can_delete']);
+            ->withPivot(['can_create', 'can_read', 'can_update', 'can_delete', 'additional_actions']);
     }
 
     /**

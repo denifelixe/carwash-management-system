@@ -138,6 +138,8 @@ test('finance references use one category date and identifier format', function 
         ->toContain('`TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`')
         ->toContain('ref: transactionReference(')
         ->toContain('entryForm.entry_date = props.filters.date;')
+        ->toContain('v-model="entryForm.entry_date"')
+        ->toContain('editingEntry && capabilities.edit_cash_entry_backdate')
         ->toContain('date: props.filters.date,')
         ->toContain('max-w-48')
         ->toContain('whitespace-normal')
@@ -254,6 +256,18 @@ test('finance page exposes and displays related order details', function () {
         $todayEntries,
         fn (array $entry): bool => $entry['source'] === 'pos',
     ))[0];
+    $cashOnlyBalance = Finance::dailyBalance(Reports::todayDate());
+    $cashOnlyBalance['nonCash'] = 0;
+    $cashOnlyBalance['previous']['nonCash'] = 0;
+    $cashOnlyHistory = array_map(
+        fn (array $balance): array => [
+            ...$balance,
+            'nonCashIncome' => 0,
+            'nonCashExpense' => 0,
+            'nonCashBalance' => 0,
+        ],
+        Finance::dailyBalanceHistory(Reports::todayDate()),
+    );
 
     $this->withSession([RoleAccess::SESSION_KEY => 'finance'])
         ->get(route('demo.admin.finance'))
@@ -263,8 +277,10 @@ test('finance page exposes and displays related order details', function () {
                 ->component('admin/Finance')
                 ->has('moneyIn', count($todayEntries))
                 ->has('orders', count(Operations::orders()))
-                ->where('dailyBalance', Finance::dailyBalance(Reports::todayDate()))
-                ->where('dailyBalanceHistory', Finance::dailyBalanceHistory(Reports::todayDate()))
+                ->where('capabilities.view_non_cash_balance', false)
+                ->where('capabilities.edit_cash_entry_backdate', false)
+                ->where('dailyBalance', $cashOnlyBalance)
+                ->where('dailyBalanceHistory', $cashOnlyHistory)
                 ->where('moneyIn.0.ref', $todayEntries[0]['ref'])
                 ->where(
                     'moneyIn.'.array_search($posEntry, $todayEntries, true).'.orderNo',

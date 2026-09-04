@@ -4,6 +4,7 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\AdminModule;
 use App\Models\AdminRole;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\RoleIcons;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
@@ -41,6 +42,8 @@ class UpdateAdminRoleRequest extends FormRequest
             'permissions.*.can_read' => ['required', 'boolean'],
             'permissions.*.can_update' => ['required', 'boolean'],
             'permissions.*.can_delete' => ['required', 'boolean'],
+            'permissions.*.additional_actions' => ['sometimes', 'array'],
+            'permissions.*.additional_actions.*' => ['string', 'distinct', Rule::in(AdminModuleActions::keys())],
         ];
     }
 }

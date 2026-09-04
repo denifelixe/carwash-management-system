@@ -1,5 +1,6 @@
 <?php
 
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Demo\RoleAccess;
 use Inertia\Testing\AssertableInertia;
 
@@ -69,6 +70,17 @@ test('the owner is the only role that can manage users', function () {
     ));
 
     expect($ownersOfUserModule)->toBe(['owner']);
+});
+
+test('only the manager staff role receives finance additional actions by default', function () {
+    foreach (AdminModuleActions::for('finance') as $action) {
+        expect(RoleAccess::allowsAdditionalAction('manager', 'finance', $action['key']))
+            ->toBeTrue()
+            ->and(RoleAccess::allowsAdditionalAction('finance', 'finance', $action['key']))
+            ->toBeFalse()
+            ->and(RoleAccess::allowsAdditionalAction('cashier', 'finance', $action['key']))
+            ->toBeFalse();
+    }
 });
 
 test('every staff member has an editable shift and the active persona identifies the same staff member', function () {

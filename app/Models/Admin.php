@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Admin\AdminModuleActions;
 use Database\Factories\AdminFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -82,6 +83,30 @@ class Admin extends Authenticatable
             ->where('admin_modules.key', $moduleKey)
             ->where('admin_modules.is_active', true)
             ->wherePivot("can_{$permission}", true)
+            ->exists();
+    }
+
+    public function hasModuleAdditionalAction(string $moduleKey, string $action): bool
+    {
+        if ($this->is_owner) {
+            return true;
+        }
+
+        if (! in_array($action, array_column(AdminModuleActions::for($moduleKey), 'key'), true)) {
+            return false;
+        }
+
+        $role = $this->role;
+
+        if ($role === null || ! $role->is_active) {
+            return false;
+        }
+
+        return $role->modules()
+            ->where('admin_modules.key', $moduleKey)
+            ->where('admin_modules.is_active', true)
+            ->wherePivot('can_read', true)
+            ->whereJsonContains('admin_role_module.additional_actions', $action)
             ->exists();
     }
 

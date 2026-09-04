@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\DeleteCashEntry;
 use App\Actions\Admin\DeleteOrderTransaction;
+use App\Actions\Admin\RecalculateDailyBalances;
 use App\Actions\Admin\UpdateDailyBalance;
 use App\Actions\Admin\UpdateOrderTransaction;
 use App\Http\Controllers\Controller;
@@ -15,6 +16,7 @@ use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\FinancePresenter;
@@ -58,6 +60,25 @@ class FinanceController extends Controller
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
 
         ['moneyIn' => $moneyIn, 'moneyOut' => $moneyOut] = FinanceQueries::ledgerForDate($selectedDate);
+        $canViewNonCashBalance = Gate::allows(
+            'admin.finance.'.AdminModuleActions::VIEW_NON_CASH_BALANCE,
+        );
+        $dailyBalance = FinanceQueries::dailyBalance($selectedDate);
+        $dailyBalanceHistory = FinanceQueries::dailyBalanceHistory($selectedDate);
+
+        if (! $canViewNonCashBalance) {
+            $dailyBalance['nonCash'] = 0;
+            $dailyBalance['previous']['nonCash'] = 0;
+            $dailyBalanceHistory = array_map(
+                fn (array $balance): array => [
+                    ...$balance,
+                    'nonCashIncome' => 0,
+                    'nonCashExpense' => 0,
+                    'nonCashBalance' => 0,
+                ],
+                $dailyBalanceHistory,
+            );
+        }
 
         return Inertia::render('admin/Finance', [
             ...$adminShell->props($admin, 'Keuangan', 'finance'),
@@ -68,8 +89,8 @@ class FinanceController extends Controller
             'incomeCategories' => FinanceCategories::recordable('in'),
             'expenseCategories' => FinanceCategories::recordable('out'),
             'cashSummary' => FinanceQueries::cashSummary($moneyIn, $moneyOut),
-            'dailyBalance' => FinanceQueries::dailyBalance($selectedDate),
-            'dailyBalanceHistory' => FinanceQueries::dailyBalanceHistory($selectedDate),
+            'dailyBalance' => $dailyBalance,
+            'dailyBalanceHistory' => $dailyBalanceHistory,
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
             'expenseMethods' => OrderQueries::EXPENSE_METHODS,
             'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $selectedDate),
@@ -80,6 +101,10 @@ class FinanceController extends Controller
                 'create' => Gate::allows('admin.finance.create'),
                 'update' => Gate::allows('admin.finance.update'),
                 'delete' => Gate::allows('admin.finance.delete'),
+                'edit_cash_entry_backdate' => Gate::allows(
+                    'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+                ),
+                'view_non_cash_balance' => $canViewNonCashBalance,
             ],
         ]);
     }
@@ -172,6 +197,7 @@ class FinanceController extends Controller
     public function update(
         UpdateCashEntryRequest $request,
         CashEntry $cashEntry,
+        RecalculateDailyBalances $recalculateDailyBalances,
         UpdateDailyBalance $updateDailyBalance,
     ): RedirectResponse {
         OperationalDataWindow::ensureAllows($cashEntry->entry_date);
@@ -199,9 +225,13 @@ class FinanceController extends Controller
                 $cashEntry,
                 $attachments,
                 $removedAttachmentIds,
+                $recalculateDailyBalances,
                 $updateDailyBalance,
                 &$storedFiles,
             ): void {
+                $previousEntryDate = $cashEntry->entry_date->toDateString();
+                $entryDate = $data['entry_date'];
+                $dateChanged = $entryDate !== $previousEntryDate;
                 $previousAmounts = UpdateDailyBalance::methodAmounts(
                     $cashEntry->method,
                     (int) $cashEntry->amount,
@@ -210,35 +240,55 @@ class FinanceController extends Controller
                     $data['method'],
                     (int) $data['amount'],
                 );
+                $occurredAt = $cashEntry->occurred_at;
+
+                if ($dateChanged) {
+                    $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $entryDate);
+                    $occurredAt = $selectedDate->setTime(
+                        $occurredAt->hour,
+                        $occurredAt->minute,
+                        $occurredAt->second,
+                        $occurredAt->micro,
+                    );
+                }
 
                 $cashEntry->fill([
                     'category' => $data['category'],
                     'description' => $data['description'],
                     'amount' => $data['amount'],
                     'method' => $data['method'],
+                    'entry_date' => $entryDate,
+                    'occurred_at' => $occurredAt,
                     'updated_by_admin_id' => $admin->getKey(),
                     'reference' => FinanceReference::make(
                         $data['category'],
-                        $cashEntry->entry_date->toDateString(),
+                        $entryDate,
                         $cashEntry->id,
                     ),
                 ])->save();
 
-                $updateDailyBalance->handle(
-                    $cashEntry->entry_date->toDateString(),
-                    cashIncomeDelta: $cashEntry->direction === 'in'
-                        ? $correctedAmounts['cash'] - $previousAmounts['cash']
-                        : 0,
-                    cashExpenseDelta: $cashEntry->direction === 'out'
-                        ? $correctedAmounts['cash'] - $previousAmounts['cash']
-                        : 0,
-                    nonCashIncomeDelta: $cashEntry->direction === 'in'
-                        ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
-                        : 0,
-                    nonCashExpenseDelta: $cashEntry->direction === 'out'
-                        ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
-                        : 0,
-                );
+                if ($dateChanged) {
+                    $recalculationDate = $previousEntryDate < $entryDate
+                        ? $previousEntryDate
+                        : $entryDate;
+                    $recalculateDailyBalances->handle($recalculationDate);
+                } else {
+                    $updateDailyBalance->handle(
+                        $entryDate,
+                        cashIncomeDelta: $cashEntry->direction === 'in'
+                            ? $correctedAmounts['cash'] - $previousAmounts['cash']
+                            : 0,
+                        cashExpenseDelta: $cashEntry->direction === 'out'
+                            ? $correctedAmounts['cash'] - $previousAmounts['cash']
+                            : 0,
+                        nonCashIncomeDelta: $cashEntry->direction === 'in'
+                            ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
+                            : 0,
+                        nonCashExpenseDelta: $cashEntry->direction === 'out'
+                            ? $correctedAmounts['nonCash'] - $previousAmounts['nonCash']
+                            : 0,
+                    );
+                }
 
                 $cashEntry->attachments()->whereKey($removedAttachmentIds)->delete();
                 $this->storeAttachments($cashEntry, $attachments, $storedFiles);

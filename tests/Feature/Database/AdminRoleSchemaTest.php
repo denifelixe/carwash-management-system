@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Admin;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Demo\RoleAccess;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -58,6 +59,7 @@ test('admin and role schema contains the required tables columns and indexes', f
             'can_read',
             'can_update',
             'can_delete',
+            'additional_actions',
         ]))->toBeTrue()
         ->and(Schema::hasColumns('admins', [
             'id',
@@ -129,6 +131,28 @@ test('admin modules are prefilled from the demo navigation', function () {
             ->and($shared[$index]->name)->toBe($demoModule['label'])
             ->and($shared[$index]->description)->toBe($demoModule['caption']);
     }
+});
+
+test('only the default manager role receives finance additional actions', function () {
+    $roleIds = DB::table('admin_roles')
+        ->whereIn('key', ['manager', 'finance', 'cashier'])
+        ->pluck('id', 'key');
+    $financeModuleId = DB::table('admin_modules')
+        ->where('key', 'finance')
+        ->value('id');
+    $actionsFor = function (string $roleKey) use ($roleIds, $financeModuleId): array {
+        $actions = DB::table('admin_role_module')
+            ->where('admin_role_id', $roleIds[$roleKey])
+            ->where('admin_module_id', $financeModuleId)
+            ->value('additional_actions');
+
+        return json_decode((string) ($actions ?? '[]'), true);
+    };
+
+    expect($actionsFor('manager'))
+        ->toBe(array_column(AdminModuleActions::for('finance'), 'key'))
+        ->and($actionsFor('finance'))->toBe([])
+        ->and($actionsFor('cashier'))->toBe([]);
 });
 
 test('owners receive full gate access while staff follow normal authorization', function () {

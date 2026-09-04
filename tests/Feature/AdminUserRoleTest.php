@@ -4,6 +4,7 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
+use App\Support\Admin\AdminModuleActions;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +20,9 @@ function rolePermissions(bool $read = true): array
             'can_read' => $read,
             'can_update' => $read && $module->key !== 'dashboard',
             'can_delete' => false,
+            'additional_actions' => $read
+                ? array_column(AdminModuleActions::for($module->key), 'key')
+                : [],
         ],
     )->all();
 }
@@ -47,6 +51,8 @@ test('an owner sees live staff roles shifts permissions and an enabled sidebar i
                 ->where('roles.3.icon', '🧑‍💼')
                 ->has('shifts', 2)
                 ->has('allModules', 16)
+                ->where('allModules.4.additional_actions.0.key', AdminModuleActions::VIEW_NON_CASH_BALANCE)
+                ->where('allModules.4.additional_actions.1.key', AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE)
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
                 ->where('modules.10.key', 'users_and_roles')
@@ -361,6 +367,15 @@ test('an owner can create and update a role permission matrix', function () {
     expect($role->modules()->wherePivot('can_read', true)->count())->toBe(16)
         ->and($role->icon)->toBe('👔');
 
+    $financePermission = $role->modules()
+        ->where('admin_modules.key', 'finance')
+        ->firstOrFail()
+        ->pivot
+        ->getAttribute('additional_actions');
+
+    expect(json_decode((string) $financePermission, true))
+        ->toBe(array_column(AdminModuleActions::for('finance'), 'key'));
+
     $permissions[1]['can_read'] = false;
 
     $this->actingAs($owner, 'admin')
@@ -397,6 +412,24 @@ test('a role icon must come from the role icon options', function () {
         ->assertSessionHasErrors('icon');
 
     expect(AdminRole::query()->where('name', 'Invalid Icon Role')->exists())->toBeFalse();
+});
+
+test('an additional role action must be registered by the application', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $permissions = rolePermissions();
+    $permissions[4]['additional_actions'] = ['unknown_finance_action'];
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.users.index'))
+        ->post(route('admin.roles.store'), [
+            'name' => 'Invalid Action Role',
+            'description' => null,
+            'icon' => '🛡️',
+            'is_active' => true,
+            'permissions' => $permissions,
+        ])
+        ->assertRedirect(route('admin.users.index'))
+        ->assertSessionHasErrors('permissions.4.additional_actions.0');
 });
 
 test('read-only staff can view the module but cannot mutate users', function () {

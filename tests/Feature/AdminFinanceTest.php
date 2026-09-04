@@ -9,6 +9,7 @@ use App\Models\CashEntryAttachment;
 use App\Models\DailyBalance;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\AdminModuleActions;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -24,7 +25,7 @@ beforeEach(function (): void {
 });
 
 /**
- * @param  array<string, bool>  $abilities
+ * @param  array<string, mixed>  $abilities
  */
 function financeStaff(array $abilities): Admin
 {
@@ -42,6 +43,10 @@ function financeStaff(array $abilities): Admin
             'can_read' => $abilities['read'] ?? false,
             'can_update' => $abilities['update'] ?? false,
             'can_delete' => $abilities['delete'] ?? false,
+            'additional_actions' => json_encode(
+                $abilities['additional_actions'] ?? [],
+                JSON_THROW_ON_ERROR,
+            ),
         ],
     );
 
@@ -90,6 +95,8 @@ test('an owner sees the live finance ledger with every capability', function () 
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
                 ->where('capabilities.delete', true)
+                ->where('capabilities.edit_cash_entry_backdate', true)
+                ->where('capabilities.view_non_cash_balance', true)
                 ->where('cashSummary.openingBalance', 0)
                 ->where('dailyBalance.cash', 0)
                 ->where('dailyBalance.nonCash', 0)
@@ -100,6 +107,52 @@ test('an owner sees the live finance ledger with every capability', function () 
                 ->has('moneyIn', 0)
                 ->has('moneyOut', 0),
         );
+});
+
+test('staff without the extra action receives cash-only accumulated balances', function () {
+    DailyBalance::factory()->create([
+        'date' => '2026-08-30',
+        'cash_income' => 100000,
+        'cash_balance' => 100000,
+        'non_cash_income' => 250000,
+        'non_cash_balance' => 250000,
+    ]);
+    $staff = financeStaff(['read' => true]);
+
+    $this->actingAs($staff, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('capabilities.view_non_cash_balance', false)
+            ->where('dailyBalance.cash', 100000)
+            ->where('dailyBalance.nonCash', 0)
+            ->where('dailyBalance.previous.nonCash', 0)
+            ->where('dailyBalanceHistory.0.cashBalance', 100000)
+            ->where('dailyBalanceHistory.0.nonCashIncome', 0)
+            ->where('dailyBalanceHistory.0.nonCashBalance', 0));
+});
+
+test('staff with the extra action receives non-cash accumulated balances', function () {
+    DailyBalance::factory()->create([
+        'date' => '2026-08-30',
+        'cash_balance' => 100000,
+        'non_cash_income' => 250000,
+        'non_cash_balance' => 250000,
+    ]);
+    $staff = financeStaff([
+        'read' => true,
+        'additional_actions' => [AdminModuleActions::VIEW_NON_CASH_BALANCE],
+    ]);
+
+    $this->actingAs($staff, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('capabilities.view_non_cash_balance', true)
+            ->where('dailyBalance.cash', 100000)
+            ->where('dailyBalance.nonCash', 250000)
+            ->where('dailyBalanceHistory.0.nonCashIncome', 250000)
+            ->where('dailyBalanceHistory.0.nonCashBalance', 250000));
 });
 
 test('the balance card is handed the snapshots behind it, newest first', function () {
@@ -703,6 +756,87 @@ test('an owner can change a recorded entry and append another document', functio
             fn (AssertableInertia $page) => $page
                 ->where('moneyOut.0.updatedBy', $owner->name),
         );
+});
+
+test('changing a cash entry date rebuilds balances from the earliest affected date', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $movedEntry = CashEntry::factory()->withDailyBalance()->create([
+        'amount' => 100000,
+        'entry_date' => '2026-08-28',
+        'occurred_at' => '2026-08-28 09:15:00',
+    ]);
+    CashEntry::factory()->withDailyBalance()->create([
+        'amount' => 50000,
+        'entry_date' => '2026-08-29',
+        'occurred_at' => '2026-08-29 11:00:00',
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $movedEntry), cashEntryPayload([
+            'entry_date' => '2026-08-30',
+            'amount' => 120000,
+            'method' => 'Transfer',
+        ]))
+        ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-30']))
+        ->assertSessionHasNoErrors();
+
+    $movedEntry->refresh();
+    $balances = DailyBalance::query()->orderBy('date')->get()->keyBy(
+        fn (DailyBalance $balance): string => $balance->date->toDateString(),
+    );
+
+    expect($movedEntry->entry_date->toDateString())->toBe('2026-08-30')
+        ->and($movedEntry->occurred_at->format('Y-m-d H:i'))->toBe('2026-08-30 09:15')
+        ->and($movedEntry->reference)->toContain('TRX-PP-260830-')
+        ->and($balances)->not->toHaveKey('2026-08-28')
+        ->and($balances['2026-08-29']->cash_income)->toBe(50000)
+        ->and($balances['2026-08-29']->cash_balance)->toBe(50000)
+        ->and($balances['2026-08-30']->cash_balance)->toBe(50000)
+        ->and($balances['2026-08-30']->non_cash_income)->toBe(120000)
+        ->and($balances['2026-08-30']->non_cash_balance)->toBe(120000);
+});
+
+test('staff without the extra action cannot change a cash entry date', function () {
+    $entry = CashEntry::factory()->withDailyBalance()->create([
+        'entry_date' => '2026-08-29',
+        'occurred_at' => '2026-08-29 09:15:00',
+    ]);
+    $staff = financeStaff(['read' => true, 'update' => true]);
+
+    $this->actingAs($staff, 'admin')
+        ->from(route('admin.finance.index', ['date' => '2026-08-29']))
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'entry_date' => '2026-08-30',
+        ]))
+        ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-29']))
+        ->assertSessionHasErrors('entry_date');
+
+    expect($entry->refresh()->entry_date->toDateString())->toBe('2026-08-29');
+});
+
+test('staff with the extra action can change a cash entry date', function () {
+    $entry = CashEntry::factory()->withDailyBalance()->create([
+        'entry_date' => '2026-08-29',
+        'occurred_at' => '2026-08-29 09:15:00',
+    ]);
+    $staff = financeStaff([
+        'read' => true,
+        'update' => true,
+        'additional_actions' => [AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE],
+    ]);
+
+    $this->actingAs($staff, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload([
+            'entry_date' => '2026-08-30',
+        ]))
+        ->assertSessionHasNoErrors();
+
+    expect($entry->refresh()->entry_date->toDateString())->toBe('2026-08-30');
+
+    $this->actingAs($staff, 'admin')
+        ->get(route('admin.finance.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('capabilities.edit_cash_entry_backdate', true));
 });
 
 test('an entry keeps the document already on file when none is uploaded', function () {

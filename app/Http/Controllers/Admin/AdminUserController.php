@@ -11,6 +11,7 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\AdminShift;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\RoleIcons;
 use App\Support\Admin\TransactionShiftResolver;
@@ -59,6 +60,7 @@ class AdminUserController extends Controller
                     'key' => $module->key,
                     'label' => $module->name,
                     'caption' => $module->description ?? '',
+                    'additional_actions' => AdminModuleActions::for($module->key),
                 ])->all(),
                 'ownerSummary' => [
                     'key' => 'owner',
@@ -184,6 +186,9 @@ class AdminUserController extends Controller
             'permissions' => $modules->map(function (AdminModule $module) use ($assignedModules): array {
                 $assignedModule = $assignedModules->get($module->id);
                 $pivot = $assignedModule?->getRelation('pivot');
+                $additionalActions = $pivot instanceof Pivot
+                    ? json_decode((string) ($pivot->getAttribute('additional_actions') ?? '[]'), true)
+                    : [];
 
                 return [
                     'module_id' => $module->id,
@@ -191,6 +196,7 @@ class AdminUserController extends Controller
                     'can_read' => $pivot instanceof Pivot && (bool) $pivot->getAttribute('can_read'),
                     'can_update' => $pivot instanceof Pivot && (bool) $pivot->getAttribute('can_update'),
                     'can_delete' => $pivot instanceof Pivot && (bool) $pivot->getAttribute('can_delete'),
+                    'additional_actions' => is_array($additionalActions) ? $additionalActions : [],
                 ];
             })->all(),
         ];

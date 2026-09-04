@@ -475,7 +475,8 @@ test('the recap prints the balance the day opened from and the one it closed on'
         ->toContain("heading: 'Saldo Kas',")
         ->toContain('caption: balanceCaption.value,')
         // Both channels and what they come to together.
-        ->toContain("columns: ['Saldo', 'Tunai', 'Non-Tunai', 'Total Saldo'],")
+        ->toContain("? ['Saldo', 'Tunai', 'Non-Tunai', 'Total Saldo']")
+        ->toContain(": ['Saldo', 'Tunai', 'Total Saldo'],")
         // Yesterday first, then today, in that order.
         ->toContain("balanceRow(\n                        props.dailyBalance.previous.date,")
         ->toContain("balanceRow(\n                        props.filters.date,");
@@ -490,9 +491,10 @@ test('the recap prints the balance the day opened from and the one it closed on'
         // Red where it is negative, the way the card reads on screen.
         ->toContain("cash < 0 ? ('negative' as const) : ('default' as const),")
         // What the outlet holds across both channels, on the sheet…
-        ->toContain('const total = cash + nonCash;')
+        ->toContain('const total = cash + visibleNonCash;')
+        ->toContain('props.capabilities.view_non_cash_balance')
         // …and on the card the recap is taken from.
         ->toContain('const dailyBalanceTotal = computed<number>(')
-        ->toContain('props.dailyBalance.cash + props.dailyBalance.nonCash,')
+        ->toContain('? props.dailyBalance.nonCash')
         ->toContain('>Total Saldo</span');
 });
