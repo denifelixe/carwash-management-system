@@ -93,10 +93,15 @@ class FinanceController extends Controller
 
         /** @var Admin $admin */
         $admin = $request->user('admin');
-        /* Both read off the outlet clock, so the entry_date is the day the
-         * till was actually open. */
-        $occurredAt = CarbonImmutable::now();
-        $entryDate = $occurredAt->toDateString();
+        $now = CarbonImmutable::now();
+        $entryDate = $data['entry_date'] ?? $now->toDateString();
+        $selectedDate = CarbonImmutable::createFromFormat('!Y-m-d', $entryDate);
+        $occurredAt = $selectedDate->setTime(
+            $now->hour,
+            $now->minute,
+            $now->second,
+            $now->micro,
+        );
         $shift = $transactionShiftResolver->resolve(
             $admin,
             $request->integer('transaction_shift_id') ?: null,

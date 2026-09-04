@@ -52,6 +52,7 @@ function financeStaff(array $abilities): Admin
 function cashEntryPayload(array $overrides = []): array
 {
     return array_merge([
+        'entry_date' => now()->toDateString(),
         'direction' => 'in',
         'category' => 'Penjualan Produk',
         'description' => 'Penjualan parfum mobil 6 botol',
@@ -489,6 +490,26 @@ test('an owner can record money in', function () {
         ->and(DailyBalance::query()->sole()->cash_income)->toBe(360000)
         ->and(DailyBalance::query()->sole()->cash_balance)->toBe(360000)
         ->and(DailyBalance::query()->sole()->non_cash_income)->toBe(0);
+});
+
+test('an owner can record money on the selected finance date', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload([
+            'entry_date' => '2026-08-27',
+        ]))
+        ->assertRedirect(route('admin.finance.index', ['date' => '2026-08-27']))
+        ->assertSessionHasNoErrors();
+
+    $entry = CashEntry::query()->sole();
+
+    expect($entry->entry_date->toDateString())->toBe('2026-08-27')
+        ->and($entry->occurred_at->format('Y-m-d H:i'))
+        ->toBe('2026-08-27 10:00')
+        ->and($entry->reference)->toContain('TRX-PP-260827-')
+        ->and(DailyBalance::query()->sole()->date->toDateString())
+        ->toBe('2026-08-27');
 });
 
 test('money out is refused without its supporting document', function () {

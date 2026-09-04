@@ -178,6 +178,7 @@ const draft = ref({
 
 /** The live ledger posts the entry, including a real supporting document. */
 const entryForm = useForm<{
+    entry_date: string;
     direction: Ledger;
     category: string;
     description: string;
@@ -187,6 +188,7 @@ const entryForm = useForm<{
     removed_attachment_ids: number[];
     transaction_shift_id: number | null;
 }>({
+    entry_date: props.filters.date,
     direction: 'in',
     category: props.incomeCategories[0],
     description: '',
@@ -1084,6 +1086,7 @@ function completeEntrySave(transactionShiftId: number | null): void {
 
 /** The live ledger writes to the database and re-reads the reloaded props. */
 function saveLiveEntry(transactionShiftId: number | null): void {
+    entryForm.entry_date = props.filters.date;
     entryForm.direction = activeLedger.value;
     entryForm.category = draft.value.category;
     entryForm.description = draft.value.description;
@@ -1124,10 +1127,10 @@ function saveDemoEntry(transactionShiftId: number | null): void {
         id: sequence,
         ref: transactionReference(
             draft.value.category,
-            props.filters.today,
+            props.filters.date,
             sequence,
         ),
-        date: props.filters.today,
+        date: props.filters.date,
         time: new Intl.DateTimeFormat('id-ID', {
             hour: '2-digit',
             minute: '2-digit',

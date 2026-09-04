@@ -137,6 +137,8 @@ test('finance references use one category date and identifier format', function 
         ->toContain('function transactionReference(')
         ->toContain('`TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`')
         ->toContain('ref: transactionReference(')
+        ->toContain('entryForm.entry_date = props.filters.date;')
+        ->toContain('date: props.filters.date,')
         ->toContain('max-w-48')
         ->toContain('whitespace-normal')
         ->toContain('Pembayaran Sisa/Lunas')

@@ -27,6 +27,7 @@ class StoreCashEntryRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'entry_date' => ['nullable', 'date_format:Y-m-d'],
             'direction' => ['required', Rule::in(['in', 'out'])],
             'category' => [
                 'required',
