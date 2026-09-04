@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\CaptureOrderLead;
 use App\Actions\Admin\DeleteOrder;
+use App\Actions\Admin\UpdateOrder;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderHandlerRequest;
+use App\Http\Requests\Admin\UpdateOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderStatusRequest;
 use App\Models\Admin;
 use App\Models\Member;
@@ -175,20 +177,41 @@ class OrderController extends Controller
 
     public function updateHandler(UpdateOrderHandlerRequest $request, Order $order): RedirectResponse
     {
-        OperationalDataWindow::ensureAllows($order->service_date);
-        $order->update($request->validated());
+        DB::transaction(function () use ($order, $request): void {
+            $order = Order::query()->lockForUpdate()->findOrFail($order->id);
+            OperationalDataWindow::ensureAllows($order->service_date);
+            abort_unless(
+                $order->isEditable(),
+                422,
+                'Order yang sudah memiliki transaksi, lunas, atau selesai tidak dapat diubah.',
+            );
+            $order->update($request->validated());
+        });
 
         return back()->with('success', 'Handler order berhasil diperbarui.');
     }
 
     public function updateStatus(UpdateOrderStatusRequest $request, Order $order): RedirectResponse
     {
-        OperationalDataWindow::ensureAllows($order->service_date);
-        abort_if($order->status === 'selesai', 422, 'Order yang sudah selesai tidak dapat diubah.');
-
-        $order->update(['status' => $request->validated('status')]);
+        DB::transaction(function () use ($order, $request): void {
+            $order = Order::query()->lockForUpdate()->findOrFail($order->id);
+            OperationalDataWindow::ensureAllows($order->service_date);
+            abort_unless(
+                $order->isEditable(),
+                422,
+                'Order yang sudah memiliki transaksi, lunas, atau selesai tidak dapat diubah.',
+            );
+            $order->update(['status' => $request->validated('status')]);
+        });
 
         return back()->with('success', 'Status order berhasil diperbarui.');
+    }
+
+    public function update(UpdateOrderRequest $request, Order $order, UpdateOrder $updateOrder): RedirectResponse
+    {
+        $updateOrder->handle($order, $request->validated());
+
+        return back()->with('success', 'Order berhasil diperbarui.');
     }
 
     public function destroy(Request $request, Order $order, DeleteOrder $deleteOrder): RedirectResponse

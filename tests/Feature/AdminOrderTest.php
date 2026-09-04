@@ -166,11 +166,109 @@ test('an owner can create a non member order without registering a member', func
         ->vehicle_plate->toBe('B9876ABC');
 });
 
+test('an admin with update access can edit an unpaid unfinished order', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'customer_name' => 'Pelanggan Lama',
+        'subtotal' => 45000,
+        'total' => 45000,
+        'paid_amount' => 0,
+    ]);
+    $service = Service::factory()->create(['price' => 75000, 'stamps' => 2]);
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => '  Pelanggan   Baru  ',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => '  Toyota   Innova  ',
+            'vehicle_plate' => 'b 1234 xyz',
+            'handled_by' => '  Pak   Budi  ',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->customer_name->toBe('Pelanggan Baru')
+        ->customer_phone->toBe('081234567890')
+        ->vehicle_name->toBe('Toyota Innova')
+        ->vehicle_plate->toBe('B1234XYZ')
+        ->handled_by->toBe('Pak Budi')
+        ->subtotal->toBe(150000)
+        ->total->toBe(150000)
+        ->member_id->toBeNull()
+        ->stamps_earned->toBe(0)
+        ->and($order->serviceVariations()->firstOrFail()->pivot->quantity)->toBe(2);
+});
+
+test('a paid or completed order cannot be edited', function (array $attributes) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create($attributes);
+    $service = Service::factory()->create(['price' => 75000]);
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Tidak Berubah',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => 'Toyota Innova',
+            'vehicle_plate' => 'B1234XYZ',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
+        ])
+        ->assertUnprocessable();
+
+    expect($order->refresh()->customer_name)->not->toBe('Tidak Berubah');
+})->with([
+    'lunas' => [['status' => 'proses', 'total' => 45000, 'paid_amount' => 45000]],
+    'selesai' => [['status' => 'selesai', 'total' => 45000, 'paid_amount' => 0]],
+]);
+
+test('an order with a transaction cannot be edited until the transaction is deleted', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['total' => 100000, 'paid_amount' => 50000]);
+    $transaction = OrderTransaction::factory()->create([
+        'order_id' => $order->id,
+        'amount' => 50000,
+    ]);
+    $service = Service::factory()->create(['price' => 50000]);
+    $variation = $service->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Pelanggan',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => 'Toyota Innova',
+            'vehicle_plate' => 'B1234XYZ',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ])
+        ->assertUnprocessable();
+
+    expect($order->refresh()->total)->toBe(100000);
+
+    $transaction->delete();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Pelanggan Baru',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => 'Toyota Innova',
+            'vehicle_plate' => 'B1234XYZ',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->customer_name)->toBe('Pelanggan Baru');
+});
+
 test('order handler prioritizes admin then manual name then the order creator', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $inputAdmin = Admin::factory()->create(['name' => 'Kasir Pembuat']);
     $order = Order::factory()->create([
-        'status' => 'selesai',
+        'status' => 'proses',
         'created_by_admin_id' => $inputAdmin->id,
         'handled_by' => 'Petugas Lama',
     ]);
@@ -383,6 +481,16 @@ test('order status can be updated except when cashier has completed it', functio
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.status.update', $order), ['status' => 'menunggu'])
         ->assertUnprocessable();
+
+    $order->update(['status' => 'proses', 'paid_amount' => $order->total]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $order), ['status' => 'pelunasan'])
+        ->assertUnprocessable();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Baru'])
+        ->assertUnprocessable();
 });
 
 test('orders remain mutable through H-30 and lock on H-31', function () {
@@ -467,6 +575,10 @@ test('order access follows the role permission matrix', function () {
 
     $this->actingAs($admin, 'admin')
         ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas'])
+        ->assertForbidden();
+
+    $this->actingAs($admin, 'admin')
+        ->patch(route('admin.orders.update', $order), [])
         ->assertForbidden();
 
     $this->actingAs($admin, 'admin')

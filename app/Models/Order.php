@@ -54,6 +54,13 @@ class Order extends Model
     /** @use HasFactory<OrderFactory> */
     use HasFactory, SoftDeletes;
 
+    public function isEditable(): bool
+    {
+        return $this->status !== 'selesai'
+            && $this->paid_amount < $this->total
+            && ! $this->transactions()->exists();
+    }
+
     /** @return BelongsTo<Member, $this> */
     public function member(): BelongsTo
     {

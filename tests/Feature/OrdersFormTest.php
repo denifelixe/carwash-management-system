@@ -553,6 +553,15 @@ test('the order form uses the shared variation and quantity cart picker', functi
         ->toContain('service_variation_id: item.serviceVariationId')
         ->toContain('quantity: item.quantity');
 
+    expect($ordersPage)
+        ->toContain('update as updateOrder')
+        ->toContain('function openEditOrder(order: CarwashOrder): void')
+        ->toContain("order.paymentStatus !== 'lunas'")
+        ->toContain('order.transactions.length === 0')
+        ->toContain('Hapus seluruh transaksinya terlebih')
+        ->toContain('v-if="detailOrder && canEditOrder(detailOrder)"')
+        ->toContain("? 'Simpan perubahan'");
+
     expect($picker)
         ->toContain('placeholder="Cari layanan, kategori, atau variasi"')
         ->toContain('tokens.every((token) => haystack.includes(token))')

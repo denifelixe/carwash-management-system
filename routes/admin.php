@@ -61,6 +61,7 @@ Route::domain((string) config('domains.admin'))
             Route::get('dashboard', DashboardController::class)->name('dashboard');
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');
             Route::post('orders', [OrderController::class, 'store'])->name('orders.store');
+            Route::patch('orders/{order}', [OrderController::class, 'update'])->name('orders.update');
             Route::patch('orders/{order}/handler', [OrderController::class, 'updateHandler'])->name('orders.handler.update');
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
             Route::delete('orders/{order}', [OrderController::class, 'destroy'])->name('orders.destroy');

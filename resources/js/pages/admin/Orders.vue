@@ -22,6 +22,7 @@ import {
     destroy as destroyOrder,
     index as indexOrder,
     store as storeOrder,
+    update as updateOrder,
     updateHandler as updateOrderHandler,
     updateStatus as updateOrderStatus,
 } from '@/actions/App/Http/Controllers/Admin/OrderController';
@@ -156,6 +157,7 @@ const statusFilter = ref<string>('menunggu');
 const detailOrderId = ref<number | null>(null);
 const deletingOrder = ref<CarwashOrder | null>(null);
 const isCreateOpen = ref<boolean>(false);
+const editingOrderId = ref<number | null>(null);
 const isStaffOpen = ref<boolean>(false);
 const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
@@ -294,10 +296,22 @@ const detailOrder = computed<CarwashOrder | null>(
         null,
 );
 
-/** Only cashier-settled orders are locked; a cancellation can be corrected. */
+const editingOrder = computed<CarwashOrder | null>(
+    () =>
+        orderList.value.find((order) => order.id === editingOrderId.value) ??
+        null,
+);
+
+const isOrderFormOpen = computed<boolean>(
+    () => isCreateOpen.value || editingOrder.value !== null,
+);
+
+/** Paid, completed, or operationally aged orders are read-only. */
 const isDetailReadOnly = computed<boolean>(
     () =>
         detailOrder.value?.status === 'selesai' ||
+        detailOrder.value?.paymentStatus === 'lunas' ||
+        (detailOrder.value?.transactions.length ?? 0) > 0 ||
         detailOrder.value?.isMutable === false,
 );
 
@@ -510,6 +524,18 @@ const canCreate = computed<boolean>(
         hasCustomer.value,
 );
 
+const canSubmitOrder = computed<boolean>(() => {
+    if (!canCreate.value) {
+        return false;
+    }
+
+    return (
+        editingOrder.value === null ||
+        draftTotal.value - editingOrder.value.discount >
+            editingOrder.value.paidAmount
+    );
+});
+
 function normalizeCustomerSearch(value: string): string {
     return value.toLocaleLowerCase('id-ID').replace(/[^a-z0-9]/g, '');
 }
@@ -530,8 +556,14 @@ function canEditStatus(order: CarwashOrder): boolean {
     return (
         props.capabilities.update &&
         order.status !== 'selesai' &&
+        order.paymentStatus !== 'lunas' &&
+        order.transactions.length === 0 &&
         order.isMutable !== false
     );
+}
+
+function canEditOrder(order: CarwashOrder): boolean {
+    return canEditStatus(order);
 }
 
 /**
@@ -748,8 +780,83 @@ function resetDraft(): void {
     isStaffOpen.value = false;
 }
 
+function closeOrderForm(): void {
+    isCreateOpen.value = false;
+    editingOrderId.value = null;
+    orderForm.clearErrors();
+    resetDraft();
+}
+
+function openCreateOrder(): void {
+    editingOrderId.value = null;
+    orderForm.clearErrors();
+    resetDraft();
+    isCreateOpen.value = true;
+}
+
+function openEditOrder(order: CarwashOrder): void {
+    if (!canEditOrder(order)) {
+        return;
+    }
+
+    resetDraft();
+    editingOrderId.value = order.id;
+    const customerOption = customerOptions.value.find(
+        (option) =>
+            option.customer.id === order.customerId &&
+            normalizePlate(option.vehicle.plate) ===
+                normalizePlate(order.plate),
+    );
+
+    if (customerOption) {
+        customerMode.value = 'existing';
+        selectedCustomerOption.value = customerOption;
+        draft.value.customerId = customerOption.customer.id;
+        draft.value.customerPhone = customerOption.customer.phone;
+        draft.value.vehicle = customerOption.vehicle.name;
+        draft.value.plate = customerOption.vehicle.plate;
+    } else {
+        customerMode.value = 'walk-in';
+        draft.value.walkInName = order.customer.replace(/ \(non-member\)$/, '');
+        draft.value.customerPhone = order.phone;
+        draft.value.vehicle = order.vehicle;
+        draft.value.plate = order.plate;
+    }
+
+    draft.value.handledByAdminId = order.handledByAdminId;
+    draft.value.handledBy = order.handledByManual ?? '';
+    draft.value.serviceItems = order.serviceItems.map((item) => ({
+        serviceVariationId: item.serviceVariationId,
+        serviceId: item.serviceId,
+        quantity: item.quantity,
+    }));
+    isStaffOpen.value = true;
+}
+
+function serviceItemsFromDraft(): CarwashServiceItem[] {
+    return draftLineItems.value.map(({ item, service, variation }) => {
+        const variationLabel = Object.entries(variation.variations ?? {})
+            .map(([attribute, value]) => `${attribute}: ${value}`)
+            .join(', ');
+        const label = variationLabel
+            ? `${service.name} (${variationLabel})`
+            : service.name;
+
+        return {
+            serviceVariationId: variation.id,
+            serviceId: service.id,
+            serviceName: service.name,
+            variations: variation.variations,
+            quantity: item.quantity,
+            unitPrice: variation.price,
+            totalPrice: variation.price * item.quantity,
+            label: item.quantity > 1 ? `${label} x${item.quantity}` : label,
+        };
+    });
+}
+
 function createOrder(): void {
-    if (!canCreate.value) {
+    if (!canSubmitOrder.value) {
         return;
     }
 
@@ -770,21 +877,27 @@ function createOrder(): void {
             service_variation_id: item.serviceVariationId,
             quantity: item.quantity,
         }));
-        orderForm.submit(storeOrder(), {
-            preserveScroll: true,
-            onSuccess: () => {
-                const createdOrder = orderList.value[0];
-                resetDraft();
-                isCreateOpen.value = false;
-                orderForm.reset();
-                createdOrderAlert.value = createdOrder
-                    ? {
-                          orderNo: createdOrder.orderNo,
-                          customer: createdOrder.customer,
-                      }
-                    : null;
+        orderForm.submit(
+            editingOrder.value
+                ? updateOrder(editingOrder.value.id)
+                : storeOrder(),
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    const createdOrder = editingOrder.value
+                        ? null
+                        : orderList.value[0];
+                    closeOrderForm();
+                    orderForm.reset();
+                    createdOrderAlert.value = createdOrder
+                        ? {
+                              orderNo: createdOrder.orderNo,
+                              customer: createdOrder.customer,
+                          }
+                        : null;
+                },
             },
-        });
+        );
 
         return;
     }
@@ -794,27 +907,33 @@ function createOrder(): void {
     const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
     const customerName =
         customer?.name ?? `${draft.value.walkInName.trim()}${walkInLabel}`;
-    const createdServiceItems: CarwashServiceItem[] = draftLineItems.value.map(
-        ({ item, service, variation }) => {
-            const variationLabel = Object.entries(variation.variations ?? {})
-                .map(([attribute, value]) => `${attribute}: ${value}`)
-                .join(', ');
-            const label = variationLabel
-                ? `${service.name} (${variationLabel})`
-                : service.name;
+    const createdServiceItems = serviceItemsFromDraft();
 
-            return {
-                serviceVariationId: variation.id,
-                serviceId: service.id,
-                serviceName: service.name,
-                variations: variation.variations,
-                quantity: item.quantity,
-                unitPrice: variation.price,
-                totalPrice: variation.price * item.quantity,
-                label: item.quantity > 1 ? `${label} x${item.quantity}` : label,
-            };
-        },
-    );
+    if (editingOrder.value) {
+        const order = editingOrder.value;
+
+        order.customerId = customer?.id ?? null;
+        order.customer = customerName;
+        order.phone = customer?.phone ?? draft.value.customerPhone.trim();
+        order.vehicle = draft.value.vehicle;
+        order.plate = draft.value.plate.toUpperCase();
+        order.items = createdServiceItems.map((item) => item.label).join(', ');
+        order.serviceIds = [
+            ...new Set(createdServiceItems.map((item) => item.serviceId)),
+        ];
+        order.serviceItems = createdServiceItems;
+        order.total = Math.max(0, draftTotal.value - order.discount);
+        order.stampsEarned = draftStamps.value;
+        order.handledByAdminId = draft.value.handledByAdminId;
+        order.handledByManual = draft.value.handledBy.trim() || null;
+        order.handledBy =
+            draft.value.handledByAdminId === props.persona.id
+                ? props.persona.name
+                : draft.value.handledBy.trim() || order.inputBy;
+        closeOrderForm();
+
+        return;
+    }
 
     workflow.addOrder({
         id: sequence,
@@ -854,8 +973,7 @@ function createOrder(): void {
         transactions: [],
     });
 
-    resetDraft();
-    isCreateOpen.value = false;
+    closeOrderForm();
     createdOrderAlert.value = { orderNo, customer: customerName };
 }
 
@@ -947,7 +1065,7 @@ const deleteForm = useForm({});
                         v-if="capabilities.create"
                         type="button"
                         class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
-                        @click="isCreateOpen = true"
+                        @click="openCreateOrder"
                     >
                         <Plus class="h-4 w-4" />
                         Buat Order
@@ -1122,11 +1240,7 @@ const deleteForm = useForm({});
                 <div v-if="isDetailReadOnly" class="mt-2 flex gap-2">
                     <StatusPill :status="detailOrder.status" />
                 </div>
-                <template
-                    v-else-if="
-                        capabilities.update && detailOrder.isMutable !== false
-                    "
-                >
+                <template v-else-if="canEditOrder(detailOrder)">
                     <div class="mt-2 flex gap-2">
                         <select
                             v-model="statusDraft"
@@ -1196,13 +1310,7 @@ const deleteForm = useForm({});
                         <dt class="text-[11px] text-slate-500">
                             Dihandle oleh
                         </dt>
-                        <dd
-                            v-if="
-                                capabilities.update &&
-                                detailOrder.isMutable !== false
-                            "
-                            class="mt-1"
-                        >
+                        <dd v-if="canEditOrder(detailOrder)" class="mt-1">
                             <div class="flex gap-2">
                                 <input
                                     v-if="!isDetailHandlerSelf"
@@ -1375,6 +1483,13 @@ const deleteForm = useForm({});
             </section>
 
             <p
+                v-if="detailOrder.transactions.length > 0"
+                class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
+            >
+                Order memiliki transaksi. Hapus seluruh transaksinya terlebih
+                dahulu sebelum mengedit order.
+            </p>
+            <p
                 v-if="detailOrder.status === 'batal'"
                 class="flex items-center gap-2 rounded-xl bg-rose-50 px-3 py-2.5 text-xs font-medium text-rose-700"
             >
@@ -1402,6 +1517,15 @@ const deleteForm = useForm({});
         </div>
 
         <template #footer>
+            <button
+                v-if="detailOrder && canEditOrder(detailOrder)"
+                type="button"
+                class="flex-1 rounded-xl border border-cyan-200 py-2.5 text-sm font-semibold text-cyan-700 transition hover:bg-cyan-50"
+                @click="openEditOrder(detailOrder)"
+            >
+                <Pencil class="mr-1.5 inline h-4 w-4" />
+                Edit order
+            </button>
             <button
                 v-if="
                     detailOrder &&
@@ -1460,13 +1584,19 @@ const deleteForm = useForm({});
         </template>
     </ModalDialog>
 
-    <!-- Create order -->
+    <!-- Create or edit order -->
     <ModalDialog
-        :open="isCreateOpen"
-        title="Buat order baru"
-        caption="Catat kendaraan yang baru datang"
+        :open="isOrderFormOpen"
+        :title="
+            editingOrder ? `Edit ${editingOrder.orderNo}` : 'Buat order baru'
+        "
+        :caption="
+            editingOrder
+                ? 'Perbarui pelanggan, kendaraan, petugas, atau layanan'
+                : 'Catat kendaraan yang baru datang'
+        "
         size="lg"
-        @close="isCreateOpen = false"
+        @close="closeOrderForm"
     >
         <div class="space-y-5">
             <div
@@ -1934,6 +2064,13 @@ const deleteForm = useForm({});
                     v-model="draft.serviceItems"
                     :services="services"
                 />
+                <p
+                    v-if="editingOrder && !canSubmitOrder && canCreate"
+                    class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700"
+                >
+                    Total setelah diedit harus lebih besar dari pembayaran yang
+                    sudah diterima.
+                </p>
             </div>
         </div>
 
@@ -1941,17 +2078,23 @@ const deleteForm = useForm({});
             <button
                 type="button"
                 class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="isCreateOpen = false"
+                @click="closeOrderForm"
             >
                 Batal
             </button>
             <button
                 type="button"
                 class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canCreate || orderForm.processing"
+                :disabled="!canSubmitOrder || orderForm.processing"
                 @click="createOrder"
             >
-                {{ orderForm.processing ? 'Menyimpan...' : 'Simpan order' }}
+                {{
+                    orderForm.processing
+                        ? 'Menyimpan...'
+                        : editingOrder
+                          ? 'Simpan perubahan'
+                          : 'Simpan order'
+                }}
             </button>
         </template>
     </ModalDialog>
