@@ -31,6 +31,10 @@ class PosController extends AdminController
         return $this->page($request, 'admin/Pos', [
             'orders' => DateFilter::apply(Operations::settlementOrders(), $date),
             'dailyOrders' => DateFilter::apply(Operations::orders(), $date),
+            'previousOrders' => array_values(array_filter(
+                Operations::orders(),
+                fn (array $order): bool => $order['date'] < $date && $order['status'] === 'pelunasan',
+            )),
             'partialPaymentBookings' => Operations::partialPaymentBookingOrders(),
             'filters' => DateFilter::meta($date),
             'shifts' => array_map(

@@ -43,8 +43,9 @@ class PosController extends Controller
         $today = CarbonImmutable::now()->startOfDay();
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
         $dailyOrders = OrderQueries::forDate($selectedDate);
+        $previousOrders = OrderQueries::previousPosOrders($selectedDate, $today->toDateString());
         $bookings = OrderQueries::upcomingBookings($today->toDateString());
-        $services = OrderQueries::servicesFor($dailyOrders->merge($bookings));
+        $services = OrderQueries::servicesFor($dailyOrders->merge($bookings)->merge($previousOrders));
 
         return Inertia::render('admin/Pos', [
             ...$adminShell->props($admin, 'Kasir POS', 'pos'),
@@ -54,6 +55,7 @@ class PosController extends Controller
                 ->values()
                 ->all(),
             'dailyOrders' => $dailyOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
+            'previousOrders' => $previousOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'partialPaymentBookings' => $bookings->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'filters' => OrderQueries::filters($selectedDate, $today),
             'shifts' => OrderQueries::workShifts()

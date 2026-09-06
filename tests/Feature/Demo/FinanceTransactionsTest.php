@@ -5,7 +5,42 @@ use App\Support\Demo\Finance;
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
+use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
+
+test('finance channel totals include bank providers and split payments', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8');
+const start = source.indexOf('function channelTotal(');
+const end = source.indexOf('\nconst channelRows', start);
+const code = ts.transpile(source.slice(start, end));
+const channelTotal = new Function(`${code}; return channelTotal;`)();
+const entries = [
+    { channelBreakdown: [{ label: 'Kredit · Mandiri', amount: 20000 }] },
+    { channelBreakdown: [
+        { label: 'Tunai', amount: 5000 },
+        { label: 'Kredit · BCA', amount: 10000 },
+        { label: 'Debit · Mandiri', amount: 7000 },
+    ] },
+    { channelBreakdown: [{ label: 'Kredit', amount: 3000 }] },
+    { channelBreakdown: [{ label: 'Transfer · Mandiri', amount: 11000 }] },
+    { channelBreakdown: [{ label: 'QRIS', amount: 13000 }] },
+    { channelBreakdown: [{ label: 'E-Money', amount: 17000 }] },
+];
+console.log(JSON.stringify(
+    ['Tunai', 'Kredit', 'Debit', 'Transfer', 'QRIS', 'E-Money']
+        .map(channel => channelTotal(entries, channel))
+));
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput())
+        ->and(json_decode($result->output(), true))
+        ->toBe([5000, 33000, 7000, 11000, 13000, 17000]);
+});
 
 test('POS income records every received payment on its transaction date', function () {
     $posEntries = array_values(array_filter(

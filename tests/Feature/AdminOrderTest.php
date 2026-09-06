@@ -12,6 +12,7 @@ use App\Models\OrderTransaction;
 use App\Models\Service;
 use App\Models\ServiceVariation;
 use App\Support\Admin\OrderQueries;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
@@ -466,7 +467,7 @@ test('a member vehicle must belong to the selected member', function () {
     expect(Order::query()->count())->toBe(0);
 });
 
-test('order status can be updated except when cashier has completed it', function () {
+test('order status can be updated even when cashier has completed it', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create(['status' => 'menunggu']);
 
@@ -480,18 +481,58 @@ test('order status can be updated except when cashier has completed it', functio
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.status.update', $order), ['status' => 'menunggu'])
-        ->assertUnprocessable();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->status)->toBe('menunggu');
 
     $order->update(['status' => 'proses', 'paid_amount' => $order->total]);
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.status.update', $order), ['status' => 'pelunasan'])
-        ->assertUnprocessable();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->status)->toBe('pelunasan');
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Baru'])
         ->assertUnprocessable();
 });
+
+test('status updates preserve existing transactions and order amounts', function (string $status, int $paidAmount) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'status' => 'pelunasan',
+        'total' => 45000,
+        'paid_amount' => $paidAmount,
+    ]);
+    $transaction = OrderTransaction::factory()->withDailyBalance()->create([
+        'order_id' => $order->id,
+        'amount' => $paidAmount,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => $paidAmount]],
+    ]);
+    $orderAttributes = $order->refresh()->getAttributes();
+    $transactionAttributes = $transaction->refresh()->getAttributes();
+    $dailyBalance = DB::table('daily_balance')->get()->toArray();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $order), [
+            'status' => $status,
+            'paid_amount' => 0,
+            'total' => 0,
+        ])
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->status)->toBe($status)
+        ->and(collect($order->getAttributes())->except(['status', 'updated_at'])->all())
+        ->toBe(collect($orderAttributes)->except(['status', 'updated_at'])->all())
+        ->and($transaction->refresh()->getAttributes())->toBe($transactionAttributes)
+        ->and($order->transactions()->count())->toBe(1)
+        ->and(DB::table('daily_balance')->get()->toArray())->toEqual($dailyBalance);
+})->with(['booking', 'menunggu', 'proses', 'pelunasan', 'batal'])
+    ->with(['partial payment' => 20000, 'fully paid' => 45000]);
 
 test('orders remain mutable through H-30 and lock on H-31', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);

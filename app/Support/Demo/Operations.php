@@ -404,6 +404,9 @@ class Operations
                     ...$booking,
                     'orderStatus' => $order['status'] ?? 'booking',
                     'canEditServices' => empty($order['transactions'] ?? []),
+                    'estimate' => $order['total'] ?? $booking['estimate'],
+                    'paidAmount' => $order['paidAmount'] ?? 0,
+                    'transactions' => $order['transactions'] ?? [],
                 ];
             },
             self::bookings(),

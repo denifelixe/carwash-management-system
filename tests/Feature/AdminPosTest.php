@@ -19,6 +19,60 @@ test('guests cannot open the live cashier module', function () {
         ->assertRedirect(route('admin.login'));
 });
 
+test('the cashier includes earlier settlements without mixing them into the selected day', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $date = today()->subDays(2)->toDateString();
+    $oldest = Order::factory()->create(['status' => 'pelunasan', 'service_date' => today()->subDays(5)]);
+    $partial = Order::factory()->create(['status' => 'pelunasan', 'service_date' => today()->subDays(3), 'paid_amount' => 10000]);
+    $selected = Order::factory()->create(['status' => 'pelunasan', 'service_date' => $date]);
+    Order::factory()->create(['status' => 'pelunasan', 'service_date' => today()->subDay()]);
+    foreach (['booking', 'proses', 'selesai', 'batal'] as $status) {
+        Order::factory()->create(['status' => $status, 'service_date' => today()->subDays(4)]);
+    }
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.pos.index', ['date' => $date]))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('previousOrders', 2)
+            ->where('previousOrders.0.id', $oldest->id)
+            ->where('previousOrders.1.id', $partial->id)
+            ->where('previousOrders.1.paidAmount', 10000)
+            ->has('dailyOrders', 1)
+            ->where('dailyOrders.0.id', $selected->id)
+            ->has('orders', 1));
+});
+
+test('paying an overdue order keeps its server receipt available after reload', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'status' => 'pelunasan',
+        'service_date' => today()->subDays(3),
+        'total' => 50000,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->from(route('admin.pos.index'))
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'settlement',
+            'discount' => 0,
+            'amount' => 50000,
+            'channels' => [
+                ['method' => 'Tunai', 'amount' => 50000, 'provider' => '', 'reference' => ''],
+            ],
+        ])
+        ->assertSessionHasNoErrors();
+
+    $this->get(route('admin.pos.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('previousOrders', 1)
+            ->where('previousOrders.0.id', $order->id)
+            ->where('previousOrders.0.status', 'selesai')
+            ->where('previousOrders.0.paidAmount', 50000)
+            ->has('previousOrders.0.transactions', 1)
+            ->has('orders', 0));
+});
+
 test('the live cashier page uses the shared component and database records', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create(['name' => 'Premium Wash']);

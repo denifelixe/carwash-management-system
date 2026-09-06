@@ -342,16 +342,20 @@ test('the order detail edits and cancels through the status dropdown', function 
         ->not->toContain('function advanceStatus');
 });
 
-test('cancelled orders remain editable while completed orders are locked', function () {
+test('status editing is separate from paid and completed order data locks', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
-        ->toContain("detailOrder.value?.status === 'selesai'")
-        ->toContain('v-if="isDetailReadOnly"')
-        ->not->toContain("detailOrder.value?.status === 'batal'")
-        ->not->toContain('v-if="isDetailClosed"');
+        ->toContain('return props.capabilities.update && order.isMutable !== false;')
+        ->toContain('v-if="canEditStatus(order)"')
+        ->toContain('v-if="canEditStatus(detailOrder)"')
+        ->toContain("order.status !== 'selesai'")
+        ->toContain("order.paymentStatus !== 'lunas'")
+        ->toContain('order.transactions.length === 0')
+        ->not->toContain('return canEditStatus(order);')
+        ->not->toContain('v-if="isDetailReadOnly"');
 });
 
 test('the whole order row opens the detail, not just the Detail button', function () {

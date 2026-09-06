@@ -25,7 +25,11 @@ class SaveBooking
                 OperationalDataWindow::ensureAllows($booking->service_date);
 
                 abort_if(
-                    $booking->source !== 'booking' || $booking->status !== 'booking',
+                    $booking->source !== 'booking' || (
+                        $booking->service_date->isBefore(today())
+                            ? $booking->transactions()->exists()
+                            : $booking->status !== 'booking'
+                    ),
                     422,
                     'Booking yang sudah diproses tidak dapat diubah.',
                 );
@@ -108,7 +112,7 @@ class SaveBooking
                 'vehicle_plate' => $vehiclePlate,
                 'service_date' => $data['service_date'],
                 'source' => 'booking',
-                'status' => 'booking',
+                'status' => $booking?->status ?? 'booking',
                 'subtotal' => $subtotal,
                 'total' => $servicesAreLocked ? (int) $booking->total : max(0, $subtotal - $discount),
                 'stamps_earned' => $servicesAreLocked

@@ -67,6 +67,7 @@ const props = defineProps<{
     mode: 'demo' | 'live';
     brand: CarwashBrand;
     orders: CarwashOrder[];
+    previousOrders: CarwashOrder[];
     dailyOrders: CarwashOrder[];
     partialPaymentBookings: CarwashOrder[];
     filters: CarwashDateFilter;
@@ -228,6 +229,7 @@ const workflow = useCarwashWorkflow();
 
 if (props.mode === 'demo') {
     workflow.hydrateOrders([
+        ...props.previousOrders,
         ...props.dailyOrders,
         ...props.partialPaymentBookings,
     ]);
@@ -241,9 +243,11 @@ if (props.mode === 'demo') {
 const liveOrders = computed<CarwashOrder[]>(() =>
     Array.from(
         new Map(
-            [...props.dailyOrders, ...props.partialPaymentBookings].map(
-                (order) => [order.id, order],
-            ),
+            [
+                ...props.previousOrders,
+                ...props.dailyOrders,
+                ...props.partialPaymentBookings,
+            ].map((order) => [order.id, order]),
         ).values(),
     ),
 );
@@ -775,8 +779,10 @@ function bookingDisplayStatus(order: CarwashOrder): string {
 const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
-    return settlementOrderList.value.filter((order) => {
-        const isReadyForSettlement = order.status === 'pelunasan';
+    return orderList.value.filter((order) => {
+        const isReadyForSettlement =
+            order.status === 'pelunasan' &&
+            order.date <= (props.filters.date || props.filters.today);
         const matchesQuery =
             query === '' ||
             order.orderNo.toLowerCase().includes(query) ||
@@ -785,6 +791,25 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
 
         return isReadyForSettlement && matchesQuery;
     });
+});
+
+const settlementGroups = computed(() => {
+    const date = props.filters.date || props.filters.today;
+
+    return [
+        {
+            key: 'selected',
+            title: `Pelunasan ${formatDate(date)}`,
+            orders: visibleOrders.value.filter((order) => order.date === date),
+        },
+        {
+            key: 'overdue',
+            title: 'Pelunasan tertunggak',
+            orders: visibleOrders.value
+                .filter((order) => order.date < date)
+                .sort((first, second) => first.date.localeCompare(second.date)),
+        },
+    ].filter((group) => group.orders.length > 0);
 });
 
 const receiptHeadline = computed<string>(() => {
@@ -2868,108 +2893,140 @@ const memberForm = useForm({
                     />
                 </template>
 
-                <ul v-if="visibleOrders.length > 0" class="mt-4 space-y-2.5">
-                    <li v-for="order in visibleOrders" :key="order.id">
-                        <button
-                            type="button"
-                            class="w-full rounded-2xl border p-4 text-left transition"
-                            :class="
-                                selectedOrderId === order.id
-                                    ? 'border-violet-400 bg-violet-50 shadow-sm'
-                                    : 'border-violet-200 bg-white hover:border-violet-400 hover:shadow-lg hover:shadow-violet-500/10'
-                            "
-                            @click="selectOrder(order)"
+                <div v-if="visibleOrders.length > 0" class="mt-4 space-y-5">
+                    <section
+                        v-for="group in settlementGroups"
+                        :key="group.key"
+                        :aria-label="group.title"
+                    >
+                        <div
+                            class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-violet-200 pb-2"
                         >
-                            <div
-                                class="flex flex-wrap items-start justify-between gap-2"
+                            <h3 class="text-sm font-semibold text-violet-900">
+                                {{ group.title }}
+                            </h3>
+                            <span class="text-xs font-medium text-violet-600"
+                                >{{ group.orders.length }} order</span
                             >
-                                <div class="min-w-0">
-                                    <p
-                                        class="text-[11px] font-semibold tracking-wide text-violet-700"
-                                    >
-                                        No. order {{ order.orderNo }}
-                                    </p>
-                                    <p
-                                        class="mt-1 text-xl font-bold tracking-wide text-slate-950"
-                                    >
-                                        {{ formatPlate(order.plate) }}
-                                    </p>
-                                    <p
-                                        class="mt-0.5 text-sm font-medium text-slate-700"
-                                    >
-                                        {{ order.vehicle }}
-                                    </p>
-                                </div>
-                                <div class="flex shrink-0 gap-1.5">
-                                    <StatusPill
-                                        :status="order.status"
-                                        label="Pelunasan"
-                                    />
-                                </div>
-                            </div>
-
-                            <p class="mt-2 text-[11px] text-slate-500">
-                                {{ formatDate(order.date) }} •
-                                {{ orderTypeLabel(order) }}
-                            </p>
-                            <p
-                                class="mt-3 truncate text-sm font-medium text-slate-900"
-                            >
-                                {{ order.customer }}
-                            </p>
-                            <p class="mt-1 line-clamp-1 text-xs text-slate-500">
-                                {{ order.items }}
-                            </p>
-                            <ul
-                                v-if="
-                                    partialPaymentTransactions(order).length > 0
-                                "
-                                class="mt-2 space-y-1 text-xs font-medium text-violet-700"
-                            >
-                                <li
-                                    v-for="transaction in partialPaymentTransactions(
-                                        order,
-                                    )"
-                                    :key="transaction.id"
+                        </div>
+                        <ul class="space-y-2.5">
+                            <li v-for="order in group.orders" :key="order.id">
+                                <button
+                                    type="button"
+                                    class="w-full rounded-2xl border p-4 text-left transition"
+                                    :class="
+                                        selectedOrderId === order.id
+                                            ? 'border-violet-400 bg-violet-50 shadow-sm'
+                                            : 'border-violet-200 bg-white hover:border-violet-400 hover:shadow-lg hover:shadow-violet-500/10'
+                                    "
+                                    @click="selectOrder(order)"
                                 >
-                                    {{ formatDate(transaction.date) }} ·
-                                    Pembayaran Sebagian/Booking sebesar
-                                    {{ formatCurrency(transaction.amount) }}.
-                                </li>
-                            </ul>
+                                    <div
+                                        class="flex flex-wrap items-start justify-between gap-2"
+                                    >
+                                        <div class="min-w-0">
+                                            <p
+                                                class="text-[11px] font-semibold tracking-wide text-violet-700"
+                                            >
+                                                No. order {{ order.orderNo }}
+                                            </p>
+                                            <p
+                                                class="mt-1 text-xl font-bold tracking-wide text-slate-950"
+                                            >
+                                                {{ formatPlate(order.plate) }}
+                                            </p>
+                                            <p
+                                                class="mt-0.5 text-sm font-medium text-slate-700"
+                                            >
+                                                {{ order.vehicle }}
+                                            </p>
+                                        </div>
+                                        <div class="flex shrink-0 gap-1.5">
+                                            <StatusPill
+                                                :status="order.status"
+                                                label="Pelunasan"
+                                            />
+                                        </div>
+                                    </div>
 
-                            <div
-                                class="mt-3 flex items-end justify-between border-t border-dashed border-slate-200 pt-2.5"
-                            >
-                                <span class="text-[11px] text-slate-500">
-                                    Total {{ formatCurrency(order.total) }}
-                                </span>
-                                <span
-                                    v-if="order.paymentStatus === 'lunas'"
-                                    class="text-sm font-semibold text-emerald-600"
-                                >
-                                    Pembayaran Sisa/Lunas (Order Selesai)
-                                </span>
-                                <span v-else class="text-right">
-                                    <span
-                                        class="block text-[11px] text-slate-500"
+                                    <p class="mt-2 text-[11px] text-slate-500">
+                                        {{ formatDate(order.date) }} •
+                                        {{ orderTypeLabel(order) }}
+                                    </p>
+                                    <p
+                                        class="mt-3 truncate text-sm font-medium text-slate-900"
                                     >
-                                        Sisa tagihan
-                                    </span>
-                                    <span
-                                        class="block text-sm font-semibold text-slate-900 tabular-nums"
+                                        {{ order.customer }}
+                                    </p>
+                                    <p
+                                        class="mt-1 line-clamp-1 text-xs text-slate-500"
                                     >
-                                        {{
-                                            formatCurrency(
-                                                order.total - order.paidAmount,
-                                            )
-                                        }}
-                                    </span>
-                                </span>
-                            </div>
-                        </button>
-                    </li>
-                </ul>
+                                        {{ order.items }}
+                                    </p>
+                                    <ul
+                                        v-if="
+                                            partialPaymentTransactions(order)
+                                                .length > 0
+                                        "
+                                        class="mt-2 space-y-1 text-xs font-medium text-violet-700"
+                                    >
+                                        <li
+                                            v-for="transaction in partialPaymentTransactions(
+                                                order,
+                                            )"
+                                            :key="transaction.id"
+                                        >
+                                            {{ formatDate(transaction.date) }} ·
+                                            Pembayaran Sebagian/Booking sebesar
+                                            {{
+                                                formatCurrency(
+                                                    transaction.amount,
+                                                )
+                                            }}.
+                                        </li>
+                                    </ul>
+
+                                    <div
+                                        class="mt-3 flex items-end justify-between border-t border-dashed border-slate-200 pt-2.5"
+                                    >
+                                        <span
+                                            class="text-[11px] text-slate-500"
+                                        >
+                                            Total
+                                            {{ formatCurrency(order.total) }}
+                                        </span>
+                                        <span
+                                            v-if="
+                                                order.paymentStatus === 'lunas'
+                                            "
+                                            class="text-sm font-semibold text-emerald-600"
+                                        >
+                                            Pembayaran Sisa/Lunas (Order
+                                            Selesai)
+                                        </span>
+                                        <span v-else class="text-right">
+                                            <span
+                                                class="block text-[11px] text-slate-500"
+                                            >
+                                                Sisa tagihan
+                                            </span>
+                                            <span
+                                                class="block text-sm font-semibold text-slate-900 tabular-nums"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        order.total -
+                                                            order.paidAmount,
+                                                    )
+                                                }}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </button>
+                            </li>
+                        </ul>
+                    </section>
+                </div>
 
                 <EmptyState
                     v-else

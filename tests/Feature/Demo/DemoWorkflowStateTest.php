@@ -94,10 +94,11 @@ test('hydrating from overlapping lists stores each record once', function () {
 
     expect(file_get_contents(resource_path('js/pages/admin/Pos.vue')))
         ->toContain('workflow.hydrateOrders([')
+        ->toContain('...props.previousOrders,')
         ->toContain('...props.dailyOrders,')
         ->toContain('...props.partialPaymentBookings,')
         // The live page has no workflow store, so it keys the overlap itself.
-        ->toContain('(order) => [order.id, order],');
+        ->toContain('(order) => [order.id, order]');
 });
 
 test('the POS booking queue holds only the bookings the server sent', function () {

@@ -60,6 +60,26 @@ class OrderQueries
     }
 
     /**
+     * Earlier settlements and orders paid on the selected day or today, so a
+     * completed overdue payment remains available for its receipt after reload.
+     *
+     * @return Collection<int, Order>
+     */
+    public static function previousPosOrders(string $date, string $today): Collection
+    {
+        return self::baseQuery()
+            ->whereDate('service_date', '<', $date)
+            ->where(fn (Builder $query) => $query
+                ->where('status', 'pelunasan')
+                ->orWhereHas('transactions', fn (Builder $transactions) => $transactions
+                    ->whereDate('paid_at', $date)
+                    ->orWhereDate('paid_at', $today)))
+            ->orderBy('service_date')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /**
      * Bookings whose car has not arrived yet, from today onwards. The cashier
      * takes deposits on these before the visit, so they stay visible whichever
      * day is filtered.

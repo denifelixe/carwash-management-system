@@ -362,7 +362,7 @@ function channelTotal(entries: CarwashMoneyEntry[], channel: string): number {
         (total, entry) =>
             total +
             entry.channelBreakdown
-                .filter((item) => item.label === channel)
+                .filter((item) => item.label.split(' · ')[0] === channel)
                 .reduce((subtotal, item) => subtotal + item.amount, 0),
         0,
     );

@@ -380,6 +380,8 @@ export interface CarwashBooking {
     canEditServices?: boolean;
     isDeletable?: boolean;
     estimate: number;
+    paidAmount: number;
+    transactions: CarwashTransaction[];
     notes: string;
 }
 

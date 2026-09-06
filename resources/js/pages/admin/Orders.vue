@@ -306,15 +306,6 @@ const isOrderFormOpen = computed<boolean>(
     () => isCreateOpen.value || editingOrder.value !== null,
 );
 
-/** Paid, completed, or operationally aged orders are read-only. */
-const isDetailReadOnly = computed<boolean>(
-    () =>
-        detailOrder.value?.status === 'selesai' ||
-        detailOrder.value?.paymentStatus === 'lunas' ||
-        (detailOrder.value?.transactions.length ?? 0) > 0 ||
-        detailOrder.value?.isMutable === false,
-);
-
 /** The dropdown edits a draft so nothing moves before the user saves. */
 const statusDraft = ref<string>('');
 const handlerDraft = ref<string>('');
@@ -548,11 +539,12 @@ function setStatus(order: CarwashOrder, status: string): void {
     order.status = status;
 }
 
-/**
- * Stages a row may be moved to without opening it. A settled order belongs to
- * the cashier, so only that one is left to the read-only chip.
- */
+/** Status changes do not alter the order's payment records. */
 function canEditStatus(order: CarwashOrder): boolean {
+    return props.capabilities.update && order.isMutable !== false;
+}
+
+function canEditOrder(order: CarwashOrder): boolean {
     return (
         props.capabilities.update &&
         order.status !== 'selesai' &&
@@ -560,10 +552,6 @@ function canEditStatus(order: CarwashOrder): boolean {
         order.transactions.length === 0 &&
         order.isMutable !== false
     );
-}
-
-function canEditOrder(order: CarwashOrder): boolean {
-    return canEditStatus(order);
 }
 
 /**
@@ -1237,10 +1225,7 @@ const deleteForm = useForm({});
         <div v-if="detailOrder" class="space-y-5">
             <div>
                 <p class="text-xs font-medium text-slate-500">Status order</p>
-                <div v-if="isDetailReadOnly" class="mt-2 flex gap-2">
-                    <StatusPill :status="detailOrder.status" />
-                </div>
-                <template v-else-if="canEditOrder(detailOrder)">
+                <template v-if="canEditStatus(detailOrder)">
                     <div class="mt-2 flex gap-2">
                         <select
                             v-model="statusDraft"

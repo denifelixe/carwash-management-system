@@ -54,6 +54,47 @@ test('the live booking page uses the shared component and database records', fun
         );
 });
 
+test('booking details include their payment totals and transaction history', function (int $paymentCount) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'total' => 40000,
+        'paid_amount' => $paymentCount * 20000,
+    ]);
+    $transactions = OrderTransaction::factory()->count($paymentCount)->for($booking)->create([
+        'recorded_by_admin_id' => $owner->id,
+        'shift_name' => 'Pagi',
+        'paid_at' => now()->startOfDay()->addHours(9),
+    ]);
+    OrderTransaction::factory()->create(['reference' => 'TRX-OTHER-BOOKING']);
+
+    $this->actingAs($owner, 'admin')->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bookings.0.id', $booking->id)
+            ->where('bookings.0.estimate', 40000)
+            ->where('bookings.0.paidAmount', $paymentCount * 20000)
+            ->has('bookings.0.transactions', $paymentCount)
+            ->where('bookings.0.transactions', function ($history) use ($transactions, $owner): bool {
+                expect(collect($history)->pluck('id')->all())->toEqualCanonicalizing($transactions->pluck('reference')->all());
+
+                foreach ($history as $transaction) {
+                    expect($transaction)
+                        ->amount->toBe(20000)
+                        ->type->toBe('Pembayaran Sebagian')
+                        ->date->toBe(now()->toDateString())
+                        ->time->toBe('09.00')
+                        ->channels->toBe('Tunai')
+                        ->recordedBy->toBe($owner->name)
+                        ->shift->toBe('Pagi')
+                        ->and($transaction['channelBreakdown'][0]['amount'])->toBe(20000);
+                }
+
+                return true;
+            }));
+})->with([0, 1, 2]);
+
 test('an owner can create a member booking at database prices', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $member = Member::factory()->create();
@@ -271,6 +312,74 @@ test('a booking cannot be moved to the past or edited after processing starts', 
         ])
         ->assertUnprocessable();
 });
+
+test('past bookings without transactions can be edited while preserving their order status', function (string $status, bool $reschedule) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['price' => 80000]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => $status,
+        'service_date' => now()->subDay()->toDateString(),
+        'paid_amount' => 0,
+    ]);
+    $arrivedAt = $booking->arrived_at;
+    $date = $reschedule ? now()->addDay()->toDateString() : $booking->service_date->toDateString();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Booking diperbarui',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => 'Toyota Calya',
+            'vehicle_plate' => 'B1234ABC',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
+            'service_date' => $date,
+        ])
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasNoErrors();
+
+    expect($booking->refresh())
+        ->customer_name->toBe('Booking diperbarui')
+        ->status->toBe($status)
+        ->service_date->toDateString()->toBe($date)
+        ->total->toBe(160000)
+        ->and($booking->arrived_at)->toEqual($arrivedAt)
+        ->and($booking->serviceVariations()->sole()->pivot->quantity)->toBe(2);
+})->with(['booking', 'menunggu', 'proses', 'selesai', 'batal'])->with([false, true]);
+
+test('past bookings with transactions cannot be edited even when their services stay the same', function (string $status) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create();
+    $variation = $service->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => $status,
+        'service_date' => now()->subDay(),
+    ]);
+    $booking->serviceVariations()->attach($variation, [
+        'service_name' => $service->name,
+        'unit_price' => $variation->price,
+        'quantity' => 1,
+        'total_price' => $variation->price,
+        'stamps' => $service->stamps,
+    ]);
+    OrderTransaction::factory()->for($booking)->create();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Tidak boleh tersimpan',
+            'customer_phone' => '081234567890',
+            'vehicle_name' => 'Toyota Calya',
+            'vehicle_plate' => 'B1234ABC',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+            'service_date' => now()->addDay()->toDateString(),
+        ])
+        ->assertUnprocessable();
+
+    expect($booking->refresh()->customer_name)->not->toBe('Tidak boleh tersimpan');
+})->with(['booking', 'proses', 'selesai']);
 
 test('a booking older than H-30 cannot be edited or deleted', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);

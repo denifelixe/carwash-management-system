@@ -25,7 +25,11 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
-import { formatDate, formatDateCode } from '@/composables/useCarwashFormat';
+import {
+    formatCurrency,
+    formatDate,
+    formatDateCode,
+} from '@/composables/useCarwashFormat';
 import { formatPlate } from '@/lib/vehiclePlate';
 import type {
     CarwashBooking,
@@ -224,7 +228,10 @@ const canEditDraftServices = computed<boolean>(
 const canEditDetailBooking = computed<boolean>(
     () =>
         props.capabilities.update &&
-        detailBooking.value?.orderStatus === 'booking' &&
+        detailBooking.value !== null &&
+        (daysFromToday(detailBooking.value.date) < 0
+            ? detailBooking.value.canEditServices === true
+            : detailBooking.value.orderStatus === 'booking') &&
         detailBooking.value?.isMutable !== false,
 );
 
@@ -281,7 +288,11 @@ const hasCustomer = computed<boolean>(() => {
 });
 
 const hasBookableDate = computed<boolean>(
-    () => draft.value.date !== '' && draft.value.date >= props.today,
+    () =>
+        draft.value.date !== '' &&
+        (draft.value.date >= props.today ||
+            (editingBooking.value?.canEditServices === true &&
+                draft.value.date === editingBooking.value.date)),
 );
 
 const displayBookingDate = computed<string>(() => {
@@ -421,11 +432,7 @@ function closeBookingForm(): void {
 function startEditingBooking(): void {
     const booking = detailBooking.value;
 
-    if (
-        booking === null ||
-        booking.orderStatus !== 'booking' ||
-        booking.isMutable === false
-    ) {
+    if (booking === null || !canEditDetailBooking.value) {
         return;
     }
 
@@ -573,6 +580,8 @@ function saveBooking(): void {
             bookingDate: props.today,
             orderStatus: 'booking',
             canEditServices: true,
+            paidAmount: 0,
+            transactions: [],
             notes: '—',
         },
         ...bookingList.value,
@@ -754,6 +763,116 @@ function saveBooking(): void {
                     </dd>
                 </div>
             </dl>
+            <section
+                class="overflow-hidden rounded-2xl border border-slate-200"
+            >
+                <div class="border-b border-slate-100 bg-slate-50/70 px-4 py-3">
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Detail pembayaran
+                    </h3>
+                </div>
+                <dl class="space-y-2 px-4 py-3 text-sm">
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-slate-500">Total tagihan</dt>
+                        <dd class="font-semibold text-slate-800 tabular-nums">
+                            {{ formatCurrency(detailBooking.estimate) }}
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-slate-500">Sudah dibayar</dt>
+                        <dd class="font-semibold text-emerald-700 tabular-nums">
+                            {{ formatCurrency(detailBooking.paidAmount) }}
+                        </dd>
+                    </div>
+                    <div class="flex justify-between gap-3">
+                        <dt class="text-slate-500">Sisa pembayaran</dt>
+                        <dd class="font-semibold text-slate-800 tabular-nums">
+                            {{
+                                formatCurrency(
+                                    Math.max(
+                                        0,
+                                        detailBooking.estimate -
+                                            detailBooking.paidAmount,
+                                    ),
+                                )
+                            }}
+                        </dd>
+                    </div>
+                </dl>
+            </section>
+            <section
+                class="overflow-hidden rounded-2xl border border-slate-200"
+            >
+                <div
+                    class="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3"
+                >
+                    <h3 class="text-sm font-semibold text-slate-900">
+                        Riwayat transaksi
+                    </h3>
+                    <span class="text-xs text-slate-500"
+                        >{{ detailBooking.transactions.length }} transaksi</span
+                    >
+                </div>
+                <ul
+                    v-if="detailBooking.transactions.length > 0"
+                    class="divide-y divide-slate-100"
+                >
+                    <li
+                        v-for="transaction in detailBooking.transactions"
+                        :key="transaction.id"
+                        class="space-y-2 px-4 py-3"
+                    >
+                        <div
+                            class="flex flex-wrap items-center justify-between gap-2"
+                        >
+                            <p class="text-xs font-semibold text-slate-800">
+                                {{ transaction.type }}
+                            </p>
+                            <p
+                                class="text-sm font-semibold text-emerald-700 tabular-nums"
+                            >
+                                {{ formatCurrency(transaction.amount) }}
+                            </p>
+                        </div>
+                        <p class="text-xs break-all text-slate-500">
+                            {{ transaction.id }}
+                        </p>
+                        <p class="text-xs text-slate-500">
+                            {{ formatDate(transaction.date) }} ·
+                            {{ transaction.time }}
+                        </p>
+                        <dl class="space-y-1 text-xs">
+                            <div
+                                v-for="(
+                                    channel, index
+                                ) in transaction.channelBreakdown"
+                                :key="index"
+                                class="flex flex-wrap justify-between gap-2"
+                            >
+                                <dt class="text-slate-500">
+                                    {{ channel.label
+                                    }}<span
+                                        v-if="channel.reference"
+                                        class="break-all"
+                                    >
+                                        · {{ channel.reference }}</span
+                                    >
+                                </dt>
+                                <dd class="text-slate-700 tabular-nums">
+                                    {{ formatCurrency(channel.amount) }}
+                                </dd>
+                            </div>
+                        </dl>
+                        <p class="text-xs text-slate-500">
+                            Kasir: {{ transaction.recordedBy ?? '—' }} ·
+                            {{ transaction.shift ?? 'Tanpa Shift' }}
+                        </p>
+                    </li>
+                </ul>
+                <p v-else class="px-4 py-5 text-center text-xs text-slate-400">
+                    Belum ada transaksi
+                </p>
+            </section>
             <p
                 v-if="detailBooking.isMutable === false"
                 class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
@@ -1175,7 +1294,11 @@ function saveBooking(): void {
                         tabindex="-1"
                         aria-hidden="true"
                         :value="draft.date"
-                        :min="today"
+                        :min="
+                            editingBooking && editingBooking.date < today
+                                ? editingBooking.date
+                                : today
+                        "
                         class="pointer-events-none absolute right-0 bottom-0 h-px w-px opacity-0"
                         @change="updateBookingDate"
                     />

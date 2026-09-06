@@ -121,7 +121,7 @@ test('booking rows and details follow the order information hierarchy', function
         ->toContain("return booking.customerId === null ? 'Non-Member' : 'Member';");
 });
 
-test('booking details separate the booking date from execution without showing a price', function () {
+test('booking details separate the booking date from execution and show payment history', function () {
     $bookingsPage = file_get_contents(
         resource_path('js/pages/admin/Bookings.vue'),
     );
@@ -134,7 +134,18 @@ test('booking details separate the booking date from execution without showing a
         ->not->toContain('Catatan')
         ->not->toContain('{{ detailBooking.notes }}')
         ->not->toContain('Estimasi biaya')
-        ->not->toContain('formatCurrency(detailBooking.estimate)');
+        ->toContain('formatCurrency(detailBooking.estimate)')
+        ->toContain('formatCurrency(detailBooking.paidAmount)')
+        ->toMatch('/detailBooking\.estimate\s*-\s*detailBooking\.paidAmount/')
+        ->toContain('v-for="transaction in detailBooking.transactions"')
+        ->toContain('{{ transaction.id }}')
+        ->toContain('transaction.channelBreakdown')
+        ->toContain('transaction.recordedBy')
+        ->toContain('Belum ada transaksi');
+
+    foreach (Operations::scheduledBookings() as $booking) {
+        expect($booking)->toHaveKeys(['paidAmount', 'transactions']);
+    }
 
     foreach (Operations::bookings() as $booking) {
         expect($booking)->toHaveKeys(['bookingDate', 'date']);
@@ -144,17 +155,20 @@ test('booking details separate the booking date from execution without showing a
         ->not->toBe(Operations::bookings()[0]['date']);
 });
 
-test('only bookings that have not entered order processing can be edited', function () {
+test('past bookings without transactions can be edited alongside scheduled bookings', function () {
     $bookingsPage = file_get_contents(
         resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
-        ->toContain("detailBooking.value?.orderStatus === 'booking'")
+        ->toContain('daysFromToday(detailBooking.value.date) < 0')
+        ->toContain('detailBooking.value.canEditServices === true')
+        ->toContain("detailBooking.value.orderStatus === 'booking'")
         ->toContain('v-if="canEditDetailBooking"')
         ->toContain('@click="startEditingBooking"')
         ->toContain('Edit Booking')
-        ->toContain("booking.orderStatus !== 'booking'")
+        ->toContain('!canEditDetailBooking.value')
+        ->toContain('draft.value.date === editingBooking.value.date')
         ->toContain("? 'Simpan booking'")
         ->toContain(": 'Simpan perubahan'");
 });
@@ -279,7 +293,7 @@ test('the booking form is the order form plus a date', function () {
     expect($bookingsPage)
         ->toContain('Tanggal kedatangan')
         ->toContain('id="booking-date"')
-        ->toContain(':min="today"')
+        ->toContain('editingBooking.date < today')
         ->toContain('hasBookableDate.value &&')
         ->toContain('Tanggal kedatangan tidak boleh sebelum hari ini.')
         ->and($ordersPage)->not->toContain('Tanggal kedatangan');

@@ -52,6 +52,10 @@ class OrderPresenter
             'canEditServices' => $booking->transactions->isEmpty(),
             'isDeletable' => OperationalDataWindow::orderCanBeDeleted($booking),
             'estimate' => (int) $booking->total,
+            'paidAmount' => (int) $booking->paid_amount,
+            'transactions' => $booking->transactions
+                ->map(fn (OrderTransaction $transaction): array => self::transaction($transaction, $booking))
+                ->all(),
             'notes' => $booking->notes ?? '—',
         ];
     }
