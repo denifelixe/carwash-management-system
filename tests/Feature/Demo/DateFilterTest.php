@@ -163,15 +163,28 @@ test('the dashboard date filter is calendar-only and accepts unlimited backdates
         ->and($dateFilter)->not->toContain('allowAll')
         ->and($dateFilter)->not->toContain(':min="filters.earliest"')
         ->and($dateFilter)->toContain(':max="latest"')
-        ->and($dateFilter)->toContain('aria-haspopup="dialog"')
         ->and($dateFilter)->toContain('select-none')
         ->and($dateFilter)->toContain('cursor-pointer')
         ->and($dateFilter)->toContain('{{ displayDate }}')
-        ->and($dateFilter)->toContain('openDatePicker')
-        ->and($dateFilter)->toContain('ref="dateInput"')
-        ->and($dateFilter)->toContain('tabindex="-1"')
-        ->and($dateFilter)->toContain('pointer-events-none')
         ->and($dateFilter)->not->toContain('@beforeinput.prevent');
+});
+
+test('the date filter accepts direct touch and keyboard focus without a scripted picker', function () {
+    $dateFilter = file_get_contents(
+        resource_path('js/components/demo/DateFilterBar.vue'),
+    );
+
+    preg_match('/<input\b[^>]*\/>/s', $dateFilter, $matches);
+
+    expect($matches)->toHaveCount(1)
+        ->and($matches[0])->toContain('type="date"')
+        ->toContain(':aria-label="`Pilih tanggal, ${filters.label}`"')
+        ->toContain('absolute inset-0 h-full w-full')
+        ->toContain(':value="filters.date"')
+        ->toContain('@change=')
+        ->not->toContain('pointer-events-none', 'tabindex="-1"', 'aria-hidden="true"')
+        ->and($dateFilter)->toContain('focus-within:ring-2')
+        ->not->toContain('showPicker', 'input.click()', '@click="openDatePicker"');
 });
 
 test('booking order keeps its own boards instead of a date filter', function () {
