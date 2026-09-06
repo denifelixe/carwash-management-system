@@ -1314,7 +1314,7 @@ function applyDate(date: string): void {
         </section>
 
         <section
-            class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]"
+            class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(320px,1fr)_minmax(0,2fr)]"
         >
             <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-1">
                 <StatCard
