@@ -4,7 +4,9 @@ import {
     CalendarCheck,
     CalendarClock,
     CalendarDays,
+    ClipboardList,
     Clock,
+    LockKeyhole,
     Phone,
     Plus,
     Search,
@@ -198,13 +200,13 @@ const bookingBoards = computed<BookingBoard[]>(() => [
     },
     {
         key: 'past',
-        title: 'Booking selesai / batal',
+        title: 'Booking sebelumnya',
         caption: 'Booking yang sudah lewat jadwalnya',
         badge: `${pastBookings.value.length} riwayat`,
         badgeTone: 'bg-slate-100 text-slate-600',
         icon: CalendarCheck,
         emptyTitle: 'Belum ada booking yang lewat',
-        emptyCaption: 'Booking selesai atau batal akan tampil di sini.',
+        emptyCaption: 'Booking yang sudah lewat jadwalnya akan tampil di sini.',
         bookings: pastBookings.value,
     },
 ]);
@@ -215,6 +217,23 @@ const detailBooking = computed<CarwashBooking | null>(
             (booking) => booking.id === detailBookingId.value,
         ) ?? null,
 );
+
+/**
+ * The detail header carries both dates a booking has: when it was taken, down
+ * to the clock, and the day the customer is expected.
+ */
+const detailBookingCaption = computed<string | undefined>(() => {
+    const booking = detailBooking.value;
+
+    if (booking === null) {
+        return undefined;
+    }
+
+    return [
+        `Waktu Input: ${formatDate(booking.bookingDate)} • ${booking.bookingTime}`,
+        `Booking untuk: ${formatDate(booking.date)}`,
+    ].join('\n');
+});
 
 const editingBooking = computed<CarwashBooking | null>(
     () =>
@@ -231,9 +250,6 @@ const canEditDetailBooking = computed<boolean>(
     () =>
         props.capabilities.update &&
         detailBooking.value !== null &&
-        (daysFromToday(detailBooking.value.date) < 0
-            ? detailBooking.value.canEditServices === true
-            : detailBooking.value.orderStatus === 'booking') &&
         detailBooking.value?.isMutable !== false,
 );
 
@@ -293,7 +309,7 @@ const hasBookableDate = computed<boolean>(
     () =>
         draft.value.date !== '' &&
         (draft.value.date >= props.today ||
-            (editingBooking.value?.canEditServices === true &&
+            (editingBooking.value !== null &&
                 draft.value.date === editingBooking.value.date)),
 );
 
@@ -497,6 +513,15 @@ function confirmDeleteBooking(): void {
     });
 }
 
+/** The demo records its bookings client-side, so their input time is the clock. */
+function currentClockTime(): string {
+    const now = new Date();
+
+    return `${String(now.getHours()).padStart(2, '0')}.${String(
+        now.getMinutes(),
+    ).padStart(2, '0')}`;
+}
+
 function saveBooking(): void {
     if (!canCreate.value) {
         return;
@@ -585,6 +610,7 @@ function saveBooking(): void {
             code: `ORD-BK-${formatDateCode(draft.value.date)}${String(sequence).padStart(2, '0')}`,
             ...bookingFields,
             bookingDate: props.today,
+            bookingTime: currentClockTime(),
             orderStatus: 'booking',
             canEditServices: true,
             paidAmount: 0,
@@ -718,11 +744,7 @@ function saveBooking(): void {
     <SlideOver
         :open="detailBooking !== null"
         :title="detailBooking?.code"
-        :caption="
-            detailBooking
-                ? `Tanggal Booking: ${formatDate(detailBooking.bookingDate)}`
-                : undefined
-        "
+        :caption="detailBookingCaption"
         @close="detailBookingId = null"
     >
         <div v-if="detailBooking" class="space-y-5">
@@ -749,22 +771,78 @@ function saveBooking(): void {
                 </p>
             </div>
 
+            <div>
+                <p
+                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                >
+                    Layanan
+                </p>
+                <ul
+                    v-if="detailBooking.serviceItems.length"
+                    class="mt-2 space-y-2"
+                >
+                    <li
+                        v-for="item in detailBooking.serviceItems"
+                        :key="item.serviceVariationId"
+                        class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3"
+                    >
+                        <span
+                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-100"
+                            aria-hidden="true"
+                        >
+                            {{
+                                services.find(
+                                    (service) => service.id === item.serviceId,
+                                )?.icon || '🫧'
+                            }}
+                        </span>
+                        <div class="min-w-0 flex-1 space-y-1">
+                            <p
+                                class="text-sm font-medium break-words text-slate-800"
+                            >
+                                {{ item.serviceName }}
+                            </p>
+                            <p
+                                v-if="Object.keys(item.variations ?? {}).length"
+                                class="text-xs break-words text-slate-500"
+                            >
+                                {{
+                                    Object.values(item.variations ?? {}).join(
+                                        ' · ',
+                                    )
+                                }}
+                            </p>
+                            <p class="text-xs text-slate-400 tabular-nums">
+                                {{ item.quantity }} ×
+                                {{ formatCurrency(item.unitPrice) }}
+                            </p>
+                        </div>
+                        <p
+                            class="shrink-0 pt-0.5 text-sm font-medium text-slate-700 tabular-nums"
+                        >
+                            {{ formatCurrency(item.totalPrice) }}
+                        </p>
+                    </li>
+                </ul>
+                <p
+                    v-else
+                    class="mt-2 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-800"
+                >
+                    {{ detailBooking.service }}
+                </p>
+            </div>
+
             <dl class="space-y-2 text-sm">
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Layanan</dt>
-                    <dd class="font-medium text-slate-800">
-                        {{ detailBooking.service }}
+                <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Waktu Input</dt>
+                    <dd class="text-right text-slate-800">
+                        {{ formatDate(detailBooking.bookingDate) }} •
+                        {{ detailBooking.bookingTime }}
                     </dd>
                 </div>
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Tanggal Booking</dt>
-                    <dd class="text-slate-800">
-                        {{ formatDate(detailBooking.bookingDate) }}
-                    </dd>
-                </div>
-                <div class="flex justify-between">
-                    <dt class="text-slate-500">Tanggal Order</dt>
-                    <dd class="text-slate-800">
+                <div class="flex justify-between gap-3">
+                    <dt class="text-slate-500">Booking untuk</dt>
+                    <dd class="text-right text-slate-800">
                         {{ formatDate(detailBooking.date) }} •
                         {{ dayLabelFor(detailBooking.date) }}
                     </dd>
@@ -1241,6 +1319,7 @@ function saveBooking(): void {
             <!-- Services -->
             <div>
                 <p
+                    v-if="canEditDraftServices"
                     class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"
                 >
                     Layanan
@@ -1251,19 +1330,103 @@ function saveBooking(): void {
                     :services="services"
                 />
                 <div
-                    v-else
-                    class="rounded-2xl border border-amber-200 bg-amber-50 p-4"
+                    v-else-if="editingBooking"
+                    class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
                 >
-                    <p class="text-sm font-semibold text-amber-800">
-                        Layanan terkunci
+                    <div
+                        class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"
+                    >
+                        <div class="flex items-center gap-2.5">
+                            <span
+                                class="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600"
+                            >
+                                <ClipboardList
+                                    class="h-4 w-4"
+                                    aria-hidden="true"
+                                />
+                            </span>
+                            <h3 class="text-sm font-semibold text-slate-800">
+                                Layanan
+                            </h3>
+                        </div>
+                        <span
+                            class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500"
+                        >
+                            <LockKeyhole class="h-3 w-3" aria-hidden="true" />
+                            Terkunci
+                        </span>
+                    </div>
+                    <ul
+                        v-if="editingBooking.serviceItems.length"
+                        class="divide-y divide-slate-100 px-4"
+                    >
+                        <li
+                            v-for="item in editingBooking.serviceItems"
+                            :key="item.serviceVariationId"
+                            class="flex items-start justify-between gap-4 py-3.5"
+                        >
+                            <span
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-100"
+                                aria-hidden="true"
+                            >
+                                {{
+                                    services.find(
+                                        (service) =>
+                                            service.id === item.serviceId,
+                                    )?.icon || '🫧'
+                                }}
+                            </span>
+                            <div class="min-w-0 flex-1 space-y-1">
+                                <p
+                                    class="text-sm font-medium break-words text-slate-800"
+                                >
+                                    {{ item.serviceName }}
+                                </p>
+                                <p
+                                    v-if="
+                                        Object.keys(item.variations ?? {})
+                                            .length
+                                    "
+                                    class="text-xs break-words text-slate-500"
+                                >
+                                    {{
+                                        Object.values(
+                                            item.variations ?? {},
+                                        ).join(' · ')
+                                    }}
+                                </p>
+                                <p class="text-xs text-slate-400 tabular-nums">
+                                    {{ item.quantity }} ×
+                                    {{ formatCurrency(item.unitPrice) }}
+                                </p>
+                            </div>
+                            <p
+                                class="shrink-0 pt-0.5 text-sm font-medium text-slate-700 tabular-nums"
+                            >
+                                {{ formatCurrency(item.totalPrice) }}
+                            </p>
+                        </li>
+                    </ul>
+                    <p v-else class="px-4 py-3.5 text-sm text-slate-700">
+                        {{ editingBooking.service }}
                     </p>
-                    <p class="mt-1 text-xs leading-relaxed text-amber-700">
-                        Booking ini sudah memiliki transaksi. Layanan tidak
-                        dapat diubah, tetapi tanggal kedatangan tetap dapat
-                        dijadwalkan ulang.
-                    </p>
-                    <p class="mt-3 text-sm font-medium text-slate-800">
-                        {{ editingBooking?.service }}
+                    <div
+                        class="flex items-center justify-between gap-4 border-t border-slate-100 bg-slate-50/70 px-4 py-3"
+                    >
+                        <span class="text-xs font-medium text-slate-600">
+                            Estimasi total
+                        </span>
+                        <span
+                            class="text-base font-semibold text-slate-900 tabular-nums"
+                        >
+                            {{ formatCurrency(editingBooking.estimate) }}
+                        </span>
+                    </div>
+                    <p
+                        class="border-t border-slate-100 px-4 py-2.5 text-[11px] leading-relaxed text-slate-400"
+                    >
+                        Booking ini sudah memiliki transaksi, jadi layanan tetap
+                        terkunci. Detail booking lainnya masih bisa diedit.
                     </p>
                 </div>
             </div>

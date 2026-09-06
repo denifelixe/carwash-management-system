@@ -28,7 +28,10 @@ const emit = defineEmits<{
                     <p class="text-base font-semibold text-slate-900">
                         {{ title }}
                     </p>
-                    <p v-if="caption" class="text-xs text-slate-500">
+                    <p
+                        v-if="caption"
+                        class="text-xs whitespace-pre-line text-slate-500"
+                    >
                         {{ caption }}
                     </p>
                 </div>

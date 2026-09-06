@@ -48,7 +48,9 @@ class DeleteOrderTransaction
             $order->update([
                 'paid_amount' => $paidAmount,
                 'payment_method' => $paymentMethod !== '' ? $paymentMethod : null,
-                'status' => $paidAmount < (int) $order->total ? 'pelunasan' : $order->status,
+                'status' => $order->status === 'selesai' && $paidAmount < (int) $order->total
+                    ? 'pelunasan'
+                    : $order->status,
             ]);
 
             $this->recalculateDailyBalances->handle($paidDate);

@@ -15,7 +15,6 @@ class UpdateBookingRequest extends StoreBookingRequest
 
         if ($booking instanceof Order
             && $booking->service_date->isBefore(today())
-            && ! $booking->transactions()->exists()
             && $this->input('service_date') === $booking->service_date->toDateString()) {
             $rules['service_date'] = ['required', 'date_format:Y-m-d'];
         }

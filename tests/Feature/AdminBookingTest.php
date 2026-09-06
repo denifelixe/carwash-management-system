@@ -54,6 +54,31 @@ test('the live booking page uses the shared component and database records', fun
         );
 });
 
+test('a booking carries the date and clock time it was recorded', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->travelTo(now()->setTime(14, 7));
+
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->addDay()->toDateString(),
+        'arrived_at' => null,
+        'booking_date' => now()->toDateString(),
+    ]);
+
+    $this->travelBack();
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertInertia(
+            fn (AssertableInertia $page) => $page
+                ->where('bookings.0.bookingDate', $booking->booking_date?->toDateString())
+                ->where('bookings.0.bookingTime', '14.07'),
+        );
+});
+
 test('booking details include their payment totals and transaction history', function (int $paymentCount) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $booking = Order::factory()->create([
@@ -139,7 +164,7 @@ test('an owner can create a member booking at database prices', function () {
         ->and($booking->serviceVariations()->count())->toBe(2);
 });
 
-test('an owner can update a booking that has not entered processing', function () {
+test('an owner can update booking services without active transactions in any order status', function (string $status, bool $hasDeletedDeposit) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $oldService = Service::factory()->create(['price' => 45000]);
     $newService = Service::factory()->create(['price' => 80000]);
@@ -147,7 +172,7 @@ test('an owner can update a booking that has not entered processing', function (
     $newVariation = $newService->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'source' => 'booking',
-        'status' => 'booking',
+        'status' => $status,
         'service_date' => now()->addDay()->toDateString(),
         'arrived_at' => null,
         'booking_date' => now()->toDateString(),
@@ -161,6 +186,15 @@ test('an owner can update a booking that has not entered processing', function (
         'stamps' => $oldService->stamps,
     ]);
     $newDate = now()->addDays(3)->toDateString();
+
+    if ($hasDeletedDeposit) {
+        OrderTransaction::factory()->for($booking)->create()->delete();
+    }
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.bookings.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bookings.0.canEditServices', true));
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.bookings.update', $booking), [
@@ -177,13 +211,14 @@ test('an owner can update a booking that has not entered processing', function (
 
     expect($booking->refresh())
         ->customer_name->toBe('Tamu Booking')
+        ->status->toBe($status)
         ->vehicle_plate->toBe('B9876ABC')
         ->service_date->toDateString()->toBe($newDate)
         ->total->toBe(80000)
         ->and($booking->serviceVariations()->sole()->is($newVariation))->toBeTrue();
-});
+})->with(['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal'])->with([false, true]);
 
-test('a booking with a transaction can be rescheduled but its services cannot be changed', function () {
+test('a booking with a transaction can be rescheduled but its services cannot be changed', function (string $status) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $oldService = Service::factory()->create(['price' => 45000]);
     $newService = Service::factory()->create(['price' => 80000]);
@@ -191,7 +226,7 @@ test('a booking with a transaction can be rescheduled but its services cannot be
     $newVariation = $newService->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'source' => 'booking',
-        'status' => 'booking',
+        'status' => $status,
         'service_date' => now()->addDay()->toDateString(),
         'arrived_at' => null,
         'subtotal' => 45000,
@@ -231,6 +266,11 @@ test('a booking with a transaction can be rescheduled but its services cannot be
         ->patch(route('admin.bookings.update', $booking), $payload)
         ->assertSessionHasErrors('items');
 
+    $this->patch(route('admin.bookings.update', $booking), [
+        ...$payload,
+        'items' => [['service_variation_id' => $oldVariation->id, 'quantity' => 2]],
+    ])->assertSessionHasErrors('items');
+
     expect($booking->refresh()->service_date->toDateString())->toBe(now()->addDay()->toDateString())
         ->and($booking->serviceVariations()->sole()->is($oldVariation))->toBeTrue();
 
@@ -254,7 +294,7 @@ test('a booking with a transaction can be rescheduled but its services cannot be
         ->and($booking->total)->toBe(45000)
         ->and((int) $pivot->unit_price)->toBe(45000)
         ->and((int) $pivot->total_price)->toBe(45000);
-});
+})->with(['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal']);
 
 test('booking totals include variation quantity and preserve its snapshots', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
@@ -279,7 +319,7 @@ test('booking totals include variation quantity and preserve its snapshots', fun
         ->and((int) $pivot->total_price)->toBe(375000);
 });
 
-test('a booking cannot be moved to the past or edited after processing starts', function () {
+test('a booking cannot be moved to the past', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create();
     $variation = $service->serviceVariations()->firstOrFail();
@@ -303,14 +343,6 @@ test('a booking cannot be moved to the past or edited after processing starts', 
         ->patch(route('admin.bookings.update', $booking), $payload)
         ->assertSessionHasErrors('service_date');
 
-    $booking->update(['status' => 'menunggu']);
-
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.bookings.update', $booking), [
-            ...$payload,
-            'service_date' => now()->addDays(2)->toDateString(),
-        ])
-        ->assertUnprocessable();
 });
 
 test('past bookings without transactions can be edited while preserving their order status', function (string $status, bool $reschedule) {
@@ -348,14 +380,16 @@ test('past bookings without transactions can be edited while preserving their or
         ->and($booking->serviceVariations()->sole()->pivot->quantity)->toBe(2);
 })->with(['booking', 'menunggu', 'proses', 'selesai', 'batal'])->with([false, true]);
 
-test('past bookings with transactions cannot be edited even when their services stay the same', function (string $status) {
+test('paid booking details can be edited while preserving services and payments', function (string $status, int $daysAhead) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create();
     $variation = $service->serviceVariations()->firstOrFail();
     $booking = Order::factory()->create([
         'source' => 'booking',
         'status' => $status,
-        'service_date' => now()->subDay(),
+        'service_date' => today()->addDays($daysAhead),
+        'paid_amount' => 20000,
+        'payment_method' => 'Tunai',
     ]);
     $booking->serviceVariations()->attach($variation, [
         'service_name' => $service->name,
@@ -364,22 +398,35 @@ test('past bookings with transactions cannot be edited even when their services 
         'total_price' => $variation->price,
         'stamps' => $service->stamps,
     ]);
-    OrderTransaction::factory()->for($booking)->create();
+    $transaction = OrderTransaction::factory()->for($booking)->create();
+    $originalTransaction = $transaction->refresh()->getRawOriginal();
+    $originalTotal = $booking->total;
+    $originalServices = $booking->serviceVariations()->sole()->pivot->getRawOriginal();
+    $date = $booking->service_date->toDateString();
+    $variation->update(['price' => 99000]);
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.bookings.update', $booking), [
             'customer_mode' => 'walk-in',
-            'customer_name' => 'Tidak boleh tersimpan',
+            'customer_name' => 'Booking diperbarui',
             'customer_phone' => '081234567890',
             'vehicle_name' => 'Toyota Calya',
             'vehicle_plate' => 'B1234ABC',
             'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
-            'service_date' => now()->addDay()->toDateString(),
+            'service_date' => $date,
         ])
-        ->assertUnprocessable();
+        ->assertRedirect(route('admin.bookings.index'))
+        ->assertSessionHasNoErrors();
 
-    expect($booking->refresh()->customer_name)->not->toBe('Tidak boleh tersimpan');
-})->with(['booking', 'proses', 'selesai']);
+    expect($booking->refresh()->customer_name)->toBe('Booking diperbarui')
+        ->and($booking->status)->toBe($status)
+        ->and($booking->service_date->toDateString())->toBe($date)
+        ->and($booking->total)->toBe($originalTotal)
+        ->and($booking->paid_amount)->toBe(20000)
+        ->and($booking->payment_method)->toBe('Tunai')
+        ->and($booking->serviceVariations()->sole()->pivot->getRawOriginal())->toBe($originalServices)
+        ->and($transaction->refresh()->getRawOriginal())->toBe($originalTransaction);
+})->with(['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal'])->with([-1, 0, 3]);
 
 test('a booking older than H-30 cannot be edited or deleted', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);

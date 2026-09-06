@@ -474,7 +474,7 @@ test('the order list leads with vehicle arrival information', function () {
         ->toContain('{{ formatPlate(order.plate) }}')
         ->toContain('{{ order.vehicle }}')
         ->toContain("order.time === '—'")
-        ->toContain('`${formatDate(order.date)} · ${order.time}`')
+        ->toContain('`${formatDate(order.arrivalDate ?? order.date)} · ${order.time}`')
         ->toContain('{{ orderArrivalLabel(order) }}')
         ->toContain("<span>{{ orderSourceLabel(order) }}</span>\n                                    <span>{{ order.orderNo }}</span>");
 });
@@ -596,6 +596,28 @@ test('the cart picker filters the catalog with multi select category tabs above 
 
     expect(strpos($picker, 'v-if="categoryOptions.length > 1"'))
         ->toBeLessThan(strpos($picker, 'placeholder="Cari layanan, kategori, atau variasi"'));
+});
+
+test('locked order services show saved line prices and the discounted order total', function () {
+    $ordersPage = file_get_contents(resource_path('js/pages/admin/Orders.vue'));
+    $lockedServices = explode('<ServiceCartPicker', explode('v-if="servicesLocked && editingOrder"', $ordersPage)[1])[0];
+
+    expect($lockedServices)
+        ->toContain('Terkunci')
+        ->toContain('v-for="item in editingOrder.serviceItems"')
+        ->toContain('item.serviceName')
+        ->toContain('service.id === item.serviceId')
+        ->toContain("?.icon || '🫧'")
+        ->toContain('item.variations')
+        ->toContain('item.quantity')
+        ->toContain('formatCurrency(item.unitPrice)')
+        ->toContain('formatCurrency(item.totalPrice)')
+        ->toContain('v-if="editingOrder.discount > 0"')
+        ->toContain('formatCurrency(editingOrder.discount)')
+        ->toContain('formatCurrency(editingOrder.total)')
+        ->toContain('Data order lainnya tetap bisa diedit.')
+        ->not->toContain('draftTotal')
+        ->not->toContain('v-model');
 });
 
 test('the cart picker folds the catalog and the cart into one open panel on phones', function () {

@@ -193,7 +193,19 @@ class OrderController extends Controller
         DB::transaction(function () use ($order, $request): void {
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
             OperationalDataWindow::ensureAllows($order->service_date);
-            $order->update(['status' => $request->validated('status')]);
+            $status = $request->validated('status');
+            $arrivedAt = now();
+            $recordsArrival = $order->source === 'booking'
+                && in_array($order->status, ['booking', 'menunggu', 'proses', 'pelunasan'], true)
+                && $order->status !== $status
+                && in_array($status, ['menunggu', 'proses', 'pelunasan'], true)
+                && $order->arrived_at === null
+                && $order->service_date->toDateString() <= $arrivedAt->toDateString();
+
+            $order->update([
+                'status' => $status,
+                ...($recordsArrival ? ['arrived_at' => $arrivedAt] : []),
+            ]);
         });
 
         return back()->with('success', 'Status order berhasil diperbarui.');

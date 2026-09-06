@@ -314,6 +314,8 @@ export interface CarwashOrder {
     /** ISO day the order belongs to. */
     date: string;
     time: string;
+    /** Actual arrival day, which can differ from the scheduled service day. */
+    arrivalDate?: string | null;
     /** ISO day the booking was first recorded; null for walk-in orders. */
     bookingDate: string | null;
     customerId: number | null;
@@ -374,6 +376,8 @@ export interface CarwashBooking {
     date: string;
     /** ISO date the booking was first recorded. */
     bookingDate: string;
+    /** Clock time the booking was first recorded, `H.i`. */
+    bookingTime: string;
     /** Where the job stands, read back from the order module. */
     orderStatus: string;
     isMutable?: boolean;

@@ -1064,6 +1064,95 @@ test('an owner can soft delete an entry while preserving its document', function
     $this->get(route('admin.finance.attachment', $attachment))->assertNotFound();
 });
 
+test('deleting a booking deposit keeps it available at the cashier', function (int $remainingAmount) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => today()->addDays(481),
+        'arrived_at' => null,
+        'total' => 150000,
+        'paid_amount' => 50000 + $remainingAmount,
+        'payment_method' => $remainingAmount > 0 ? 'Tunai + QRIS' : 'Tunai',
+    ]);
+    $deposit = OrderTransaction::factory()->withDailyBalance()->for($booking)->create([
+        'reference' => $booking->number.'-TRX-1',
+        'amount' => 50000,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 50000]],
+    ]);
+
+    if ($remainingAmount > 0) {
+        OrderTransaction::factory()->withDailyBalance()->for($booking)->create([
+            'reference' => $booking->number.'-TRX-2',
+            'amount' => $remainingAmount,
+            'channel_breakdown' => [['label' => 'QRIS', 'amount' => $remainingAmount]],
+        ]);
+    }
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.transactions.destroy', $deposit))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    $this->assertSoftDeleted($deposit);
+    expect($deposit->refresh()->deleted_by_admin_id)->toBe($owner->id)
+        ->and($booking->refresh()->status)->toBe('booking')
+        ->and($booking->paid_amount)->toBe($remainingAmount)
+        ->and($booking->payment_method)->toBe($remainingAmount > 0 ? 'QRIS' : null)
+        ->and($booking->arrived_at)->toBeNull()
+        ->and((int) DailyBalance::query()->sum('cash_income'))->toBe(0)
+        ->and((int) DailyBalance::query()->sum('non_cash_income'))->toBe($remainingAmount);
+
+    foreach ([today()->toDateString(), today()->subDay()->toDateString()] as $date) {
+        $this->get(route('admin.pos.index', ['date' => $date]))
+            ->assertOk()
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->has('partialPaymentBookings', 1)
+                ->where('partialPaymentBookings.0.id', $booking->id)
+                ->where('partialPaymentBookings.0.status', 'booking')
+                ->where('partialPaymentBookings.0.paidAmount', $remainingAmount));
+    }
+
+    $this->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bookings.0.id', $booking->id)
+            ->where('bookings.0.orderStatus', 'booking')
+            ->where('bookings.0.paidAmount', $remainingAmount));
+
+    $this->post(route('admin.pos.payments.store', $booking), [
+        'intent' => 'partial',
+        'discount' => 0,
+        'amount' => 25000,
+        'channels' => [['method' => 'Tunai', 'amount' => 25000]],
+    ])->assertRedirect()->assertSessionHasNoErrors();
+
+    expect($booking->refresh()->status)->toBe('booking')
+        ->and($booking->paid_amount)->toBe($remainingAmount + 25000);
+    $this->assertSoftDeleted($deposit);
+})->with([0, 30000]);
+
+test('deleting a payment preserves the operational order status', function (string $status) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'status' => $status,
+        'total' => 150000,
+        'paid_amount' => 20000,
+        'payment_method' => 'Tunai',
+    ]);
+    $transaction = OrderTransaction::factory()->withDailyBalance()->for($order)->create();
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.transactions.destroy', $transaction))
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->status)->toBe($status)
+        ->and($order->paid_amount)->toBe(0)
+        ->and($order->payment_method)->toBeNull();
+    $this->assertSoftDeleted($transaction);
+})->with(['menunggu', 'proses', 'pelunasan', 'batal']);
+
 test('deleting a POS transaction reopens its order and rebuilds later balances', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create([

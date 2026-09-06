@@ -17,7 +17,7 @@ import {
     Wallet,
 } from '@lucide/vue';
 import '@fancyapps/ui/dist/fancybox/fancybox.css';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import {
     destroy as destroyCashEntry,
     destroyTransaction as destroyOrderTransaction,
@@ -139,6 +139,7 @@ const deletingEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedTransactionEntry = ref<CarwashMoneyEntry | null>(null);
 const selectedOrder = ref<CarwashOrder | null>(null);
 const highlightedTransactionId = ref<string | null>(null);
+const recentlyUpdatedEntryId = ref<CarwashMoneyEntry['id'] | null>(null);
 /** Set when the browser refuses the recap window so the desk can retry. */
 const isRecapWindowBlocked = ref<boolean>(false);
 
@@ -779,6 +780,22 @@ function posTransactionId(entry: CarwashMoneyEntry): number | null {
         : null;
 }
 
+function highlightUpdatedEntry(entry: CarwashMoneyEntry): void {
+    recentlyUpdatedEntryId.value = entry.id;
+
+    if (!filteredEntries.value.some((item) => item.id === entry.id)) {
+        activeShift.value = allShiftsKey;
+        categoryFilters.value = ['Semua'];
+        search.value = '';
+    }
+
+    void nextTick(() => {
+        document
+            .querySelector('[data-finance-highlight="true"]')
+            ?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+}
+
 function switchLedger(ledger: Ledger): void {
     activeLedger.value = ledger;
     categoryFilters.value = ['Semua'];
@@ -1098,6 +1115,7 @@ function savePosTransaction(): void {
         });
         order.paidAmount = paidAmount;
         closePosTransactionForm();
+        highlightUpdatedEntry(entry);
 
         return;
     }
@@ -1127,7 +1145,14 @@ function savePosTransaction(): void {
         })
         .submit(updateOrderTransaction(transactionId), {
             preserveScroll: true,
-            onSuccess: closePosTransactionForm,
+            onSuccess: () => {
+                const entry = editingPosEntry.value;
+                closePosTransactionForm();
+
+                if (entry !== null) {
+                    highlightUpdatedEntry(entry);
+                }
+            },
         });
 }
 
@@ -1333,11 +1358,16 @@ function saveLiveEntry(transactionShiftId: number | null): void {
         .submit(action, {
             preserveScroll: true,
             onSuccess: () => {
+                const entry = editingEntry.value;
                 isFormOpen.value = false;
                 editingEntry.value = null;
                 clearPendingAttachments();
                 removedAttachmentIds.value = [];
                 entryForm.reset();
+
+                if (entry !== null) {
+                    highlightUpdatedEntry(entry);
+                }
             },
         });
 }
@@ -1371,6 +1401,7 @@ function saveDemoEntry(transactionShiftId: number | null): void {
             ],
         });
         closeEntryForm();
+        highlightUpdatedEntry(entry);
 
         return;
     }
@@ -1862,7 +1893,15 @@ function applyDate(date: string): void {
                         <tr
                             v-for="entry in filteredEntries"
                             :key="entry.id"
-                            class="transition hover:bg-slate-50/70"
+                            :data-finance-highlight="
+                                entry.id === recentlyUpdatedEntryId
+                            "
+                            class="transition-colors duration-500"
+                            :class="
+                                entry.id === recentlyUpdatedEntryId
+                                    ? 'bg-emerald-50 hover:bg-emerald-100/70'
+                                    : 'hover:bg-slate-50/70'
+                            "
                         >
                             <td class="px-5 py-3.5">
                                 <button
@@ -1877,6 +1916,13 @@ function applyDate(date: string): void {
                                     {{ formatDate(entry.date) }} •
                                     {{ entry.time }}
                                 </p>
+                                <span
+                                    v-if="entry.id === recentlyUpdatedEntryId"
+                                    role="status"
+                                    class="mt-1 inline-flex rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                                >
+                                    Baru diperbarui
+                                </span>
                             </td>
                             <td class="px-5 py-3.5">
                                 <span

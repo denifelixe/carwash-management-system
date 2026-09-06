@@ -8,6 +8,7 @@ import {
     CircleCheck,
     ClipboardList,
     Hourglass,
+    LockKeyhole,
     Pencil,
     Plus,
     Search,
@@ -262,9 +263,17 @@ function transactionCaption(type: string): string {
 }
 
 function orderArrivalLabel(order: CarwashOrder): string {
-    return order.time === '—'
-        ? 'Belum masuk'
-        : `${formatDate(order.date)} · ${order.time}`;
+    if (order.time === '—') {
+        if (order.status === 'booking') {
+            return `Jadwal: ${formatDate(order.date)} · Belum masuk`;
+        }
+
+        return order.status === 'batal'
+            ? `${formatDate(order.date)} · Dibatalkan`
+            : `${formatDate(order.date)} · Jam kedatangan belum tercatat`;
+    }
+
+    return `${formatDate(order.arrivalDate ?? order.date)} · ${order.time}`;
 }
 
 /**
@@ -583,6 +592,23 @@ function normalizeCustomerSearch(value: string): string {
  * an order to 'selesai' happens in the cashier module once the bill is settled.
  */
 function setStatus(order: CarwashOrder, status: string): void {
+    if (
+        order.source === 'booking' &&
+        ['booking', 'menunggu', 'proses', 'pelunasan'].includes(order.status) &&
+        order.status !== status &&
+        ['menunggu', 'proses', 'pelunasan'].includes(status) &&
+        order.date <= props.filters.today &&
+        order.time === '—'
+    ) {
+        order.arrivalDate = props.filters.today;
+        order.time = new Intl.DateTimeFormat('id-ID', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+            timeZone: props.filters.timezone,
+        }).format(new Date());
+    }
+
     order.status = status;
 }
 
@@ -2125,16 +2151,121 @@ const deleteForm = useForm({});
             <!-- Services -->
             <div>
                 <p
+                    v-if="!servicesLocked"
                     class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"
                 >
                     Layanan
                 </p>
-                <div v-if="servicesLocked && editingOrder">
-                    <p>{{ editingOrder.items }}</p>
-                    <p>{{ formatCurrency(editingOrder.total) }}</p>
-                    <p>
-                        Layanan dan jumlahnya tidak dapat diubah karena order
-                        sudah memiliki transaksi.
+                <div
+                    v-if="servicesLocked && editingOrder"
+                    class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+                >
+                    <div
+                        class="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-3"
+                    >
+                        <div class="flex items-center gap-2.5">
+                            <span
+                                class="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-50 text-cyan-600"
+                            >
+                                <ClipboardList
+                                    class="h-4 w-4"
+                                    aria-hidden="true"
+                                />
+                            </span>
+                            <h3 class="text-sm font-semibold text-slate-800">
+                                Layanan
+                            </h3>
+                        </div>
+                        <span
+                            class="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium text-slate-500"
+                        >
+                            <LockKeyhole class="h-3 w-3" aria-hidden="true" />
+                            Terkunci
+                        </span>
+                    </div>
+                    <ul
+                        v-if="editingOrder.serviceItems.length"
+                        class="divide-y divide-slate-100 px-4"
+                    >
+                        <li
+                            v-for="item in editingOrder.serviceItems"
+                            :key="item.serviceVariationId"
+                            class="flex items-start justify-between gap-4 py-3.5"
+                        >
+                            <span
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-xl ring-1 ring-slate-100"
+                                aria-hidden="true"
+                            >
+                                {{
+                                    services.find(
+                                        (service) =>
+                                            service.id === item.serviceId,
+                                    )?.icon || '🫧'
+                                }}
+                            </span>
+                            <div class="min-w-0 flex-1 space-y-1">
+                                <p
+                                    class="text-sm font-medium break-words text-slate-800"
+                                >
+                                    {{ item.serviceName }}
+                                </p>
+                                <p
+                                    v-if="
+                                        Object.keys(item.variations ?? {})
+                                            .length
+                                    "
+                                    class="text-xs break-words text-slate-500"
+                                >
+                                    {{
+                                        Object.values(
+                                            item.variations ?? {},
+                                        ).join(' · ')
+                                    }}
+                                </p>
+                                <p class="text-xs text-slate-400 tabular-nums">
+                                    {{ item.quantity }} ×
+                                    {{ formatCurrency(item.unitPrice) }}
+                                </p>
+                            </div>
+                            <p
+                                class="shrink-0 pt-0.5 text-sm font-medium text-slate-700 tabular-nums"
+                            >
+                                {{ formatCurrency(item.totalPrice) }}
+                            </p>
+                        </li>
+                    </ul>
+                    <p v-else class="px-4 py-3.5 text-sm text-slate-700">
+                        {{ editingOrder.items }}
+                    </p>
+                    <div
+                        class="space-y-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3"
+                    >
+                        <div
+                            v-if="editingOrder.discount > 0"
+                            class="flex items-center justify-between gap-4 text-xs text-slate-500"
+                        >
+                            <span>Diskon</span>
+                            <span class="tabular-nums"
+                                >−{{
+                                    formatCurrency(editingOrder.discount)
+                                }}</span
+                            >
+                        </div>
+                        <div class="flex items-center justify-between gap-4">
+                            <span class="text-xs font-medium text-slate-600"
+                                >Total order</span
+                            >
+                            <span
+                                class="text-base font-semibold text-slate-900 tabular-nums"
+                                >{{ formatCurrency(editingOrder.total) }}</span
+                            >
+                        </div>
+                    </div>
+                    <p
+                        class="border-t border-slate-100 px-4 py-2.5 text-[11px] leading-relaxed text-slate-400"
+                    >
+                        Layanan dan jumlah tetap karena sudah ada transaksi.
+                        Data order lainnya tetap bisa diedit.
                     </p>
                 </div>
                 <ServiceCartPicker

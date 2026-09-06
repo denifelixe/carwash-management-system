@@ -139,9 +139,19 @@ const ts = require('typescript');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
 const ast = ts.createSourceFile('Finance.ts', source, ts.ScriptTarget.Latest, true);
-const names = ['correctedShiftName', 'savePosTransaction', 'saveDemoEntry', 'saveLiveEntry', 'isEditable'];
+const names = ['correctedShiftName', 'savePosTransaction', 'saveDemoEntry', 'saveLiveEntry', 'isEditable', 'highlightUpdatedEntry'];
 const code = ts.transpile(ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name.text)).map(node => node.getText(ast)).join('\n'), { target: ts.ScriptTarget.ES2020 });
 const state = {
+    recentlyUpdatedEntryId: { value: null },
+    filteredEntries: { value: [] },
+    activeShift: { value: 'morning' }, allShiftsKey: 'all',
+    categoryFilters: { value: ['Old category'] }, search: { value: 'old reference' },
+    nextTick(callback) { callback(); return Promise.resolve(); },
+    document: { querySelector(selector) {
+        assert.equal(selector, '[data-finance-highlight="true"]');
+        return { scrollIntoView(options) { assert.equal(options.block, 'center'); } };
+    } },
+    isFormOpen: { value: true }, clearPendingAttachments() {},
     props: { mode: 'demo', capabilities: { edit_cash_entry_backdate: false }, shiftOptions: [{ id: 2, name: 'Shift Sore' }], filters: { today: '2026-09-06' } },
     shiftCorrection: { value: 2 },
     editingPosEntry: { value: null }, editingEntry: { value: null },
@@ -165,6 +175,7 @@ for (const [choice, expected] of [[2, 'Shift Sore'], [null, null], ['keep', 'Shi
     const posEntry = { id: 'pos-trx1', amount: 50000, shift: 'Shift Lama', date: '2026-09-05' };
     state.editingPosEntry.value = posEntry;
     api.savePosTransaction();
+    assert.equal(state.recentlyUpdatedEntryId.value, posEntry.id);
     assert.equal(transaction.shift, expected);
     assert.equal(posEntry.shift, expected);
     assert.equal(state.order.paidAmount, 50000);
@@ -173,6 +184,7 @@ for (const [choice, expected] of [[2, 'Shift Sore'], [null, null], ['keep', 'Shi
         const entry = { id: 'manual1', direction, amount: 50000, shift: 'Shift Lama', recordedBy: 'Kasir', date: '2026-09-05', attachments: [] };
         state.editingEntry.value = entry;
         api.saveDemoEntry(null);
+        assert.equal(state.recentlyUpdatedEntryId.value, entry.id);
         assert.equal(entry.shift, expected);
         assert.equal(entry.id, 'manual1');
         assert.equal(entry.recordedBy, 'Kasir');
@@ -190,9 +202,10 @@ assert.equal(state.order.transactions[0].time, '08.45');
 assert.equal(state.editingPosEntry.value.date, '2026-09-04');
 assert.equal(state.editingPosEntry.value.time, '08.45');
 state.props.mode = 'live';
+state.entryForm.reset = function () {};
 for (const form of [state.transactionForm, state.entryForm]) {
     form.transform = function (callback) { this.transformer = callback; return this; };
-    form.submit = function () { this.payload = this.transformer({ amount: 50000, channels: [], transaction_shift_id: null }); };
+    form.submit = function (action, options) { this.onSuccess = options.onSuccess; this.payload = this.transformer({ amount: 50000, channels: [], transaction_shift_id: null }); };
 }
 for (const choice of ['keep', null, 2]) {
     state.shiftCorrection.value = choice;
@@ -203,6 +216,25 @@ for (const choice of ['keep', null, 2]) {
         if (choice !== 'keep') assert.equal(form.payload.transaction_shift_id, choice);
     }
 }
+state.recentlyUpdatedEntryId.value = null;
+api.savePosTransaction();
+assert.equal(state.recentlyUpdatedEntryId.value, null);
+state.transactionForm.onSuccess();
+assert.equal(state.recentlyUpdatedEntryId.value, 'pos-trx1');
+state.recentlyUpdatedEntryId.value = null;
+api.saveLiveEntry(null);
+assert.equal(state.recentlyUpdatedEntryId.value, null);
+state.entryForm.onSuccess();
+assert.equal(state.recentlyUpdatedEntryId.value, 'manual1');
+assert.equal(state.activeShift.value, 'all');
+assert.deepEqual(state.categoryFilters.value, ['Semua']);
+assert.equal(state.search.value, '');
+state.filteredEntries.value = [{ id: 'visible' }];
+state.activeShift.value = 'evening';
+state.search.value = 'matching';
+api.highlightUpdatedEntry({ id: 'visible' });
+assert.equal(state.activeShift.value, 'evening');
+assert.equal(state.search.value, 'matching');
 console.log('passed');
 JS;
 

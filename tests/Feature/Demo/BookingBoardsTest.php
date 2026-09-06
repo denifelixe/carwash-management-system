@@ -29,7 +29,8 @@ test('the booking board stacks today, upcoming, and finished schedules', functio
         ->toContain('{{ booking.code }}')
         ->toContain("title: 'Booking hari ini',")
         ->toContain("title: 'Booking mendatang',")
-        ->toContain("title: 'Booking selesai / batal',");
+        ->toContain("title: 'Booking sebelumnya',")
+        ->toContain("emptyCaption: 'Booking yang sudah lewat jadwalnya akan tampil di sini.',");
 
     // The order of the boards on the page: today, upcoming, then what is past.
     expect(mb_strpos($bookingsPage, "key: 'today',"))
@@ -155,10 +156,15 @@ test('booking details separate the booking date from execution and show payment 
     );
 
     expect($bookingsPage)
-        ->toContain('Tanggal Booking')
+        ->toContain('Waktu Input')
         ->toContain('{{ formatDate(detailBooking.bookingDate) }}')
-        ->toContain('Tanggal Order')
+        ->toContain('{{ detailBooking.bookingTime }}')
+        ->toContain('Booking untuk')
         ->toContain('{{ formatDate(detailBooking.date) }}')
+        ->toContain(':caption="detailBookingCaption"')
+        ->toContain('Waktu Input: ${formatDate(booking.bookingDate)} • ${booking.bookingTime}')
+        ->toContain('Booking untuk: ${formatDate(booking.date)}')
+        ->toContain('].join(\'\n\');')
         ->not->toContain('Catatan')
         ->not->toContain('{{ detailBooking.notes }}')
         ->not->toContain('Estimasi biaya')
@@ -176,22 +182,26 @@ test('booking details separate the booking date from execution and show payment 
     }
 
     foreach (Operations::bookings() as $booking) {
-        expect($booking)->toHaveKeys(['bookingDate', 'date']);
+        expect($booking)->toHaveKeys(['bookingDate', 'bookingTime', 'date']);
     }
 
     expect(Operations::bookings()[0]['bookingDate'])
         ->not->toBe(Operations::bookings()[0]['date']);
 });
 
-test('past bookings without transactions can be edited alongside scheduled bookings', function () {
+test('booking details remain editable while only paid services are locked', function () {
     $bookingsPage = file_get_contents(
         resource_path('js/pages/admin/Bookings.vue'),
     );
 
     expect($bookingsPage)
-        ->toContain('daysFromToday(detailBooking.value.date) < 0')
-        ->toContain('detailBooking.value.canEditServices === true')
-        ->toContain("detailBooking.value.orderStatus === 'booking'")
+        ->not->toContain('daysFromToday(detailBooking.value.date) < 0')
+        ->not->toContain('detailBooking.value.canEditServices === true')
+        ->not->toContain("detailBooking.value.orderStatus === 'booking'")
+        ->toContain('props.capabilities.update &&')
+        ->toContain('detailBooking.value?.isMutable !== false')
+        ->toContain('editingBooking.value?.canEditServices !== false')
+        ->toContain('v-if="canEditDraftServices"')
         ->toContain('v-if="canEditDetailBooking"')
         ->toContain('@click="startEditingBooking"')
         ->toContain('Edit Booking')
@@ -204,6 +214,11 @@ test('past bookings without transactions can be edited alongside scheduled booki
 test('the slide-over footer lays out its actions at full width', function () {
     expect(file_get_contents(resource_path('js/components/demo/SlideOver.vue')))
         ->toContain('sticky bottom-0 flex gap-2');
+});
+
+test('the slide-over caption keeps the line breaks it is given', function () {
+    expect(file_get_contents(resource_path('js/components/demo/SlideOver.vue')))
+        ->toContain('whitespace-pre-line');
 });
 
 test('the booking module never sets a status of its own', function () {

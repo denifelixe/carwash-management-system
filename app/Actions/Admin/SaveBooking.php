@@ -25,13 +25,9 @@ class SaveBooking
                 OperationalDataWindow::ensureAllows($booking->service_date);
 
                 abort_if(
-                    $booking->source !== 'booking' || (
-                        $booking->service_date->isBefore(today())
-                            ? $booking->transactions()->exists()
-                            : $booking->status !== 'booking'
-                    ),
+                    $booking->source !== 'booking',
                     422,
-                    'Booking yang sudah diproses tidak dapat diubah.',
+                    'Order ini bukan booking.',
                 );
             }
 
