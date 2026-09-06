@@ -2936,7 +2936,7 @@ const memberForm = useForm({
                                                 {{ formatPlate(order.plate) }}
                                             </p>
                                             <p
-                                                class="mt-0.5 text-sm font-medium text-slate-700"
+                                                class="mt-0.5 text-base font-semibold text-slate-700"
                                             >
                                                 {{ order.vehicle }}
                                             </p>
@@ -3083,7 +3083,7 @@ const memberForm = useForm({
                                         {{ formatPlate(order.plate) }}
                                     </p>
                                     <p
-                                        class="mt-0.5 text-sm font-medium text-slate-700"
+                                        class="mt-0.5 text-base font-semibold text-slate-700"
                                     >
                                         {{ order.vehicle }}
                                     </p>
@@ -3202,7 +3202,7 @@ const memberForm = useForm({
                                     {{ formatPlate(order.plate) }}
                                 </p>
                                 <p
-                                    class="mt-0.5 text-sm font-medium text-slate-700"
+                                    class="mt-0.5 text-base font-semibold text-slate-700"
                                 >
                                     {{ order.vehicle }}
                                 </p>

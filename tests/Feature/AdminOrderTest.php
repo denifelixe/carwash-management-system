@@ -29,6 +29,48 @@ test('order handler columns exist', function () {
     ]))->toBeTrue();
 });
 
+test('earlier unfinished orders are separate from the selected day and sorted oldest first', function (int $daysAgo) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $date = today()->subDays($daysAgo);
+    $expected = [];
+
+    foreach (['booking', 'menunggu', 'proses', 'pelunasan'] as $index => $status) {
+        $expected[] = Order::factory()->create([
+            'status' => $status,
+            'service_date' => $date->copy()->subDays(4 - $index),
+        ])->id;
+    }
+
+    foreach (['selesai', 'batal'] as $status) {
+        Order::factory()->create(['status' => $status, 'service_date' => $date->copy()->subDays(5)]);
+    }
+
+    $selected = Order::factory()->create(['service_date' => $date]);
+    Order::factory()->create(['service_date' => $date->copy()->addDay()]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', $daysAgo === 0 ? [] : ['date' => $date->toDateString()]))
+        ->assertSuccessful()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('orders', 1)
+            ->where('orders.0.id', $selected->id)
+            ->has('previousOrders', 4)
+            ->where('previousOrders', fn ($orders): bool => collect($orders)->pluck('id')->all() === $expected));
+})->with([0, 2]);
+
+test('an earlier order disappears from the unfinished section after cancellation', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['service_date' => today()->subDay()]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $order), ['status' => 'batal'])
+        ->assertSessionHasNoErrors();
+
+    $this->get(route('admin.orders.index'))
+        ->assertSuccessful()
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('previousOrders', 0));
+});
+
 test('the live order page uses the shared component and database records', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $service = Service::factory()->create(['name' => 'Premium Wash', 'variations' => ['Ukuran' => ['Small']]]);

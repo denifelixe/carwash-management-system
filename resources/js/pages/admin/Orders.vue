@@ -63,6 +63,7 @@ const props = defineProps<{
     brand: CarwashBrand;
     persona: CarwashPersona;
     orders: CarwashOrder[];
+    previousOrders: CarwashOrder[];
     filters: CarwashDateFilter;
     orderStatuses: string[];
     editableOrderStatuses: string[];
@@ -120,6 +121,7 @@ const workflow = useCarwashWorkflow();
 if (props.mode === 'demo') {
     workflow.hydrateCustomers(props.customers);
     workflow.hydrateOrders(props.orders);
+    workflow.hydrateOrders(props.previousOrders);
 }
 
 const customerList = computed<CarwashCustomer[]>(() =>
@@ -139,7 +141,9 @@ const customerOptions = computed<CustomerOption[]>(() =>
 );
 
 const orderList = computed<CarwashOrder[]>(() =>
-    props.mode === 'demo' ? workflow.orders.value : props.orders,
+    props.mode === 'demo'
+        ? workflow.orders.value
+        : [...props.orders, ...props.previousOrders],
 );
 
 /** Orders belonging to the date selected on this page. Other modules may load
@@ -289,6 +293,28 @@ const filteredOrders = computed<CarwashOrder[]>(() => {
         return matchesStatus && matchesQuery;
     });
 });
+
+const unfinishedPreviousOrders = computed<CarwashOrder[]>(() =>
+    orderList.value
+        .filter(
+            (order) =>
+                order.date < props.filters.date &&
+                !closedStatuses.includes(order.status),
+        )
+        .sort(
+            (first, second) =>
+                first.date.localeCompare(second.date) || first.id - second.id,
+        ),
+);
+
+const orderSections = computed(() => [
+    { key: 'daily', title: 'Daftar order', orders: filteredOrders.value },
+    {
+        key: 'previous',
+        title: 'Order hari sebelumnya yang belum selesai',
+        orders: unfinishedPreviousOrders.value,
+    },
+]);
 
 const detailOrder = computed<CarwashOrder | null>(
     () =>
@@ -1028,6 +1054,8 @@ const deleteForm = useForm({});
 
         <!-- Order table -->
         <section
+            v-for="section in orderSections"
+            :key="section.key"
             class="rounded-2xl border border-slate-200/80 bg-white shadow-sm"
         >
             <div
@@ -1035,13 +1063,20 @@ const deleteForm = useForm({});
             >
                 <div>
                     <h3 class="text-sm font-semibold text-slate-900">
-                        Daftar order
+                        {{ section.title }}
                     </h3>
                     <p class="mt-0.5 text-xs text-slate-500">
-                        {{ filteredOrders.length }} order ditampilkan
+                        {{ section.orders.length }} order ditampilkan
+                        <template v-if="section.key === 'previous'">
+                            · Sebelum {{ formatDate(filters.date) }} · Semua
+                            status belum selesai
+                        </template>
                     </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2">
+                <div
+                    v-if="section.key === 'daily'"
+                    class="flex flex-wrap items-center gap-2"
+                >
                     <DataToolbar
                         v-model:search="search"
                         placeholder="Cari order / plat"
@@ -1061,7 +1096,7 @@ const deleteForm = useForm({});
                 </div>
             </div>
 
-            <div v-if="filteredOrders.length > 0" class="overflow-x-auto">
+            <div v-if="section.orders.length > 0" class="overflow-x-auto">
                 <!--
                     A phone and a tablet only get Kendaraan, Layanan, and
                     Status; the customer folds into the vehicle cell and the
@@ -1090,7 +1125,7 @@ const deleteForm = useForm({});
                     </thead>
                     <tbody class="divide-y divide-slate-50">
                         <tr
-                            v-for="order in filteredOrders"
+                            v-for="order in section.orders"
                             :key="order.id"
                             tabindex="0"
                             class="cursor-pointer transition hover:bg-slate-50/70 focus-visible:bg-slate-50 focus-visible:outline-none"
@@ -1104,7 +1139,9 @@ const deleteForm = useForm({});
                                 >
                                     {{ formatPlate(order.plate) }}
                                 </p>
-                                <p class="mt-0.5 text-xs text-slate-600">
+                                <p
+                                    class="mt-0.5 text-base font-semibold text-slate-700"
+                                >
                                     {{ order.vehicle }}
                                 </p>
                                 <div class="mt-1 lg:hidden">
@@ -1205,8 +1242,16 @@ const deleteForm = useForm({});
             <EmptyState
                 v-else
                 :icon="ClipboardList"
-                title="Tidak ada order yang cocok"
-                caption="Ubah kata kunci pencarian atau filter status."
+                :title="
+                    section.key === 'previous'
+                        ? 'Tidak ada order tertunda'
+                        : 'Tidak ada order yang cocok'
+                "
+                :caption="
+                    section.key === 'previous'
+                        ? 'Semua order hari sebelumnya sudah selesai atau dibatalkan.'
+                        : 'Ubah kata kunci pencarian atau filter status.'
+                "
             />
         </section>
     </div>
@@ -1262,7 +1307,7 @@ const deleteForm = useForm({});
                 <p class="mt-1 text-xl font-bold tracking-wide text-slate-900">
                     {{ formatPlate(detailOrder.plate) }}
                 </p>
-                <p class="mt-0.5 text-sm text-slate-600">
+                <p class="mt-0.5 text-base font-semibold text-slate-700">
                     {{ detailOrder.vehicle }}
                 </p>
                 <p class="mt-1 text-xs text-slate-500">

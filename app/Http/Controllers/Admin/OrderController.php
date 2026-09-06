@@ -48,11 +48,13 @@ class OrderController extends Controller
         $today = CarbonImmutable::now()->startOfDay();
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
         $orders = OrderQueries::forDate($selectedDate);
-        $services = OrderQueries::servicesFor($orders);
+        $previousOrders = OrderQueries::unfinishedBeforeDate($selectedDate);
+        $services = OrderQueries::servicesFor($orders->merge($previousOrders));
 
         return Inertia::render('admin/Orders', [
             ...$adminShell->props($admin, 'Order', 'orders'),
             'orders' => $orders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
+            'previousOrders' => $previousOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'filters' => OrderQueries::filters($selectedDate, $today),
             'orderStatuses' => self::STATUSES,
             'editableOrderStatuses' => self::EDITABLE_STATUSES,

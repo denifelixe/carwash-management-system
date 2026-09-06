@@ -79,6 +79,17 @@ class OrderQueries
             ->get();
     }
 
+    /** @return Collection<int, Order> */
+    public static function unfinishedBeforeDate(string $date): Collection
+    {
+        return self::baseQuery()
+            ->where('service_date', '<', $date)
+            ->whereIn('status', ['booking', 'menunggu', 'proses', 'pelunasan'])
+            ->orderBy('service_date')
+            ->orderBy('id')
+            ->get();
+    }
+
     /**
      * Bookings whose car has not arrived yet, from today onwards. The cashier
      * takes deposits on these before the visit, so they stay visible whichever
