@@ -31,3 +31,69 @@ test('plate form models keep their canonical values', function (string $path, st
     'order entry' => ['js/pages/admin/Orders.vue', 'v-model="draft.plate"'],
     'cashier member entry' => ['js/pages/admin/Pos.vue', 'v-model="memberDraft.plate"'],
 ]);
+
+test('the plate column splitter keeps a half typed plate in order', function () {
+    $formatter = file_get_contents(resource_path('js/lib/vehiclePlate.ts'));
+
+    expect($formatter)
+        ->toContain('export function splitPlate(')
+        ->toContain('prefix: take(/^[A-Z]{1,2}/)')
+        ->toContain('digits: take(/^\d{1,4}/)')
+        ->toContain('suffix: take(/^[A-Z]{1,3}/)')
+        ->toContain('prefix: 2,');
+});
+
+test('the plate field types across three columns without a tab press', function () {
+    $input = file_get_contents(
+        resource_path('js/components/admin/PlateInput.vue'),
+    );
+
+    expect($input)
+        // A column keeps only what it accepts and hands the rest forward.
+        ->toContain('.filter((character) => allowed[key].test(character))')
+        ->toContain('.filter((character) => !allowed[key].test(character))')
+        ->toContain("focusSegment(next, 'end')")
+        // A full column jumps ahead on its own.
+        ->toContain('if (kept.length === plateSegmentLengths[key])')
+        // Backspace at the head of a column eats into the one before it.
+        ->toContain('@keydown.backspace="handleBackspace(column.key, $event)"')
+        ->toContain('segments[previous] = segments[previous].slice(0, -1)')
+        ->toContain("focusSegment(previous, 'end')")
+        // Every column is upper-cased as it is typed.
+        ->toContain('normalizePlate(field.value)')
+        ->toContain('uppercase')
+        ->toContain('autocapitalize="characters"')
+        // The model stays the canonical, space-free plate.
+        ->toContain(
+            '`${segments.prefix}${segments.digits}${segments.suffix}`',
+        );
+});
+
+test('every plate entry field uses the shared column input', function (
+    string $path,
+    string $binding,
+) {
+    $view = file_get_contents(resource_path($path));
+
+    expect($view)
+        ->toContain("import PlateInput from '@/components/admin/PlateInput.vue';")
+        ->toContain('<PlateInput')
+        ->toContain($binding)
+        ->not->toContain('placeholder="Plat nomor"');
+})->with([
+    'order entry' => ['js/pages/admin/Orders.vue', 'v-model="draft.plate"'],
+    'cashier member entry' => [
+        'js/pages/admin/Pos.vue',
+        'v-model="memberDraft.plate"',
+    ],
+    'booking entry' => ['js/pages/admin/Bookings.vue', 'v-model="draft.plate"'],
+    'member vehicles' => [
+        'js/pages/admin/Customers.vue',
+        'v-model="vehicle.plate"',
+    ],
+    'lead entry' => ['js/pages/admin/Leads.vue', 'v-model="draft.plate"'],
+    'member registration' => [
+        'js/pages/demo/auth/MemberRegister.vue',
+        'v-model="form.plate"',
+    ],
+]);

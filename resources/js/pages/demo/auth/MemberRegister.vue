@@ -1,15 +1,8 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
-import {
-    ArrowLeft,
-    Car,
-    CircleCheck,
-    Lock,
-    Mail,
-    Phone,
-    User,
-} from '@lucide/vue';
+import { ArrowLeft, CircleCheck, Lock, Mail, Phone, User } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import PlateInput from '@/components/admin/PlateInput.vue';
 import { home } from '@/routes/demo';
 import member from '@/routes/demo/member';
 import type { CarwashBrand } from '@/types/demo';
@@ -204,7 +197,7 @@ function submit(): void {
                             </p>
                         </div>
 
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid gap-3">
                             <div>
                                 <label
                                     for="plate"
@@ -212,25 +205,12 @@ function submit(): void {
                                 >
                                     Plat nomor
                                 </label>
-                                <div
-                                    class="mt-1.5 flex items-center gap-2 rounded-xl border bg-white px-3 py-2.5 focus-within:border-cyan-400"
-                                    :class="
-                                        errors.plate
-                                            ? 'border-rose-300'
-                                            : 'border-slate-200'
-                                    "
-                                >
-                                    <Car
-                                        class="h-4 w-4 shrink-0 text-slate-400"
-                                    />
-                                    <input
-                                        id="plate"
-                                        v-model="form.plate"
-                                        type="text"
-                                        placeholder="B 1234 CDE"
-                                        class="w-full bg-transparent text-sm text-slate-800 uppercase placeholder:text-slate-400 placeholder:normal-case focus:outline-none"
-                                    />
-                                </div>
+                                <PlateInput
+                                    id="plate"
+                                    v-model="form.plate"
+                                    :invalid="Boolean(errors.plate)"
+                                    class="mt-1.5"
+                                />
                             </div>
                             <div>
                                 <label

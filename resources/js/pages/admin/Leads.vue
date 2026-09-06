@@ -17,6 +17,7 @@ import {
     update as updateLead,
     updateStatus as updateLeadStatus,
 } from '@/actions/App/Http/Controllers/Admin/LeadController';
+import PlateInput from '@/components/admin/PlateInput.vue';
 import DataPagination from '@/components/demo/DataPagination.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
@@ -583,7 +584,7 @@ function toggleStatus(lead: CarwashLead): void {
         @close="isFormOpen = false"
     >
         <div class="space-y-3">
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid gap-3">
                 <div>
                     <label
                         class="text-xs font-medium text-slate-600"
@@ -591,12 +592,10 @@ function toggleStatus(lead: CarwashLead): void {
                     >
                         Plat nomor
                     </label>
-                    <input
+                    <PlateInput
                         id="lead-plate"
                         v-model="draft.plate"
-                        type="text"
-                        placeholder="B 1234 CDE"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 uppercase placeholder:text-slate-400 placeholder:normal-case focus:border-cyan-400 focus:outline-none"
+                        class="mt-1.5"
                     />
                 </div>
                 <div>

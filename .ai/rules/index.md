@@ -4,6 +4,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 
 | Applies to | Rule file |
 | --- | --- |
+| {resources/js/components/admin/PlateInput.vue,resources/js/lib/vehiclePlate.ts} | .ai/rules/admin-js-lib.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/TransactionShiftResolver.php,resources/js/pages/admin/{Pos,Finance,Users}.vue} | .ai/rules/admin-js-pages-admin.md |
 | {app/Http/Controllers/Admin/Master/ReceiptController.php,app/Http/Controllers/Admin/Master/AppSettingController.php,app/Actions/Admin/UpdateReceiptSettings.php,app/Actions/Admin/UpdateAppBranding.php,resources/js/pages/admin/master/Receipt.vue,resources/js/pages/admin/master/AppSettings.vue} | .ai/rules/admin-master.md |
 | {app/Http/Controllers/Admin/DashboardController.php,app/Support/Admin/DashboardStats.php} | .ai/rules/admin-support-admin.md |

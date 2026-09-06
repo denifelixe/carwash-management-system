@@ -23,3 +23,42 @@ export function formatPlate(value: string | null | undefined): string {
 
     return [segments[1], segments[2], segments[3]].filter(Boolean).join(' ');
 }
+
+/** The three columns a plate is typed in: "B" — "8120" — "DS". */
+export type PlateSegments = {
+    prefix: string;
+    digits: string;
+    suffix: string;
+};
+
+/** How long each column may get, in the order they are typed. */
+export const plateSegmentLengths: Record<keyof PlateSegments, number> = {
+    prefix: 2,
+    digits: 4,
+    suffix: 3,
+};
+
+/**
+ * A plate — whole or half-typed — split into the columns of the entry field.
+ *
+ * The match is greedy per column and never re-orders, so "B8120" fills the
+ * first two columns and leaves the third empty, and anything that cannot
+ * belong to a column (a stray symbol, a fifth digit) is dropped rather than
+ * shifted into the next one.
+ */
+export function splitPlate(value: string | null | undefined): PlateSegments {
+    let rest = typeof value === 'string' ? normalizePlate(value) : '';
+
+    const take = (pattern: RegExp): string => {
+        const matched = rest.match(pattern)?.[0] ?? '';
+        rest = rest.slice(matched.length);
+
+        return matched;
+    };
+
+    return {
+        prefix: take(/^[A-Z]{1,2}/),
+        digits: take(/^\d{1,4}/),
+        suffix: take(/^[A-Z]{1,3}/),
+    };
+}

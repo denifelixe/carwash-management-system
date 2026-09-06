@@ -308,6 +308,45 @@ const scopedExpenses = computed<CarwashMoneyEntry[]>(() =>
     ),
 );
 
+const paymentRecapByType = computed(() =>
+    [
+        {
+            category: 'Pembayaran Sebagian/Booking Order',
+            label: 'Pembayaran Sebagian/DP',
+        },
+        {
+            category: 'Pembayaran Sisa/Lunas (Order Selesai)',
+            label: 'Pembayaran Sisa/Lunas (Order Selesai)',
+        },
+    ].map(({ category, label }) => {
+        const entries = scopedIncome.value.filter(
+            (entry) => entry.category === category,
+        );
+
+        return {
+            label,
+            count: entries.length,
+            amount: entries.reduce((total, entry) => total + entry.amount, 0),
+            cash: channelTotal(entries, cashChannelKey),
+            nonCash: entries.reduce(
+                (total, entry) =>
+                    total +
+                    entry.channelBreakdown
+                        .filter(
+                            (channel) =>
+                                channel.label.split(' · ')[0] !==
+                                cashChannelKey,
+                        )
+                        .reduce(
+                            (subtotal, channel) => subtotal + channel.amount,
+                            0,
+                        ),
+                0,
+            ),
+        };
+    }),
+);
+
 const activeEntries = computed<CarwashMoneyEntry[]>(() =>
     activeLedger.value === 'in' ? scopedIncome.value : scopedExpenses.value,
 );
@@ -541,6 +580,18 @@ function financeRecapSheet(): RecapSheet {
          * figures that do.
          */
         tables: [
+            {
+                heading: 'Jenis transaksi',
+                columns: ['Jenis', 'Tunai', 'Non Tunai', 'Nominal'],
+                rows: paymentRecapByType.value.map((row) => ({
+                    label: row.label,
+                    values: [
+                        formatCurrency(row.cash),
+                        formatCurrency(row.nonCash),
+                        formatCurrency(row.amount),
+                    ],
+                })),
+            },
             {
                 /* Named for what it holds, not for the column it repeats. */
                 heading: 'Tunai',

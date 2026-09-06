@@ -19,6 +19,7 @@ import {
     store as storeBooking,
     update as updateBooking,
 } from '@/actions/App/Http/Controllers/Admin/BookingController';
+import PlateInput from '@/components/admin/PlateInput.vue';
 import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
@@ -1161,7 +1162,7 @@ function saveBooking(): void {
                 </div>
 
                 <div v-else class="mt-3 space-y-3">
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid gap-3">
                         <div class="space-y-1.5">
                             <label
                                 for="booking-vehicle-plate"
@@ -1169,12 +1170,9 @@ function saveBooking(): void {
                             >
                                 Plat Nomor
                             </label>
-                            <input
+                            <PlateInput
                                 id="booking-vehicle-plate"
                                 v-model="draft.plate"
-                                type="text"
-                                placeholder="Plat nomor"
-                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
                             />
                         </div>
                         <div class="space-y-1.5">

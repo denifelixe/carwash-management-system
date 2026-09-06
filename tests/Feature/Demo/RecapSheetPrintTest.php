@@ -1,5 +1,149 @@
 <?php
 
+use Illuminate\Support\Facades\Process;
+
+test('finance payment types render in both HTML and PDF paper sizes', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+(async () => {
+    const { createServer } = await import('vite');
+    const server = await createServer({ configFile: false, server: { middlewareMode: true }, resolve: { alias: { '@': path.resolve('resources/js') } }, ssr: { external: ['jspdf'] } });
+    try {
+        const { renderRecapSheetDocument } = await server.ssrLoadModule('/resources/js/lib/recapSheet.ts');
+        const { renderRecapSheetPdf } = await server.ssrLoadModule('/resources/js/lib/recapSheetPdf.ts');
+        const { formatCurrency, formatDate } = await server.ssrLoadModule('/resources/js/composables/useCarwashFormat.ts');
+        const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8');
+        const start = source.indexOf('function financeRecapSheet(): RecapSheet {');
+        const code = ts.transpile(source.slice(start, source.indexOf('\n}\n', start) + 2));
+        const cash = { label: 'Tunai', income: 0, expense: 0, balance: 0 };
+        const context = {
+            shiftTabs: { value: [] }, activeShift: { value: 'all' },
+            cashChannelRow: { value: cash }, nonCashChannelRows: { value: [{ ...cash, label: 'Kredit', income: 20000, balance: 20000 }] }, nonCashTotals: { value: { ...cash, income: 20000, balance: 20000 } },
+            props: { filters: { date: '2026-09-06', timezone: 'Asia/Jakarta' }, persona: { name: 'Deni Victoria' }, capabilities: { view_non_cash_balance: true }, dailyBalance: { cash: 0, nonCash: 20000, previous: { date: '2026-09-05', cash: 0, nonCash: 0 } } },
+            recapLinks: () => ({ sourceUrl: null, qrUrl: null }),
+            totalIn: { value: 20000 }, totalOut: { value: 0 }, profit: { value: 20000 }, scopedIncome: { value: [{}] }, scopedExpenses: { value: [] },
+            paymentRecapByType: { value: [{ label: 'Pembayaran Sebagian/DP', count: 1, amount: 20000, cash: 5000, nonCash: 15000 }, { label: 'Pembayaran Sisa/Lunas (Order Selesai)', count: 0, amount: 0, cash: 0, nonCash: 0 }] },
+            balanceCaption: { value: 'Saldo awal dan akhir' }, balanceRow: (date, cash, nonCash) => ({ label: date, values: [cash, nonCash, cash + nonCash].map(formatCurrency) }),
+            formatCurrency, formatDate,
+        };
+        const sheet = new Function(...Object.keys(context), `${code}; return financeRecapSheet();`)(...Object.values(context));
+        assert.deepEqual(sheet.tables[0].columns, ['Jenis', 'Tunai', 'Non Tunai', 'Nominal']);
+        assert.deepEqual(sheet.tables[0].rows[0].values, [formatCurrency(5000), formatCurrency(15000), formatCurrency(20000)]);
+        const brand = { name: 'ZenWash Auto Care', whatsapp: '6281800090009', instagram: 'zenwash.id', photo: null, logo: 'ZW' };
+        for (const paper of ['a4', 'struk']) {
+            const html = renderRecapSheetDocument(sheet, brand, paper);
+            assert.ok(!html.includes('Jumlah'));
+            for (const value of ['Pembayaran Sebagian/DP', 'Pembayaran Sisa/Lunas (Order Selesai)', 'Non Tunai', formatCurrency(5000), formatCurrency(15000), formatCurrency(20000), formatCurrency(0)]) {
+                assert.ok(html.includes(value), `${paper} HTML missing ${value}`);
+            }
+            const doc = renderRecapSheetPdf(sheet, brand, paper, { logo: null, qr: null });
+            const pdf = doc.output();
+            assert.ok(!pdf.includes('Jumlah') && !pdf.includes('JUMLAH'));
+            for (const value of ['Pembayaran Sebagian/DP', 'Pembayaran Sisa/Lunas', '5.000', '15.000', '20.000']) {
+                assert.ok(pdf.includes(value), `${paper} PDF missing ${value}`);
+            }
+            assert.equal(doc.getNumberOfPages(), 1);
+            if (process.env.RECAP_PREVIEW_DIR) {
+                fs.mkdirSync(process.env.RECAP_PREVIEW_DIR, { recursive: true });
+                fs.writeFileSync(path.join(process.env.RECAP_PREVIEW_DIR, `${paper}.html`), html);
+                fs.writeFileSync(path.join(process.env.RECAP_PREVIEW_DIR, `${paper}.pdf`), Buffer.from(doc.output('arraybuffer')));
+            }
+        }
+    } finally {
+        await server.close();
+    }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS;
+
+    $result = Process::path(base_path())->timeout(60)->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('the finance recap prints payment types before cash channels', function () {
+    $sheet = recapBuilderSource(recapFinancePage(), 'function financeRecapSheet(): RecapSheet {');
+
+    expect($sheet)
+        ->toContain("heading: 'Jenis transaksi',")
+        ->toContain("columns: ['Jenis', 'Tunai', 'Non Tunai', 'Nominal'],")
+        ->toContain('rows: paymentRecapByType.value.map')
+        ->toContain('formatCurrency(row.amount)')
+        ->toContain('formatCurrency(row.cash)')
+        ->toContain('formatCurrency(row.nonCash)')
+        ->and(strpos($sheet, "heading: 'Jenis transaksi',"))
+        ->toBeLessThan(strpos($sheet, "heading: 'Tunai',"));
+});
+
+test('finance payment recap counts received payments within the selected date and shift', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { computed, ref, reactive } = require('vue');
+const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8');
+const ast = ts.createSourceFile('Finance.ts', source.split('<script setup lang="ts">')[1].split('</script>')[0], ts.ScriptTarget.Latest, true);
+const names = ['isInActiveShift', 'scopedIncome', 'paymentRecapByType', 'channelTotal', 'cashChannelKey'];
+const selected = ast.statements.filter(node =>
+    ts.isFunctionDeclaration(node) ? names.includes(node.name.text) :
+    ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast)))
+);
+assert.equal(selected.length, names.length);
+const code = ts.transpile(selected.map(node => node.getText(ast)).join('\n'));
+const props = reactive({ filters: { date: '2026-09-06' }, shifts: [{ id: 1, name: 'Pagi' }, { id: 2, name: 'Sore' }] });
+const incomeList = ref([]);
+const activeShift = ref('all');
+const recap = new Function('computed', 'props', 'incomeList', 'activeShift', 'allShiftsKey', 'unassignedShiftKey', `${code}; return paymentRecapByType;`)(computed, props, incomeList, activeShift, 'all', 'tanpa-shift');
+const partial = { category: 'Pembayaran Sebagian/Booking Order', date: '2026-09-06', shift: 'Pagi', amount: 20000, orderId: 1, channelBreakdown: [{ label: 'Tunai', amount: 5000 }, { label: 'QRIS', amount: 15000 }] };
+const final = { ...partial, category: 'Pembayaran Sisa/Lunas (Order Selesai)', shift: 'Sore', amount: 80000 };
+const check = (partialCount, partialAmount, finalCount, finalAmount) => assert.deepEqual(recap.value.map(({ label, count, amount }) => ({ label, count, amount })), [
+    { label: 'Pembayaran Sebagian/DP', count: partialCount, amount: partialAmount },
+    { label: 'Pembayaran Sisa/Lunas (Order Selesai)', count: finalCount, amount: finalAmount },
+]);
+check(0, 0, 0, 0);
+incomeList.value = [partial];
+check(1, 20000, 0, 0);
+incomeList.value = [final];
+check(0, 0, 1, 80000);
+incomeList.value = [partial, final, { ...partial, category: 'Pendapatan Lain', amount: 900000 }, { ...partial, date: '2026-09-05', amount: 30000 }, { ...partial, shift: null, amount: 4000 }, { ...partial, shift: 'Retired', amount: 6000 }];
+check(3, 30000, 1, 80000);
+activeShift.value = 1;
+check(1, 20000, 0, 0);
+activeShift.value = 2;
+check(0, 0, 1, 80000);
+activeShift.value = 'tanpa-shift';
+check(2, 10000, 0, 0);
+activeShift.value = 'all';
+props.filters.date = '2026-09-05';
+check(1, 30000, 0, 0);
+props.filters.date = '';
+check(4, 60000, 1, 80000);
+const checkChannels = (expected) => assert.deepEqual(recap.value.map(({ cash, nonCash }) => [cash, nonCash]), expected);
+incomeList.value = [];
+checkChannels([[0, 0], [0, 0]]);
+incomeList.value = [partial, { ...final, channelBreakdown: [{ label: 'Kredit · Mandiri', amount: 30000 }, { label: 'Transfer · BCA', amount: 50000 }] }];
+checkChannels([[5000, 15000], [0, 80000]]);
+activeShift.value = 1;
+checkChannels([[5000, 15000], [0, 0]]);
+activeShift.value = 2;
+checkChannels([[0, 0], [0, 80000]]);
+activeShift.value = 'all';
+props.filters.date = '2026-09-05';
+checkChannels([[0, 0], [0, 0]]);
+props.filters.date = '';
+incomeList.value = [{ ...partial, channelBreakdown: [{ label: 'Tunai', amount: 20000 }] }, { ...final, channelBreakdown: [{ label: 'E-Money', amount: 80000 }] }, { ...partial, category: 'Pendapatan Lain' }];
+checkChannels([[20000, 0], [0, 80000]]);
+for (const row of recap.value) assert.equal(row.cash + row.nonCash, row.amount);
+console.log('Payment recap scenarios passed');
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
 /*
  * Both shift recaps are printed by a standalone document opened outside the
  * SPA, so the papers it lays out and the wiring that opens it are asserted

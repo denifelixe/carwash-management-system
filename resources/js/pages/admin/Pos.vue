@@ -20,6 +20,7 @@ import {
     storeMember as storePosMember,
 } from '@/actions/App/Http/Controllers/Admin/PosController';
 import RecapQrController from '@/actions/App/Http/Controllers/Admin/RecapQrController';
+import PlateInput from '@/components/admin/PlateInput.vue';
 import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import AccordionSection from '@/components/demo/AccordionSection.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
@@ -3395,19 +3396,16 @@ const memberForm = useForm({
                                 </div>
 
                                 <div class="grid gap-3 sm:grid-cols-2">
-                                    <div class="space-y-1.5">
+                                    <div class="space-y-1.5 sm:col-span-2">
                                         <label
                                             for="pos-member-plate"
                                             class="block text-xs font-medium text-slate-600"
                                         >
                                             Plat Nomor
                                         </label>
-                                        <input
+                                        <PlateInput
                                             id="pos-member-plate"
                                             v-model="memberDraft.plate"
-                                            type="text"
-                                            placeholder="Plat nomor"
-                                            class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
                                         />
                                         <p
                                             v-if="memberDraftPlateOwner"

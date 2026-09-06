@@ -26,6 +26,7 @@ import {
     updateHandler as updateOrderHandler,
     updateStatus as updateOrderStatus,
 } from '@/actions/App/Http/Controllers/Admin/OrderController';
+import PlateInput from '@/components/admin/PlateInput.vue';
 import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
 import CollapsibleSummary from '@/components/demo/CollapsibleSummary.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
@@ -1905,7 +1906,7 @@ const deleteForm = useForm({});
                             </template>
                         </Multiselect>
                     </div>
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid gap-3">
                         <div class="space-y-1.5">
                             <label
                                 for="order-vehicle-plate"
@@ -1913,12 +1914,9 @@ const deleteForm = useForm({});
                             >
                                 Plat Nomor
                             </label>
-                            <input
+                            <PlateInput
                                 id="order-vehicle-plate"
                                 v-model="draft.plate"
-                                type="text"
-                                placeholder="Plat nomor"
-                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm uppercase placeholder:normal-case focus:border-cyan-400 focus:outline-none"
                             />
                             <p
                                 v-if="plateOwner"
