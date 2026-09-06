@@ -4,7 +4,10 @@ namespace App\Http\Requests\Admin;
 
 use App\Models\AdminShift;
 use App\Models\OrderTransaction;
+use App\Support\Admin\AdminModuleActions;
+use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderQueries;
+use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -29,6 +32,14 @@ class UpdateOrderTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'entry_date' => [
+                Rule::excludeIf(! $this->canManageOccurrence()),
+                'required_with:entry_time',
+                'date_format:Y-m-d',
+                'after_or_equal:'.OperationalDataWindow::cutoff()->toDateString(),
+                'before_or_equal:today',
+            ],
+            'entry_time' => [Rule::excludeIf(! $this->canManageOccurrence()), 'required_with:entry_date', 'date_format:H:i'],
             'transaction_shift_id' => ['sometimes', 'nullable', 'integer', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
             'channels' => ['required', 'array', 'min:1', 'max:'.count(OrderQueries::PAYMENT_METHODS)],
@@ -48,6 +59,16 @@ class UpdateOrderTransactionRequest extends FormRequest
             }
 
             $channels = $this->channels();
+            if ($this->canManageOccurrence() && $this->filled('entry_date') && $this->filled('entry_time')) {
+                $paidAt = CarbonImmutable::createFromFormat(
+                    '!Y-m-d H:i',
+                    $this->string('entry_date').' '.$this->string('entry_time'),
+                );
+
+                if ($paidAt->isAfter(now())) {
+                    $validator->errors()->add('entry_time', 'Waktu transaksi tidak boleh melewati waktu sekarang.');
+                }
+            }
             $amount = $this->integer('amount');
 
             foreach ($channels as $index => $channel) {
@@ -119,5 +140,25 @@ class UpdateOrderTransactionRequest extends FormRequest
         $transaction = $this->route('orderTransaction');
 
         return $transaction;
+    }
+
+    /** @return array<string, string> */
+    public function messages(): array
+    {
+        return [
+            'entry_date.required_with' => 'Tanggal transaksi wajib diisi.',
+            'entry_date.date_format' => 'Format tanggal transaksi tidak valid.',
+            'entry_date.after_or_equal' => 'Tanggal transaksi tidak dapat dipindahkan lebih dari 30 hari ke belakang.',
+            'entry_date.before_or_equal' => 'Tanggal transaksi tidak boleh melewati hari ini.',
+            'entry_time.required_with' => 'Waktu transaksi wajib diisi.',
+            'entry_time.date_format' => 'Format waktu transaksi tidak valid.',
+        ];
+    }
+
+    private function canManageOccurrence(): bool
+    {
+        return $this->user('admin')?->can(
+            'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
+        ) ?? false;
     }
 }

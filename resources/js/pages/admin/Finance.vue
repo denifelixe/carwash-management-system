@@ -209,9 +209,13 @@ const deleteForm = useForm({});
 
 const transactionForm = useForm<{
     transaction_shift_id?: number | null;
+    entry_date?: string;
+    entry_time?: string;
     amount: number;
     channels: TransactionChannelDraft[];
 }>({
+    entry_date: '',
+    entry_time: '',
     amount: 0,
     channels: [],
 });
@@ -858,6 +862,8 @@ function openEditForm(entry: CarwashMoneyEntry): void {
     if (entry.source === 'pos') {
         editingPosEntry.value = entry;
         transactionForm.clearErrors();
+        transactionForm.entry_date = entry.date;
+        transactionForm.entry_time = entry.time.replace('.', ':');
         transactionForm.amount = entry.amount;
         transactionForm.channels = entry.channelBreakdown.map((channel) => {
             const [method, ...providerParts] = channel.label.split(' · ');
@@ -966,6 +972,8 @@ const transactionChannelTotal = computed<number>(() =>
 const canSavePosTransaction = computed<boolean>(
     () =>
         editingPosEntry.value !== null &&
+        (!props.capabilities.edit_cash_entry_backdate ||
+            (!!transactionForm.entry_date && !!transactionForm.entry_time)) &&
         transactionForm.amount > 0 &&
         transactionForm.channels.length > 0 &&
         transactionForm.channels.every(
@@ -1068,13 +1076,21 @@ function savePosTransaction(): void {
             reference: channel.reference,
         }));
         const shift = correctedShiftName(entry);
+        const occurrence = props.capabilities.edit_cash_entry_backdate
+            ? {
+                  date: transactionForm.entry_date,
+                  time: transactionForm.entry_time?.replace(':', '.'),
+              }
+            : {};
         Object.assign(transaction, {
+            ...occurrence,
             amount: transactionForm.amount,
             channelBreakdown: channels,
             channels: channels.map((channel) => channel.label).join(' + '),
             shift,
         });
         Object.assign(entry, {
+            ...occurrence,
             amount: transactionForm.amount,
             channelBreakdown: channels,
             method: transaction.channels,
@@ -1099,6 +1115,11 @@ function savePosTransaction(): void {
         .transform((data) => {
             const payment = { ...data };
             delete payment.transaction_shift_id;
+
+            if (!props.capabilities.edit_cash_entry_backdate) {
+                delete payment.entry_date;
+                delete payment.entry_time;
+            }
 
             return shiftCorrection.value === 'keep'
                 ? payment
@@ -2606,6 +2627,53 @@ function applyDate(date: string): void {
         @close="closePosTransactionForm"
     >
         <div v-if="editingPosEntry" class="space-y-4">
+            <div
+                v-if="capabilities.edit_cash_entry_backdate"
+                class="grid grid-cols-2 gap-3"
+            >
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="transaction-date"
+                    >
+                        Tanggal transaksi
+                    </label>
+                    <input
+                        id="transaction-date"
+                        v-model="transactionForm.entry_date"
+                        type="date"
+                        :max="props.filters.today"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="transactionForm.errors.entry_date"
+                    />
+                </div>
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="transaction-time"
+                    >
+                        Waktu transaksi
+                    </label>
+                    <input
+                        id="transaction-time"
+                        v-model="transactionForm.entry_time"
+                        type="time"
+                        :max="
+                            transactionForm.entry_date === props.filters.today
+                                ? outletClock()
+                                : undefined
+                        "
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="transactionForm.errors.entry_time"
+                    />
+                </div>
+            </div>
             <ShiftCorrectionSelect
                 id="transaction-shift"
                 v-model="shiftCorrection"

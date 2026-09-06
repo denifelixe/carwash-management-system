@@ -6,16 +6,21 @@ use App\Models\Admin;
 use App\Models\AdminShift;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\PaymentChannelBreakdown;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 
 class UpdateOrderTransaction
 {
-    public function __construct(private UpdateDailyBalance $updateDailyBalance) {}
+    public function __construct(
+        private UpdateDailyBalance $updateDailyBalance,
+        private RecalculateDailyBalances $recalculateDailyBalances,
+    ) {}
 
     /**
-     * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>, transaction_shift_id?: int|null}  $payment
+     * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>, transaction_shift_id?: int|null, paid_at?: CarbonImmutable}  $payment
      */
     public function handle(OrderTransaction $orderTransaction, Admin $admin, array $payment): void
     {
@@ -63,6 +68,10 @@ class UpdateOrderTransaction
                 ),
             );
             $correctedAmounts = UpdateDailyBalance::channelAmounts($channels);
+            $previousDate = $transaction->paid_at->toDateString();
+            $paidAt = isset($payment['paid_at']) && $admin->can('admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE)
+                ? $payment['paid_at']
+                : $transaction->paid_at;
 
             $transaction->update([
                 ...(array_key_exists('transaction_shift_id', $payment) ? [
@@ -71,15 +80,21 @@ class UpdateOrderTransaction
                         : AdminShift::query()->where('is_active', true)->findOrFail($payment['transaction_shift_id'])->name,
                 ] : []),
                 'amount' => $payment['amount'],
+                'paid_at' => $paidAt,
                 'channel_breakdown' => $channels,
                 'updated_by_admin_id' => $admin->getKey(),
             ]);
 
-            $this->updateDailyBalance->handle(
-                $transaction->paid_at->toDateString(),
-                cashIncomeDelta: $correctedAmounts['cash'] - $previousAmounts['cash'],
-                nonCashIncomeDelta: $correctedAmounts['nonCash'] - $previousAmounts['nonCash'],
-            );
+            $paidDate = $transaction->paid_at->toDateString();
+            if ($paidDate !== $previousDate) {
+                $this->recalculateDailyBalances->handle(min($previousDate, $paidDate));
+            } else {
+                $this->updateDailyBalance->handle(
+                    $paidDate,
+                    cashIncomeDelta: $correctedAmounts['cash'] - $previousAmounts['cash'],
+                    nonCashIncomeDelta: $correctedAmounts['nonCash'] - $previousAmounts['nonCash'],
+                );
+            }
 
             $paymentMethod = $order->transactions()
                 ->get(['channel_breakdown'])

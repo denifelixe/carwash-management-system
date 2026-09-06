@@ -555,7 +555,7 @@ const plateOwner = computed<CarwashCustomer | null>(() => {
 
 const canCreate = computed<boolean>(
     () =>
-        draftLineItems.value.length > 0 &&
+        (servicesLocked.value || draftLineItems.value.length > 0) &&
         draft.value.plate.trim() !== '' &&
         plateOwner.value === null &&
         hasCustomer.value,
@@ -568,6 +568,7 @@ const canSubmitOrder = computed<boolean>(() => {
 
     return (
         editingOrder.value === null ||
+        servicesLocked.value ||
         draftTotal.value - editingOrder.value.discount >
             editingOrder.value.paidAmount
     );
@@ -591,14 +592,12 @@ function canEditStatus(order: CarwashOrder): boolean {
 }
 
 function canEditOrder(order: CarwashOrder): boolean {
-    return (
-        props.capabilities.update &&
-        order.status !== 'selesai' &&
-        order.paymentStatus !== 'lunas' &&
-        order.transactions.length === 0 &&
-        order.isMutable !== false
-    );
+    return props.capabilities.update && order.isMutable !== false;
 }
+
+const servicesLocked = computed<boolean>(
+    () => (editingOrder.value?.transactions.length ?? 0) > 0,
+);
 
 /**
  * Moves one order straight from its row. The chip doubles as the picker on a
@@ -960,13 +959,19 @@ function createOrder(): void {
         order.phone = customer?.phone ?? draft.value.customerPhone.trim();
         order.vehicle = draft.value.vehicle;
         order.plate = draft.value.plate.toUpperCase();
-        order.items = createdServiceItems.map((item) => item.label).join(', ');
-        order.serviceIds = [
-            ...new Set(createdServiceItems.map((item) => item.serviceId)),
-        ];
-        order.serviceItems = createdServiceItems;
-        order.total = Math.max(0, draftTotal.value - order.discount);
-        order.stampsEarned = draftStamps.value;
+
+        if (!servicesLocked.value) {
+            order.items = createdServiceItems
+                .map((item) => item.label)
+                .join(', ');
+            order.serviceIds = [
+                ...new Set(createdServiceItems.map((item) => item.serviceId)),
+            ];
+            order.serviceItems = createdServiceItems;
+            order.total = Math.max(0, draftTotal.value - order.discount);
+            order.stampsEarned = draftStamps.value;
+        }
+
         order.handledByAdminId = draft.value.handledByAdminId;
         order.handledByManual = draft.value.handledBy.trim() || null;
         order.handledBy =
@@ -1551,8 +1556,9 @@ const deleteForm = useForm({});
                 v-if="detailOrder.transactions.length > 0"
                 class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
             >
-                Order memiliki transaksi. Hapus seluruh transaksinya terlebih
-                dahulu sebelum mengedit order.
+                Layanan dan jumlahnya terkunci karena order sudah memiliki
+                transaksi. Data pelanggan, kendaraan, dan petugas tetap dapat
+                diedit.
             </p>
             <p
                 v-if="detailOrder.status === 'batal'"
@@ -2123,7 +2129,16 @@ const deleteForm = useForm({});
                 >
                     Layanan
                 </p>
+                <div v-if="servicesLocked && editingOrder">
+                    <p>{{ editingOrder.items }}</p>
+                    <p>{{ formatCurrency(editingOrder.total) }}</p>
+                    <p>
+                        Layanan dan jumlahnya tidak dapat diubah karena order
+                        sudah memiliki transaksi.
+                    </p>
+                </div>
                 <ServiceCartPicker
+                    v-else
                     v-model="draft.serviceItems"
                     :services="services"
                 />

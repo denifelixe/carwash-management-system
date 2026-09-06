@@ -142,7 +142,7 @@ const ast = ts.createSourceFile('Finance.ts', source, ts.ScriptTarget.Latest, tr
 const names = ['correctedShiftName', 'savePosTransaction', 'saveDemoEntry', 'saveLiveEntry', 'isEditable'];
 const code = ts.transpile(ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name.text)).map(node => node.getText(ast)).join('\n'), { target: ts.ScriptTarget.ES2020 });
 const state = {
-    props: { mode: 'demo', shiftOptions: [{ id: 2, name: 'Shift Sore' }], filters: { today: '2026-09-06' } },
+    props: { mode: 'demo', capabilities: { edit_cash_entry_backdate: false }, shiftOptions: [{ id: 2, name: 'Shift Sore' }], filters: { today: '2026-09-06' } },
     shiftCorrection: { value: 2 },
     editingPosEntry: { value: null }, editingEntry: { value: null },
     canSavePosTransaction: { value: true },
@@ -181,6 +181,14 @@ for (const [choice, expected] of [[2, 'Shift Sore'], [null, null], ['keep', 'Shi
 }
 assert.equal(api.isEditable({ date: '2026-08-07' }), true);
 assert.equal(api.isEditable({ date: '2026-08-06' }), false);
+state.props.capabilities.edit_cash_entry_backdate = true;
+state.transactionForm.entry_date = '2026-09-04';
+state.transactionForm.entry_time = '08:45';
+api.savePosTransaction();
+assert.equal(state.order.transactions[0].date, '2026-09-04');
+assert.equal(state.order.transactions[0].time, '08.45');
+assert.equal(state.editingPosEntry.value.date, '2026-09-04');
+assert.equal(state.editingPosEntry.value.time, '08.45');
 state.props.mode = 'live';
 for (const form of [state.transactionForm, state.entryForm]) {
     form.transform = function (callback) { this.transformer = callback; return this; };

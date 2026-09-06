@@ -345,7 +345,7 @@ test('the order detail edits and cancels through the status dropdown', function 
         ->not->toContain('function advanceStatus');
 });
 
-test('status editing is separate from paid and completed order data locks', function () {
+test('order metadata and status editing respect the operational window', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
@@ -354,9 +354,9 @@ test('status editing is separate from paid and completed order data locks', func
         ->toContain('return props.capabilities.update && order.isMutable !== false;')
         ->toContain('v-if="canEditStatus(order)"')
         ->toContain('v-if="canEditStatus(detailOrder)"')
-        ->toContain("order.status !== 'selesai'")
-        ->toContain("order.paymentStatus !== 'lunas'")
-        ->toContain('order.transactions.length === 0')
+        ->toContain('order.isMutable !== false')
+        ->toContain('const servicesLocked = computed<boolean>(')
+        ->toContain('(editingOrder.value?.transactions.length ?? 0) > 0')
         ->not->toContain('return canEditStatus(order);')
         ->not->toContain('v-if="isDetailReadOnly"');
 });
@@ -416,7 +416,7 @@ test('the status chip in a row changes the stage without opening the order', fun
         // Only the stages the floor owns, and never on a settled order.
         ->toContain('v-for="status in editableOrderStatuses"')
         ->toContain('function canEditStatus(order: CarwashOrder): boolean')
-        ->toContain("order.status !== 'selesai'")
+        ->toContain('order.isMutable !== false')
         ->toContain('order.isMutable !== false')
         // Choosing a stage must not also open the detail panel.
         ->toContain('<td class="px-5 py-3.5" @click.stop>')
@@ -567,9 +567,9 @@ test('the order form uses the shared variation and quantity cart picker', functi
     expect($ordersPage)
         ->toContain('update as updateOrder')
         ->toContain('function openEditOrder(order: CarwashOrder): void')
-        ->toContain("order.paymentStatus !== 'lunas'")
-        ->toContain('order.transactions.length === 0')
-        ->toContain('Hapus seluruh transaksinya terlebih')
+        ->toContain('const servicesLocked = computed<boolean>(')
+        ->toContain('(editingOrder.value?.transactions.length ?? 0) > 0')
+        ->toContain('v-if="servicesLocked && editingOrder"')
         ->toContain('v-if="detailOrder && canEditOrder(detailOrder)"')
         ->toContain("? 'Simpan perubahan'");
 

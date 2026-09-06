@@ -324,6 +324,14 @@ class FinanceController extends Controller
             'channels' => $request->channels(),
         ];
 
+        $data = $request->validated();
+        if (isset($data['entry_date'], $data['entry_time'])) {
+            $payment['paid_at'] = CarbonImmutable::createFromFormat(
+                '!Y-m-d H:i',
+                $data['entry_date'].' '.$data['entry_time'],
+            );
+        }
+
         if (array_key_exists('transaction_shift_id', $request->validated())) {
             $payment['transaction_shift_id'] = $request->filled('transaction_shift_id')
                 ? $request->integer('transaction_shift_id')
@@ -331,6 +339,7 @@ class FinanceController extends Controller
         }
 
         $updateOrderTransaction->handle($orderTransaction, $admin, $payment);
+        $orderTransaction->refresh();
 
         return to_route('admin.finance.index', ['date' => $orderTransaction->paid_at->toDateString()])
             ->with('success', 'Transaksi pembayaran berhasil diperbarui.');

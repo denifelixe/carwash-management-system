@@ -178,6 +178,8 @@ test('finance references use one category date and identifier format', function 
         ->toContain('entryForm.entry_time = outletClock();')
         ->toContain('v-model="entryForm.entry_date"')
         ->toContain('v-model="entryForm.entry_time"')
+        ->toContain('v-model="transactionForm.entry_date"')
+        ->toContain('v-model="transactionForm.entry_time"')
         ->toContain('v-if="capabilities.edit_cash_entry_backdate"')
         ->toContain('date: entryForm.entry_date,')
         ->toContain("time: entryForm.entry_time.replace(':', '.'),")
@@ -396,7 +398,7 @@ test('finance overview shows shift tabs stacked summaries and financial channels
         ->toContain(':rowspan="nonCashChannelRows.length"')
         ->toContain('formatCurrency(nonCashTotals.expense)')
         ->toContain('formatCurrency(nonCashTotals.balance)')
-        ->toContain('xl:grid-cols-[minmax(260px,0.75fr)_minmax(0,2.25fr)]')
+        ->toContain('xl:grid-cols-[minmax(320px,1fr)_minmax(0,2fr)]')
         ->not->toContain('formatShortCurrency(shift.moneyIn)');
 });
 

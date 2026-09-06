@@ -10,6 +10,7 @@ use App\Support\Admin\OperationalDataWindow;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class UpdateOrder
 {
@@ -21,29 +22,22 @@ class UpdateOrder
         return DB::transaction(function () use ($order, $data): Order {
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
             OperationalDataWindow::ensureAllows($order->service_date);
-            abort_unless(
-                $order->isEditable(),
-                422,
-                'Order yang sudah memiliki transaksi, lunas, atau selesai tidak dapat diubah.',
-            );
+            $servicesLocked = $order->transactions()->exists();
 
             $quantities = collect($data['items'])->mapWithKeys(
                 fn (array $item): array => [(int) $item['service_variation_id'] => (int) $item['quantity']],
             );
-            /** @var Collection<int, ServiceVariation> $variations */
-            $variations = ServiceVariation::query()->with('service')->whereKey($quantities->keys())
-                ->lockForUpdate()->get();
+            if ($servicesLocked) {
+                $existingQuantities = $order->serviceVariations()
+                    ->pluck('order_services.quantity', 'service_variations.id')
+                    ->map(fn (mixed $quantity): int => (int) $quantity);
 
-            abort_if($variations->count() !== $quantities->count(), 422, 'Pilihan layanan tidak lagi tersedia.');
-            $existingVariationIds = $order->serviceVariations()->pluck('service_variations.id')->all();
-            abort_if(
-                $variations->contains(
-                    fn (ServiceVariation $variation): bool => (! $variation->is_active || ! $variation->service->is_active)
-                        && ! in_array($variation->id, $existingVariationIds, true),
-                ),
-                422,
-                'Pilihan layanan tidak lagi tersedia.',
-            );
+                if ($quantities->sortKeys()->all() !== $existingQuantities->sortKeys()->all()) {
+                    throw ValidationException::withMessages([
+                        'items' => 'Layanan dan jumlahnya tidak dapat diubah karena order sudah memiliki transaksi.',
+                    ]);
+                }
+            }
 
             $member = null;
             $vehicle = null;
@@ -67,6 +61,37 @@ class UpdateOrder
                     'vehicle_plate' => $vehiclePlate,
                 ])
                 : null;
+            $order->update([
+                'member_id' => $member?->id,
+                'member_vehicle_id' => $vehicle?->id,
+                'lead_id' => $lead?->id,
+                'handled_by_admin_id' => $data['handled_by_admin_id'],
+                'handled_by' => $data['handled_by'],
+                'customer_name' => $customerName,
+                'customer_phone' => $customerPhone,
+                'vehicle_name' => $vehicleName,
+                'vehicle_plate' => $vehiclePlate,
+            ]);
+
+            if ($servicesLocked) {
+                return $order;
+            }
+
+            /** @var Collection<int, ServiceVariation> $variations */
+            $variations = ServiceVariation::query()->with('service')->whereKey($quantities->keys())
+                ->lockForUpdate()->get();
+
+            abort_if($variations->count() !== $quantities->count(), 422, 'Pilihan layanan tidak lagi tersedia.');
+            $existingVariationIds = $order->serviceVariations()->pluck('service_variations.id')->all();
+            abort_if(
+                $variations->contains(
+                    fn (ServiceVariation $variation): bool => (! $variation->is_active || ! $variation->service->is_active)
+                        && ! in_array($variation->id, $existingVariationIds, true),
+                ),
+                422,
+                'Pilihan layanan tidak lagi tersedia.',
+            );
+
             $subtotal = (int) $variations->sum(
                 fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
             );
@@ -79,15 +104,6 @@ class UpdateOrder
             );
 
             $order->update([
-                'member_id' => $member?->id,
-                'member_vehicle_id' => $vehicle?->id,
-                'lead_id' => $lead?->id,
-                'handled_by_admin_id' => $data['handled_by_admin_id'],
-                'handled_by' => $data['handled_by'],
-                'customer_name' => $customerName,
-                'customer_phone' => $customerPhone,
-                'vehicle_name' => $vehicleName,
-                'vehicle_plate' => $vehiclePlate,
                 'subtotal' => $subtotal,
                 'total' => $total,
                 'stamps_earned' => $member === null ? 0 : (int) $variations->sum(

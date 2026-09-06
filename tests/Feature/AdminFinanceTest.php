@@ -325,6 +325,91 @@ test('an owner can correct the payment channel of a settled POS transaction', fu
         );
 });
 
+test('finance time access lets staff move POS payments and rebuild daily balances', function (string $date) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $staff = financeStaff([
+        'read' => true,
+        'update' => true,
+        'additional_actions' => [AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE],
+    ]);
+    $this->travelTo('2026-08-28 09:15:00');
+    $order = paidOrder($owner);
+    $transaction = $order->transactions()->sole();
+    $this->travelTo('2026-08-30 10:00:00');
+    CashEntry::factory()->withDailyBalance()->create(['amount' => 50000, 'entry_date' => '2026-08-29']);
+
+    $this->actingAs($staff, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'entry_date' => $date,
+            'entry_time' => '08:45',
+            'amount' => 150000,
+            'channels' => [['label' => 'QRIS', 'amount' => 150000]],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('admin.finance.index', ['date' => $date]));
+
+    expect($transaction->refresh()->paid_at->format('Y-m-d H:i'))->toBe($date.' 08:45')
+        ->and($transaction->shift_name)->toBe('Shift Pagi')
+        ->and($transaction->recorded_by_admin_id)->toBe($owner->id)
+        ->and($transaction->updated_by_admin_id)->toBe($staff->id)
+        ->and($order->refresh()->paid_amount)->toBe(150000);
+    $balances = DailyBalance::query()->orderBy('date')->get();
+    expect($balances->last()->cash_balance)->toBe(50000)
+        ->and($balances->last()->non_cash_balance)->toBe(150000)
+        ->and($balances->firstWhere('date', CarbonImmutable::parse($date))->non_cash_income)->toBe(150000);
+    if ($date !== '2026-08-28') {
+        expect(DailyBalance::query()->whereDate('date', '2026-08-28')->exists())->toBeFalse();
+    }
+    $this->get(route('admin.finance.index', ['date' => $date]))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('moneyIn.0.time', '08.45')
+            ->where('moneyIn.0.transactionId', $transaction->id));
+})->with(['2026-08-27', '2026-08-28', '2026-08-30']);
+
+test('staff without finance time access cannot change POS timestamps through a forged payload', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $transaction = paidOrder($owner)->transactions()->sole();
+    $originalTime = $transaction->paid_at->format('Y-m-d H:i:s');
+
+    $this->actingAs(financeStaff(['update' => true]), 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            'entry_date' => '2026-08-29',
+            'entry_time' => '08:45',
+            'amount' => 150000,
+            'channels' => [['label' => 'QRIS', 'amount' => 150000]],
+        ])->assertSessionHasNoErrors();
+
+    expect($transaction->refresh()->paid_at->format('Y-m-d H:i:s'))->toBe($originalTime)
+        ->and($transaction->channel_breakdown[0]['label'])->toBe('QRIS');
+});
+
+test('POS timestamp corrections validate the date and time', function (array $occurrence, string $error) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $transaction = paidOrder($owner)->transactions()->sole();
+    $originalTime = $transaction->paid_at->format('Y-m-d H:i:s');
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.transactions.update', $transaction), [
+            ...$occurrence,
+            'amount' => 150000,
+            'channels' => [['label' => 'Tunai', 'amount' => 150000]],
+        ])->assertSessionHasErrors($error);
+
+    expect($transaction->refresh()->paid_at->format('Y-m-d H:i:s'))->toBe($originalTime);
+})->with([
+    'old date' => [['entry_date' => '2026-07-30', 'entry_time' => '09:00'], 'entry_date'],
+    'future date' => [['entry_date' => '2026-08-31', 'entry_time' => '09:00'], 'entry_date'],
+    'future time' => [['entry_date' => '2026-08-30', 'entry_time' => '10:01'], 'entry_time'],
+    'invalid time' => [['entry_date' => '2026-08-30', 'entry_time' => '25:00'], 'entry_time'],
+    'missing time' => [['entry_date' => '2026-08-30'], 'entry_time'],
+    'missing date' => [['entry_time' => '09:00'], 'entry_date'],
+]);
+
+test('finance time permission uses the updated label and the existing access key', function () {
+    expect(collect(AdminModuleActions::for('finance'))->firstWhere('key', AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE)['label'])
+        ->toBe('Atur tanggal & waktu keuangan');
+});
+
 test('an owner must choose a bank when correcting a transaction to debit', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = paidOrder($owner);

@@ -245,7 +245,7 @@ test('an admin with update access can edit an unpaid unfinished order', function
         ->and($order->serviceVariations()->firstOrFail()->pivot->quantity)->toBe(2);
 });
 
-test('a paid or completed order cannot be edited', function (array $attributes) {
+test('an order without transactions can be edited regardless of its status', function (array $attributes) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create($attributes);
     $service = Service::factory()->create(['price' => 75000]);
@@ -260,15 +260,16 @@ test('a paid or completed order cannot be edited', function (array $attributes) 
             'vehicle_plate' => 'B1234XYZ',
             'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
         ])
-        ->assertUnprocessable();
+        ->assertRedirect()
+        ->assertSessionHasNoErrors();
 
-    expect($order->refresh()->customer_name)->not->toBe('Tidak Berubah');
+    expect($order->refresh()->customer_name)->toBe('Tidak Berubah');
 })->with([
     'lunas' => [['status' => 'proses', 'total' => 45000, 'paid_amount' => 45000]],
     'selesai' => [['status' => 'selesai', 'total' => 45000, 'paid_amount' => 0]],
 ]);
 
-test('an order with a transaction cannot be edited until the transaction is deleted', function () {
+test('order services cannot be changed until the transaction is deleted', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create(['total' => 100000, 'paid_amount' => 50000]);
     $transaction = OrderTransaction::factory()->create([
@@ -287,7 +288,7 @@ test('an order with a transaction cannot be edited until the transaction is dele
             'vehicle_plate' => 'B1234XYZ',
             'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
         ])
-        ->assertUnprocessable();
+        ->assertSessionHasErrors('items');
 
     expect($order->refresh()->total)->toBe(100000);
 
@@ -539,7 +540,7 @@ test('order status can be updated even when cashier has completed it', function 
 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Baru'])
-        ->assertUnprocessable();
+        ->assertSessionHasNoErrors();
 });
 
 test('status updates preserve existing transactions and order amounts', function (string $status, int $paidAmount) {
@@ -792,3 +793,58 @@ test('the walk-in tab searches leads through a partial reload', function () {
         ->assertJsonPath('props.leadOptions.0.id', $match->id)
         ->assertJsonPath('props.leadOptions.0.vehiclePlate', 'B1234CDE');
 });
+
+test('transaction orders allow metadata edits while preserving financial snapshots', function (string $status, int $paidAmount) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['price' => 50000]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $order = Order::factory()->create([
+        'status' => $status,
+        'subtotal' => 100000,
+        'discount' => 10000,
+        'total' => 90000,
+        'paid_amount' => $paidAmount,
+    ]);
+    $order->serviceVariations()->attach($variation, [
+        'service_name' => 'Layanan Lama', 'unit_price' => 50000,
+        'quantity' => 2, 'total_price' => 100000, 'stamps' => 1,
+    ]);
+    $transaction = OrderTransaction::factory()->withDailyBalance()->create([
+        'order_id' => $order->id, 'amount' => $paidAmount,
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => $paidAmount]],
+    ]);
+    $financials = $order->only(['subtotal', 'discount', 'total', 'paid_amount', 'stamps_earned', 'status']);
+    $pivot = $order->serviceVariations()->firstOrFail()->pivot->getAttributes();
+    $transactionAttributes = $transaction->refresh()->getAttributes();
+    $dailyBalance = DB::table('daily_balance')->get()->toArray();
+    $variation->update(['price' => 80000, 'is_active' => false]);
+    $service->update(['name' => 'Nama Baru', 'is_active' => false]);
+
+    $payload = [
+        'customer_mode' => 'walk-in', 'customer_name' => 'Pelanggan Baru',
+        'customer_phone' => '081234567899', 'vehicle_name' => 'Honda Jazz',
+        'vehicle_plate' => 'b 9876 xyz', 'handled_by' => 'Petugas Baru',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
+        'total' => 1, 'paid_amount' => 0, 'discount' => 90000,
+    ];
+    $this->actingAs($owner, 'admin')->patch(route('admin.orders.update', $order), $payload)
+        ->assertRedirect()->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->customer_name->toBe('Pelanggan Baru')->customer_phone->toBe('081234567899')
+        ->vehicle_name->toBe('Honda Jazz')->vehicle_plate->toBe('B9876XYZ')
+        ->handled_by->toBe('Petugas Baru')
+        ->and($order->only(array_keys($financials)))->toBe($financials)
+        ->and($order->serviceVariations()->firstOrFail()->pivot->getAttributes())->toBe($pivot)
+        ->and($transaction->refresh()->getAttributes())->toBe($transactionAttributes)
+        ->and(DB::table('daily_balance')->get()->toArray())->toEqual($dailyBalance);
+
+    $payload['items'][0]['quantity'] = 3;
+    $payload['customer_name'] = 'Tidak Boleh Tersimpan';
+    $this->patch(route('admin.orders.update', $order), $payload)->assertSessionHasErrors('items');
+    expect($order->refresh()->customer_name)->toBe('Pelanggan Baru');
+
+    $this->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Lain'])
+        ->assertSessionHasNoErrors();
+    expect($order->refresh()->handled_by)->toBe('Petugas Lain');
+})->with(['proses', 'selesai'])->with([50000, 90000]);

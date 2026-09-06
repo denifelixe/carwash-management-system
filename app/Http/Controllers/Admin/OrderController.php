@@ -182,11 +182,6 @@ class OrderController extends Controller
         DB::transaction(function () use ($order, $request): void {
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
             OperationalDataWindow::ensureAllows($order->service_date);
-            abort_unless(
-                $order->isEditable(),
-                422,
-                'Order yang sudah memiliki transaksi, lunas, atau selesai tidak dapat diubah.',
-            );
             $order->update($request->validated());
         });
 

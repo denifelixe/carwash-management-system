@@ -21,7 +21,7 @@ class AdminModuleActions
                 ],
                 [
                     'key' => self::EDIT_CASH_ENTRY_BACKDATE,
-                    'label' => 'Atur tanggal & waktu cash entry saat buat/edit',
+                    'label' => 'Atur tanggal & waktu keuangan',
                 ],
             ],
         ];
