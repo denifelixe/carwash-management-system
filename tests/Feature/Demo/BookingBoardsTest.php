@@ -121,6 +121,34 @@ test('booking rows and details follow the order information hierarchy', function
         ->toContain("return booking.customerId === null ? 'Non-Member' : 'Member';");
 });
 
+/*
+ * The plate is the title and the vehicle its sub-title, at the sizes the order
+ * list uses, so a car reads the same on every board it appears on.
+ */
+test('booking rows and details size the plate and vehicle like the order list', function () {
+    $bookingsPage = file_get_contents(
+        resource_path('js/pages/admin/Bookings.vue'),
+    );
+    $ordersPage = file_get_contents(
+        resource_path('js/pages/admin/Orders.vue'),
+    );
+
+    expect($bookingsPage)
+        // The row plate keeps its line; the detail panel has room to wrap.
+        ->toContain(
+            'class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"',
+        )
+        ->and(substr_count($bookingsPage, 'text-2xl font-bold tracking-wide'))
+        ->toBe(2)
+        // Row and detail both carry the shared vehicle sub-title.
+        ->and(
+            substr_count($bookingsPage, 'mt-0.5 text-xl font-semibold text-slate-700'),
+        )
+        ->toBe(2)
+        ->and($ordersPage)
+        ->toContain('mt-0.5 text-xl font-semibold text-slate-700');
+});
+
 test('booking details separate the booking date from execution and show payment history', function () {
     $bookingsPage = file_get_contents(
         resource_path('js/pages/admin/Bookings.vue'),

@@ -49,11 +49,13 @@ class StoreBookingRequest extends FormRequest
             'customer_name' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:30'],
             'vehicle_name' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:255'],
+            'is_special_plate' => ['sometimes', 'boolean'],
             'vehicle_plate' => [
                 'nullable',
                 'required_if:customer_mode,walk-in',
                 'string',
                 'max:20',
+                Rule::unless($this->boolean('is_special_plate'), VehiclePlate::FORMAT_RULE),
                 Rule::when(
                     $this->input('customer_mode') === 'walk-in',
                     [Rule::unique(MemberVehicle::class, 'plate')],
@@ -148,6 +150,7 @@ class StoreBookingRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'vehicle_plate.regex' => VehiclePlate::FORMAT_MESSAGE,
             'vehicle_plate.unique' => 'Plat nomor ini sudah terdaftar sebagai kendaraan member. Pilih tab Member untuk membuat booking.',
             'service_date.after_or_equal' => 'Tanggal kedatangan tidak boleh sebelum hari ini.',
         ];

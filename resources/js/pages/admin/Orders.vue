@@ -42,7 +42,11 @@ import {
     formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
-import { formatPlate, normalizePlate } from '@/lib/vehiclePlate';
+import {
+    formatPlate,
+    normalizePlate,
+    isSpecialPlate,
+} from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -187,6 +191,7 @@ const draft = ref({
     customerPhone: '',
     vehicle: '',
     plate: '',
+    isSpecialPlate: false,
     handledByAdminId: null as number | null,
     handledBy: '',
     serviceItems: [] as CarwashCartItem[],
@@ -260,6 +265,20 @@ function orderArrivalLabel(order: CarwashOrder): string {
     return order.time === '—'
         ? 'Belum masuk'
         : `${formatDate(order.date)} · ${order.time}`;
+}
+
+/**
+ * The list keeps one Petugas column: the clerk who took the order on top, and
+ * the handler underneath only when the wash went to someone else.
+ */
+function orderHandlerNote(order: CarwashOrder): string {
+    const handledBy = order.handledBy ?? order.inputBy;
+
+    if (handledBy === null || handledBy === order.inputBy) {
+        return order.inputBy === null ? '' : 'Input & handle';
+    }
+
+    return `Handle: ${handledBy}`;
 }
 
 const visibleCustomerOptions = computed<CustomerOption[]>(() => {
@@ -715,6 +734,7 @@ function pickCustomer(option: CustomerOption): void {
     draft.value.customerPhone = '';
     draft.value.vehicle = option.vehicle.name;
     draft.value.plate = option.vehicle.plate;
+    draft.value.isSpecialPlate = isSpecialPlate(option.vehicle.plate);
 }
 
 function updateCustomerQuery(query: string): void {
@@ -729,6 +749,7 @@ function updateCustomerQuery(query: string): void {
 function pickLead(option: CarwashLeadOption): void {
     selectedLead.value = option;
     draft.value.plate = option.vehiclePlate;
+    draft.value.isSpecialPlate = isSpecialPlate(option.vehiclePlate);
     draft.value.vehicle = option.vehicleName;
     draft.value.walkInName = option.name;
     draft.value.customerPhone = option.phone;
@@ -767,6 +788,7 @@ function clearCustomer(): void {
     draft.value.customerPhone = '';
     draft.value.vehicle = '';
     draft.value.plate = '';
+    draft.value.isSpecialPlate = false;
 }
 
 function selectCustomerMode(mode: CustomerMode): void {
@@ -785,6 +807,7 @@ function resetDraft(): void {
         customerPhone: '',
         vehicle: '',
         plate: '',
+        isSpecialPlate: false,
         handledByAdminId: null,
         handledBy: '',
         serviceItems: [],
@@ -830,12 +853,16 @@ function openEditOrder(order: CarwashOrder): void {
         draft.value.customerPhone = customerOption.customer.phone;
         draft.value.vehicle = customerOption.vehicle.name;
         draft.value.plate = customerOption.vehicle.plate;
+        draft.value.isSpecialPlate = isSpecialPlate(
+            customerOption.vehicle.plate,
+        );
     } else {
         customerMode.value = 'walk-in';
         draft.value.walkInName = order.customer.replace(/ \(non-member\)$/, '');
         draft.value.customerPhone = order.phone;
         draft.value.vehicle = order.vehicle;
         draft.value.plate = order.plate;
+        draft.value.isSpecialPlate = isSpecialPlate(order.plate);
     }
 
     draft.value.handledByAdminId = order.handledByAdminId;
@@ -886,6 +913,7 @@ function createOrder(): void {
         orderForm.customer_phone = draft.value.customerPhone.trim();
         orderForm.vehicle_name = draft.value.vehicle.trim();
         orderForm.vehicle_plate = draft.value.plate.trim();
+        orderForm.is_special_plate = draft.value.isSpecialPlate;
         orderForm.handled_by_admin_id = draft.value.handledByAdminId;
         orderForm.handled_by = draft.value.handledBy.trim() || null;
         orderForm.items = draft.value.serviceItems.map((item) => ({
@@ -1009,6 +1037,7 @@ const orderForm = useForm({
     customer_phone: '',
     vehicle_name: '',
     vehicle_plate: '',
+    is_special_plate: false,
     handled_by_admin_id: null as number | null,
     handled_by: null as string | null,
     items: [] as { service_variation_id: number; quantity: number }[],
@@ -1117,10 +1146,7 @@ const deleteForm = useForm({});
                                 Layanan
                             </th>
                             <th class="hidden px-5 py-3 lg:table-cell">
-                                Diinput oleh
-                            </th>
-                            <th class="hidden px-5 py-3 lg:table-cell">
-                                Dihandle oleh
+                                Petugas
                             </th>
                             <th class="px-5 py-3">Status</th>
                             <th class="hidden px-5 py-3 lg:table-cell"></th>
@@ -1136,7 +1162,7 @@ const deleteForm = useForm({});
                             @keydown.enter="detailOrderId = order.id"
                             @keydown.space.prevent="detailOrderId = order.id"
                         >
-                            <td class="px-5 py-3.5 lg:min-w-52">
+                            <td class="px-5 py-3.5 lg:min-w-64">
                                 <p
                                     class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"
                                 >
@@ -1182,12 +1208,15 @@ const deleteForm = useForm({});
                             <td
                                 class="hidden px-5 py-3.5 text-slate-600 lg:table-cell"
                             >
-                                {{ order.inputBy ?? '—' }}
-                            </td>
-                            <td
-                                class="hidden px-5 py-3.5 text-slate-600 lg:table-cell"
-                            >
-                                {{ order.handledBy ?? '—' }}
+                                <p class="text-slate-700">
+                                    {{ order.inputBy ?? '—' }}
+                                </p>
+                                <p
+                                    v-if="orderHandlerNote(order) !== ''"
+                                    class="text-[11px] text-slate-500"
+                                >
+                                    {{ orderHandlerNote(order) }}
+                                </p>
                             </td>
                             <!-- Picking a stage must not also open the row. -->
                             <td class="px-5 py-3.5" @click.stop>
@@ -1917,6 +1946,7 @@ const deleteForm = useForm({});
                             <PlateInput
                                 id="order-vehicle-plate"
                                 v-model="draft.plate"
+                                v-model:special="draft.isSpecialPlate"
                             />
                             <p
                                 v-if="plateOwner"

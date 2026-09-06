@@ -1,5 +1,73 @@
 <?php
 
+use Illuminate\Support\Facades\Process;
+
+test('plate modes preserve special input and keep ordinary input segmented', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const assert = require('node:assert/strict');
+const ts = require('typescript');
+const { parse, compileScript } = require('@vue/compiler-sfc');
+const vue = require('vue');
+function load(source, resolve = require) {
+    const code = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText;
+    const module = { exports: {} };
+    new Function('require', 'module', 'exports', code)(resolve, module, module.exports);
+    return module.exports;
+}
+const helpers = load(fs.readFileSync('resources/js/lib/vehiclePlate.ts', 'utf8'));
+assert.equal(helpers.isSpecialPlate(''), false);
+assert.equal(helpers.isSpecialPlate('b 1234 cde'), false);
+assert.equal(helpers.isSpecialPlate('84348-00'), true);
+assert.equal(helpers.formatPlate('84348-00'), '84348-00');
+const { descriptor } = parse(fs.readFileSync('resources/js/components/admin/PlateInput.vue', 'utf8'));
+const compiled = compileScript(descriptor, { id: 'plate-test' });
+const component = load(compiled.content, name => name === '@/lib/vehiclePlate' ? helpers : require(name)).default;
+component.render = () => null;
+const renderer = vue.createRenderer({
+    createComment: () => ({}), insert() {}, remove() {}, parentNode() {}, nextSibling() {},
+    createElement: () => ({}), createText: () => ({}), setText() {}, setElementText() {}, patchProp() {},
+});
+async function check() {
+    const value = vue.ref('');
+    const special = vue.ref(false);
+    const app = renderer.createApp({
+        render: () => vue.h(component, {
+            id: 'plate', modelValue: value.value, special: special.value,
+            'onUpdate:modelValue': next => value.value = next,
+            'onUpdate:special': next => special.value = next,
+        }),
+    });
+    const root = app.mount({});
+    const state = root.$.subTree.component.setupState;
+    assert.equal(state.special, false);
+    state.special = true;
+    await vue.nextTick();
+    state.plate = '84348-00';
+    await vue.nextTick();
+    assert.equal(value.value, '84348-00');
+    assert.equal(special.value, true);
+    value.value = 'B1234CD';
+    special.value = false;
+    await vue.nextTick();
+    assert.equal(state.segments.prefix, 'B');
+    assert.equal(state.segments.digits, '1234');
+    assert.equal(state.segments.suffix, 'CD');
+    value.value = '84348-00';
+    special.value = helpers.isSpecialPlate(value.value);
+    await vue.nextTick();
+    assert.equal(state.plate, '84348-00');
+    assert.equal(state.special, true);
+    app.unmount();
+}
+check().catch(error => { console.error(error); process.exitCode = 1; });
+JS;
+
+    $result = Process::path(base_path())->timeout(30)->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
 test('plate formatting is presentation only and keeps the canonical normalizer', function () {
     $formatter = file_get_contents(resource_path('js/lib/vehiclePlate.ts'));
 

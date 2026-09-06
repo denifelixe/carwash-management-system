@@ -19,6 +19,7 @@ const props = withDefaults(
 );
 
 const plate = defineModel<string>({ required: true });
+const special = defineModel<boolean>('special', { default: false });
 
 const order: SegmentKey[] = ['prefix', 'digits', 'suffix'];
 
@@ -198,40 +199,94 @@ watch(plate, (value) => {
 
     Object.assign(segments, splitPlate(value));
 });
+
+watch(special, (value) => {
+    if (!value) {
+        Object.assign(segments, splitPlate(plate.value));
+        publish();
+    }
+});
 </script>
 
 <template>
-    <div
-        class="grid grid-cols-[2fr_auto_4fr_auto_3fr] items-center gap-1.5 sm:gap-2"
-    >
-        <template v-for="(column, index) in columns" :key="column.key">
-            <span v-if="index > 0" class="text-sm text-slate-300">-</span>
-            <input
-                :id="index === 0 ? props.id : `${props.id}-${column.key}`"
-                :ref="
-                    (element) => {
-                        fields[column.key] = element as HTMLInputElement | null;
-                    }
-                "
-                :value="segments[column.key]"
-                :aria-label="column.label"
-                :placeholder="column.placeholder"
-                :maxlength="plateSegmentLengths[column.key]"
-                :inputmode="column.inputmode"
-                :disabled="props.disabled"
-                type="text"
-                autocomplete="off"
-                autocapitalize="characters"
-                spellcheck="false"
-                class="w-full min-w-0 rounded-xl border bg-white px-1.5 py-2.5 text-center text-sm font-medium tracking-wide text-slate-900 uppercase placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
-                :class="props.invalid ? 'border-rose-300' : 'border-slate-200'"
-                @input="handleInput(column.key, $event)"
-                @keydown.backspace="handleBackspace(column.key, $event)"
-                @keydown.left="handleArrow(column.key, $event, -1)"
-                @keydown.right="handleArrow(column.key, $event, 1)"
-                @paste="handlePaste"
-                @focus="($event.target as HTMLInputElement).select()"
-            />
-        </template>
+    <div class="space-y-2">
+        <div
+            class="flex gap-4 text-xs text-slate-600"
+            role="group"
+            aria-label="Jenis plat nomor"
+        >
+            <label class="flex cursor-pointer items-center gap-1.5">
+                <input
+                    v-model="special"
+                    type="radio"
+                    :name="`${props.id}-type`"
+                    :value="false"
+                    :disabled="props.disabled"
+                    class="accent-cyan-600"
+                />
+                Plat biasa
+            </label>
+            <label class="flex cursor-pointer items-center gap-1.5">
+                <input
+                    v-model="special"
+                    type="radio"
+                    :name="`${props.id}-type`"
+                    :value="true"
+                    :disabled="props.disabled"
+                    class="accent-cyan-600"
+                />
+                Plat spesial
+            </label>
+        </div>
+        <input
+            v-if="special"
+            :id="props.id"
+            v-model="plate"
+            type="text"
+            aria-label="Plat nomor spesial"
+            placeholder="Contoh: 84348-00"
+            :maxlength="20"
+            :disabled="props.disabled"
+            :aria-invalid="props.invalid"
+            class="w-full rounded-xl border bg-white px-3 py-2.5 text-sm font-medium text-slate-900 placeholder:font-normal placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+            :class="props.invalid ? 'border-rose-300' : 'border-slate-200'"
+        />
+        <div
+            v-else
+            class="grid grid-cols-[2fr_auto_4fr_auto_3fr] items-center gap-1.5 sm:gap-2"
+        >
+            <template v-for="(column, index) in columns" :key="column.key">
+                <span v-if="index > 0" class="text-sm text-slate-300">-</span>
+                <input
+                    :id="index === 0 ? props.id : `${props.id}-${column.key}`"
+                    :ref="
+                        (element) => {
+                            fields[column.key] =
+                                element as HTMLInputElement | null;
+                        }
+                    "
+                    :value="segments[column.key]"
+                    :aria-label="column.label"
+                    :placeholder="column.placeholder"
+                    :maxlength="plateSegmentLengths[column.key]"
+                    :inputmode="column.inputmode"
+                    :disabled="props.disabled"
+                    type="text"
+                    autocomplete="off"
+                    autocapitalize="characters"
+                    spellcheck="false"
+                    class="w-full min-w-0 rounded-xl border bg-white px-1.5 py-2.5 text-center text-sm font-medium tracking-wide text-slate-900 uppercase placeholder:font-normal placeholder:tracking-normal placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                    :class="
+                        props.invalid ? 'border-rose-300' : 'border-slate-200'
+                    "
+                    @input="handleInput(column.key, $event)"
+                    @keydown.backspace="handleBackspace(column.key, $event)"
+                    @keydown.left="handleArrow(column.key, $event, -1)"
+                    @keydown.right="handleArrow(column.key, $event, 1)"
+                    @paste="handlePaste"
+                    @focus="($event.target as HTMLInputElement).select()"
+                />
+            </template>
+        </div>
     </div>
 </template>

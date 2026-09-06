@@ -47,7 +47,8 @@ class StoreOrderMemberRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30', Rule::unique(Member::class, 'phone')],
             'vehicle_name' => ['required', 'string', 'max:255'],
-            'vehicle_plate' => ['required', 'string', 'max:20', Rule::unique(MemberVehicle::class, 'plate')],
+            'is_special_plate' => ['sometimes', 'boolean'],
+            'vehicle_plate' => ['required', 'string', 'max:20', Rule::unless($this->boolean('is_special_plate'), VehiclePlate::FORMAT_RULE), Rule::unique(MemberVehicle::class, 'plate')],
         ];
     }
 
@@ -78,6 +79,7 @@ class StoreOrderMemberRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'vehicle_plate.regex' => VehiclePlate::FORMAT_MESSAGE,
             'name.required' => 'Nama pelanggan wajib diisi.',
             'phone.required' => 'Nomor telepon wajib diisi.',
             'phone.unique' => 'Nomor telepon ini sudah dipakai member lain.',

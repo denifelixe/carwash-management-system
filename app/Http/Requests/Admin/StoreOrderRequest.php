@@ -57,11 +57,13 @@ class StoreOrderRequest extends FormRequest
             'customer_name' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:255'],
             'customer_phone' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:30'],
             'vehicle_name' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:255'],
+            'is_special_plate' => ['sometimes', 'boolean'],
             'vehicle_plate' => [
                 'nullable',
                 'required_if:customer_mode,walk-in',
                 'string',
                 'max:20',
+                Rule::unless($this->boolean('is_special_plate'), VehiclePlate::FORMAT_RULE),
                 /*
                  * A car a member has registered must be billed to that member,
                  * or the visit and its stamps leave no trace on their account.
@@ -94,6 +96,7 @@ class StoreOrderRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'vehicle_plate.regex' => VehiclePlate::FORMAT_MESSAGE,
             'vehicle_plate.unique' => 'Plat nomor ini sudah terdaftar sebagai kendaraan member. Pilih tab Member untuk membuat order.',
         ];
     }

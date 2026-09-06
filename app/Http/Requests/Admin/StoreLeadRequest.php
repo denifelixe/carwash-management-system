@@ -31,10 +31,12 @@ class StoreLeadRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30'],
             'vehicle_name' => ['nullable', 'string', 'max:255'],
+            'is_special_plate' => ['sometimes', 'boolean'],
             'vehicle_plate' => [
                 'required',
                 'string',
                 'max:20',
+                Rule::unless($this->boolean('is_special_plate'), VehiclePlate::FORMAT_RULE),
                 Rule::unique(Lead::class, 'vehicle_plate'),
                 /*
                  * A car already on a member's account is not a lead: it belongs
@@ -50,6 +52,7 @@ class StoreLeadRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'vehicle_plate.regex' => VehiclePlate::FORMAT_MESSAGE,
             'name.required' => 'Nama calon pelanggan wajib diisi.',
             'vehicle_plate.required' => 'Plat nomor wajib diisi.',
             'vehicle_plate.unique' => 'Plat nomor ini sudah tercatat sebagai lead atau kendaraan member.',

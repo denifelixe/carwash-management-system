@@ -14,6 +14,12 @@ use Illuminate\Support\Str;
  */
 class VehiclePlate
 {
+    public const FORMAT_PATTERN = '/\A[A-Z]{1,2}[0-9]{1,4}[A-Z]{0,3}\z/';
+
+    public const FORMAT_RULE = 'regex:'.self::FORMAT_PATTERN;
+
+    public const FORMAT_MESSAGE = 'Format plat nomor harus 1–2 huruf wilayah, 1–4 angka, dan maksimal 3 huruf belakang. Contoh: B 1234 CDE.';
+
     public static function normalize(?string $plate): string
     {
         return Str::upper((string) preg_replace('/\s+/u', '', trim((string) $plate)));

@@ -8,6 +8,15 @@ export function normalizePlate(value: string): string {
     return value.replace(/\s+/g, '').toUpperCase();
 }
 
+export function isSpecialPlate(value: string): boolean {
+    const normalized = normalizePlate(value);
+
+    return (
+        normalized !== '' &&
+        !/^[A-Z]{1,2}[0-9]{1,4}[A-Z]{0,3}$/.test(normalized)
+    );
+}
+
 /** A canonical Indonesian plate rendered for people: "B 8120 DS". */
 export function formatPlate(value: string | null | undefined): string {
     if (typeof value !== 'string') {

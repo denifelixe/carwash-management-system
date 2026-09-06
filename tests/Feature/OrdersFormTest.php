@@ -168,7 +168,8 @@ test('the order list and detail expose who input and handled the order', functio
 
     expect($ordersPage)
         ->toContain('{{ order.inputBy ?? \'—\' }}')
-        ->toContain('{{ order.handledBy ?? \'—\' }}')
+        ->toContain('{{ orderHandlerNote(order) }}')
+        ->toContain('return `Handle: ${handledBy}`;')
         ->toContain('{{ detailOrder.inputBy ?? \'—\' }}')
         ->toContain('v-model="handlerDraft"')
         ->toContain('@click="toggleDetailHandlerAdmin"')

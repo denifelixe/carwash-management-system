@@ -35,7 +35,7 @@ import {
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
-import { formatPlate } from '@/lib/vehiclePlate';
+import { formatPlate, isSpecialPlate } from '@/lib/vehiclePlate';
 import admin from '@/routes/demo/admin';
 import type {
     CarwashBrand,
@@ -155,6 +155,7 @@ const memberForm = useForm({
         id?: number;
         name: string;
         plate: string;
+        is_special_plate: boolean;
         type: string;
     }>,
 });
@@ -176,10 +177,13 @@ watch(
     },
 );
 
-function emptyVehicle(isPrimary = false): CarwashVehicle {
+function emptyVehicle(
+    isPrimary = false,
+): CarwashVehicle & { isSpecialPlate: boolean } {
     return {
         name: '',
         plate: '',
+        isSpecialPlate: false,
         type: 'Mobil',
         isPrimary,
     };
@@ -284,6 +288,7 @@ function openEditForm(): void {
         email: detailCustomer.value.email,
         vehicles: detailCustomer.value.vehicles.map((vehicle) => ({
             ...vehicle,
+            isSpecialPlate: isSpecialPlate(vehicle.plate),
         })),
     };
     memberForm.clearErrors();
@@ -317,6 +322,7 @@ function saveLiveMember(): void {
         ...(vehicle.id ? { id: vehicle.id } : {}),
         name: vehicle.name,
         plate: vehicle.plate,
+        is_special_plate: vehicle.isSpecialPlate,
         type: vehicle.type,
     }));
 
@@ -1125,6 +1131,7 @@ function stampToneClass(type: string): string {
                             <PlateInput
                                 :id="`member-vehicle-${index}-plate`"
                                 v-model="vehicle.plate"
+                                v-model:special="vehicle.isSpecialPlate"
                                 class="mt-1"
                             />
                         </div>

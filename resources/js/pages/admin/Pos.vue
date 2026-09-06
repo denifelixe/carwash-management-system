@@ -48,7 +48,11 @@ import type {
 } from '@/lib/posReceipt';
 import { absoluteUrl, openRecapSheetWindow } from '@/lib/recapSheet';
 import type { RecapPaper, RecapSheet } from '@/lib/recapSheet';
-import { formatPlate, normalizePlate } from '@/lib/vehiclePlate';
+import {
+    formatPlate,
+    normalizePlate,
+    isSpecialPlate,
+} from '@/lib/vehiclePlate';
 import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashDateFilter,
@@ -106,6 +110,7 @@ interface PaymentSnapshot {
 
 /** What the cashier types into the "jadikan member" panel. */
 interface MemberDraft {
+    isSpecialPlate: boolean;
     plate: string;
     vehicle: string;
     name: string;
@@ -210,6 +215,7 @@ const paymentReferences = ref<Record<string, string>>(
 );
 const emptyMemberDraft: MemberDraft = {
     plate: '',
+    isSpecialPlate: false,
     vehicle: '',
     name: '',
     phone: '',
@@ -1315,6 +1321,7 @@ const canSubmitMember = computed<boolean>(
 function fillMemberDraft(order: CarwashOrder): void {
     memberDraft.value = {
         plate: order.plate === '—' ? '' : order.plate,
+        isSpecialPlate: order.plate !== '—' && isSpecialPlate(order.plate),
         vehicle: order.vehicle === '—' ? '' : order.vehicle,
         name: order.customer.replace(' (non-member)', ''),
         phone: order.phone,
@@ -1350,6 +1357,7 @@ function submitLiveMember(order: CarwashOrder): void {
     memberForm.phone = memberDraft.value.phone.trim();
     memberForm.vehicle_name = memberDraft.value.vehicle.trim();
     memberForm.vehicle_plate = memberDraft.value.plate.trim();
+    memberForm.is_special_plate = memberDraft.value.isSpecialPlate;
 
     memberForm.submit(storePosMember(order.id), {
         preserveScroll: true,
@@ -1915,6 +1923,7 @@ const memberForm = useForm({
     phone: '',
     vehicle_name: '',
     vehicle_plate: '',
+    is_special_plate: false,
 });
 </script>
 
@@ -3406,6 +3415,9 @@ const memberForm = useForm({
                                         <PlateInput
                                             id="pos-member-plate"
                                             v-model="memberDraft.plate"
+                                            v-model:special="
+                                                memberDraft.isSpecialPlate
+                                            "
                                         />
                                         <p
                                             v-if="memberDraftPlateOwner"

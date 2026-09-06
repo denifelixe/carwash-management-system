@@ -6,6 +6,7 @@ use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Support\Admin\MemberQueries;
 use App\Support\VehiclePlate;
+use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
@@ -34,7 +35,13 @@ class StoreMemberRequest extends FormRequest
             'email' => ['nullable', 'email', 'max:255', Rule::unique(Member::class, 'email')],
             'vehicles' => ['required', 'array', 'min:1', 'max:10'],
             'vehicles.*.name' => ['required', 'string', 'max:255'],
-            'vehicles.*.plate' => ['required', 'string', 'max:20', 'distinct', Rule::unique(MemberVehicle::class, 'plate')],
+            'vehicles.*.is_special_plate' => ['sometimes', 'boolean'],
+            'vehicles.*.plate' => ['required', 'string', 'max:20', function (string $attribute, mixed $value, Closure $fail): void {
+                if (! $this->boolean(Str::beforeLast($attribute, '.').'.is_special_plate')
+                    && (! is_string($value) || preg_match(VehiclePlate::FORMAT_PATTERN, $value) !== 1)) {
+                    $fail(VehiclePlate::FORMAT_MESSAGE);
+                }
+            }, 'distinct', Rule::unique(MemberVehicle::class, 'plate')],
             'vehicles.*.type' => ['required', Rule::in(MemberQueries::VEHICLE_TYPES)],
         ];
     }
@@ -43,6 +50,7 @@ class StoreMemberRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'vehicles.*.plate.regex' => VehiclePlate::FORMAT_MESSAGE,
             'name.required' => 'Nama member wajib diisi.',
             'phone.required' => 'Nomor HP wajib diisi.',
             'phone.unique' => 'Nomor HP ini sudah dipakai member lain.',

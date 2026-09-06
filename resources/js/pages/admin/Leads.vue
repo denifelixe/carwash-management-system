@@ -29,7 +29,7 @@ import {
     formatCurrency,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
-import { formatPlate } from '@/lib/vehiclePlate';
+import { formatPlate, isSpecialPlate } from '@/lib/vehiclePlate';
 import type {
     CarwashBrand,
     CarwashLead,
@@ -67,6 +67,7 @@ const draft = ref({
     phone: '',
     vehicleName: '',
     plate: '',
+    isSpecialPlate: false,
     notes: '',
 });
 
@@ -90,6 +91,7 @@ const leadForm = useForm({
     phone: '' as string | null,
     vehicle_name: '' as string | null,
     vehicle_plate: '',
+    is_special_plate: false,
     notes: '' as string | null,
 });
 const statusForm = useForm({ is_active: true });
@@ -157,6 +159,7 @@ function openCreateForm(): void {
         phone: '',
         vehicleName: '',
         plate: '',
+        isSpecialPlate: false,
         notes: '',
     };
     leadForm.clearErrors();
@@ -174,6 +177,7 @@ function openEditForm(): void {
         phone: detailLead.value.phone,
         vehicleName: detailLead.value.vehicleName,
         plate: detailLead.value.vehiclePlate,
+        isSpecialPlate: isSpecialPlate(detailLead.value.vehiclePlate),
         notes: detailLead.value.notes,
     };
     leadForm.clearErrors();
@@ -194,6 +198,7 @@ function saveLead(): void {
     leadForm.phone = draft.value.phone || null;
     leadForm.vehicle_name = draft.value.vehicleName || null;
     leadForm.vehicle_plate = draft.value.plate;
+    leadForm.is_special_plate = draft.value.isSpecialPlate;
     leadForm.notes = draft.value.notes || null;
 
     const action =
@@ -595,6 +600,7 @@ function toggleStatus(lead: CarwashLead): void {
                     <PlateInput
                         id="lead-plate"
                         v-model="draft.plate"
+                        v-model:special="draft.isSpecialPlate"
                         class="mt-1.5"
                     />
                 </div>

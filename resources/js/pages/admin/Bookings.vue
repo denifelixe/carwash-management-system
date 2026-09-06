@@ -31,7 +31,7 @@ import {
     formatDate,
     formatDateCode,
 } from '@/composables/useCarwashFormat';
-import { formatPlate } from '@/lib/vehiclePlate';
+import { formatPlate, isSpecialPlate } from '@/lib/vehiclePlate';
 import type {
     CarwashBooking,
     CarwashBrand,
@@ -116,6 +116,7 @@ const draft = ref({
     customerPhone: '',
     vehicle: '',
     plate: '',
+    isSpecialPlate: false,
     serviceItems: [] as CarwashCartItem[],
     date: props.today,
 });
@@ -376,6 +377,7 @@ function pickCustomer(option: CustomerOption): void {
     draft.value.customerPhone = '';
     draft.value.vehicle = option.vehicle.name;
     draft.value.plate = option.vehicle.plate;
+    draft.value.isSpecialPlate = isSpecialPlate(option.vehicle.plate);
 }
 
 function updateCustomerQuery(query: string): void {
@@ -391,6 +393,7 @@ function clearCustomer(): void {
     draft.value.customerPhone = '';
     draft.value.vehicle = '';
     draft.value.plate = '';
+    draft.value.isSpecialPlate = false;
 }
 
 function selectCustomerMode(mode: CustomerMode): void {
@@ -409,6 +412,7 @@ function resetDraft(): void {
         customerPhone: '',
         vehicle: '',
         plate: '',
+        isSpecialPlate: false,
         serviceItems: [],
         date: props.today,
     };
@@ -454,6 +458,7 @@ function startEditingBooking(): void {
             customerOption || booking.phone === '—' ? '' : booking.phone,
         vehicle: booking.vehicle,
         plate: booking.plate,
+        isSpecialPlate: isSpecialPlate(booking.plate),
         serviceItems: booking.serviceItems.map((item) => ({
             serviceVariationId: item.serviceVariationId,
             serviceId: item.serviceId,
@@ -506,6 +511,7 @@ function saveBooking(): void {
             customer_phone: draft.value.customerPhone,
             vehicle_name: draft.value.vehicle,
             vehicle_plate: draft.value.plate,
+            is_special_plate: draft.value.isSpecialPlate,
             items: draft.value.serviceItems.map((item) => ({
                 service_variation_id: item.serviceVariationId,
                 quantity: item.quantity,
@@ -655,11 +661,11 @@ function saveBooking(): void {
                 >
                     <div class="min-w-0 flex-1">
                         <p
-                            class="text-xl font-bold tracking-wide text-slate-900"
+                            class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"
                         >
                             {{ formatPlate(booking.plate) }}
                         </p>
-                        <p class="mt-0.5 text-xs text-slate-600">
+                        <p class="mt-0.5 text-xl font-semibold text-slate-700">
                             {{ booking.vehicle }}
                         </p>
                         <p class="mt-1.5 text-sm font-medium text-slate-800">
@@ -726,7 +732,7 @@ function saveBooking(): void {
                 <p class="text-2xl font-bold tracking-wide text-slate-900">
                     {{ formatPlate(detailBooking.plate) }}
                 </p>
-                <p class="mt-0.5 text-sm text-slate-600">
+                <p class="mt-0.5 text-xl font-semibold text-slate-700">
                     {{ detailBooking.vehicle }}
                 </p>
                 <p class="mt-3 text-sm font-semibold text-slate-900">
@@ -1173,6 +1179,7 @@ function saveBooking(): void {
                             <PlateInput
                                 id="booking-vehicle-plate"
                                 v-model="draft.plate"
+                                v-model:special="draft.isSpecialPlate"
                             />
                         </div>
                         <div class="space-y-1.5">
