@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\FinanceCategories;
@@ -33,6 +34,7 @@ class UpdateCashEntryRequest extends FormRequest
         $canManageOccurrence = $this->canManageOccurrence();
 
         return [
+            'transaction_shift_id' => ['sometimes', 'nullable', 'integer', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
             'entry_date' => [
                 Rule::excludeIf(! $canManageOccurrence),
                 'required',

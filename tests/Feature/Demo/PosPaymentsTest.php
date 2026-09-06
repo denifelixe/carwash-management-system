@@ -222,7 +222,7 @@ test('order cards lead with the plate and classify the customer source', functio
         ->and(substr_count($posPage, 'No. order {{ order.orderNo }}'))
         ->toBe(2)
         // Settlement, booking, and the settled list all lead with the plate.
-        ->and(substr_count($posPage, 'mt-1 text-xl font-bold tracking-wide text-slate-950'))
+        ->and(substr_count($posPage, 'mt-1 text-2xl font-bold tracking-wide text-slate-950'))
         ->toBe(3);
 });
 

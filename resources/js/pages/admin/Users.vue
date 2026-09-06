@@ -309,7 +309,7 @@ function changeShift(person: Staff, event: Event): void {
     person.shift_mode = shiftMode;
     person.shift_name =
         shiftMode === 'schedule'
-            ? 'Mengikuti Jam Shift'
+            ? 'Mengikuti Jam Shift (Ketika Login)'
             : (shift?.name ?? 'Tidak ada Shift');
 
     if (props.mode === 'demo') {
@@ -375,7 +375,7 @@ function saveDemoUser(): void {
         shift_mode: userForm.shift_mode,
         shift_name:
             userForm.shift_mode === 'schedule'
-                ? 'Mengikuti Jam Shift'
+                ? 'Mengikuti Jam Shift (Ketika Login)'
                 : (shift?.name ?? 'Tidak ada Shift'),
         is_active: userForm.is_active,
         initials: initialsOf(userForm.name),
@@ -785,7 +785,7 @@ function saveDemoRole(): void {
                                 >
                                     <option value="">Tidak ada Shift</option>
                                     <option value="schedule">
-                                        Mengikuti Jam Shift
+                                        Mengikuti Jam Shift (Ketika Login)
                                     </option>
                                     <option
                                         v-for="shift in shifts"
@@ -1035,7 +1035,9 @@ function saveDemoRole(): void {
                         class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
                     >
                         <option value="">Tanpa shift</option>
-                        <option value="schedule">Mengikuti Jam Shift</option>
+                        <option value="schedule">
+                            Mengikuti Jam Shift (Ketika Login)
+                        </option>
                         <option
                             v-for="shift in shifts"
                             :key="shift.id"

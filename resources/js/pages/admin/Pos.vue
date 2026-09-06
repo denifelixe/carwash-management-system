@@ -2931,12 +2931,12 @@ const memberForm = useForm({
                                                 No. order {{ order.orderNo }}
                                             </p>
                                             <p
-                                                class="mt-1 text-xl font-bold tracking-wide text-slate-950"
+                                                class="mt-1 text-2xl font-bold tracking-wide text-slate-950"
                                             >
                                                 {{ formatPlate(order.plate) }}
                                             </p>
                                             <p
-                                                class="mt-0.5 text-base font-semibold text-slate-700"
+                                                class="mt-0.5 text-xl font-semibold text-slate-700"
                                             >
                                                 {{ order.vehicle }}
                                             </p>
@@ -3078,12 +3078,12 @@ const memberForm = useForm({
                                         No. order {{ order.orderNo }}
                                     </p>
                                     <p
-                                        class="mt-1 text-xl font-bold tracking-wide text-slate-950"
+                                        class="mt-1 text-2xl font-bold tracking-wide text-slate-950"
                                     >
                                         {{ formatPlate(order.plate) }}
                                     </p>
                                     <p
-                                        class="mt-0.5 text-base font-semibold text-slate-700"
+                                        class="mt-0.5 text-xl font-semibold text-slate-700"
                                     >
                                         {{ order.vehicle }}
                                     </p>
@@ -3197,12 +3197,12 @@ const memberForm = useForm({
                                     {{ order.invoice }} · {{ order.orderNo }}
                                 </p>
                                 <p
-                                    class="mt-1 text-xl font-bold tracking-wide text-slate-950"
+                                    class="mt-1 text-2xl font-bold tracking-wide text-slate-950"
                                 >
                                     {{ formatPlate(order.plate) }}
                                 </p>
                                 <p
-                                    class="mt-0.5 text-base font-semibold text-slate-700"
+                                    class="mt-0.5 text-xl font-semibold text-slate-700"
                                 >
                                     {{ order.vehicle }}
                                 </p>

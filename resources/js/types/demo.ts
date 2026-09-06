@@ -535,6 +535,7 @@ export interface CarwashTransactionShiftOption {
 
 export interface CarwashTransactionShiftAssignment {
     mode: 'fixed' | 'schedule';
+    locked_at_login?: boolean;
     label: string;
     caption: string;
     shifts: CarwashTransactionShiftOption[];

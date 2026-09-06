@@ -6,6 +6,7 @@ use App\Models\Admin;
 use App\Models\AdminShift;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\Session;
 use Illuminate\Validation\ValidationException;
 
 class TransactionShiftResolver
@@ -13,6 +14,32 @@ class TransactionShiftResolver
     public const MODE_FIXED = 'fixed';
 
     public const MODE_SCHEDULE = 'schedule';
+
+    public function captureLogin(Admin $admin): void
+    {
+        Session::put('transaction_shift', [
+            'admin_id' => $admin->id,
+            'shifts' => $this->matchingShifts(now())
+                ->map(fn (AdminShift $shift): array => $shift->only(['id', 'name', 'starts_at', 'ends_at', 'is_active']))
+                ->all(),
+        ]);
+    }
+
+    /** @return Collection<int, AdminShift> */
+    private function loginShifts(Admin $admin): Collection
+    {
+        if (Session::get('transaction_shift.admin_id') !== $admin->id) {
+            $this->captureLogin($admin);
+        }
+
+        /** @var list<array{id: int, name: string, starts_at: string, ends_at: string, is_active: bool}> $shifts */
+        $shifts = Session::get('transaction_shift.shifts', []);
+
+        return new Collection(array_map(
+            fn (array $shift): AdminShift => (new AdminShift)->newFromBuilder($shift),
+            $shifts,
+        ));
+    }
 
     /**
      * @return Collection<int, AdminShift>
@@ -54,7 +81,7 @@ class TransactionShiftResolver
             return $workShift instanceof AdminShift ? $workShift : null;
         }
 
-        $matches = $this->matchingShifts($at);
+        $matches = $this->loginShifts($admin);
 
         if ($matches->count() <= 1) {
             return $matches->first();
@@ -64,7 +91,7 @@ class TransactionShiftResolver
 
         if (! $selectedShift instanceof AdminShift) {
             throw ValidationException::withMessages([
-                'transaction_shift_id' => 'Pilih salah satu shift yang sedang aktif untuk transaksi ini.',
+                'transaction_shift_id' => 'Pilih salah satu shift yang aktif ketika login untuk transaksi ini.',
             ]);
         }
 
@@ -72,15 +99,20 @@ class TransactionShiftResolver
     }
 
     /**
-     * @return array{mode: string, label: string, caption: string, shifts: list<array{id: int, name: string, starts_at: string, ends_at: string, time: string}>}
+     * @return array{mode: string, locked_at_login: bool, label: string, caption: string, shifts: list<array{id: int, name: string, starts_at: string, ends_at: string, time: string}>}
      */
     public function presentation(Admin $admin, CarbonInterface $at): array
     {
-        $shifts = $this->scheduledShifts();
-        $matches = $this->matchingShifts($at, $shifts);
+        $shifts = $admin->shift_mode === self::MODE_SCHEDULE
+            ? $this->loginShifts($admin)
+            : $this->scheduledShifts();
+        $matches = $admin->shift_mode === self::MODE_SCHEDULE
+            ? $shifts
+            : $this->matchingShifts($at, $shifts);
 
         return [
             'mode' => $admin->shift_mode,
+            'locked_at_login' => $admin->shift_mode === self::MODE_SCHEDULE,
             'label' => $this->label($admin, $matches),
             'caption' => $this->caption($admin, $matches),
             'shifts' => array_values($shifts

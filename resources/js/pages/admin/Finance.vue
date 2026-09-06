@@ -27,6 +27,7 @@ import {
     updateTransaction as updateOrderTransaction,
 } from '@/actions/App/Http/Controllers/Admin/FinanceController';
 import RecapQrController from '@/actions/App/Http/Controllers/Admin/RecapQrController';
+import ShiftCorrectionSelect from '@/components/admin/ShiftCorrectionSelect.vue';
 import TransactionShiftDialog from '@/components/admin/TransactionShiftDialog.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -86,6 +87,7 @@ const props = defineProps<{
     paymentMethods: string[];
     expenseMethods: string[];
     shifts: CarwashShift[];
+    shiftOptions: { id: number; name: string }[];
     orders: CarwashOrder[];
     persona: CarwashPersona;
     transactionShift: CarwashTransactionShiftAssignment;
@@ -206,12 +208,23 @@ const entryForm = useForm<{
 const deleteForm = useForm({});
 
 const transactionForm = useForm<{
+    transaction_shift_id?: number | null;
     amount: number;
     channels: TransactionChannelDraft[];
 }>({
     amount: 0,
     channels: [],
 });
+
+const shiftCorrection = ref<number | null | 'keep'>('keep');
+
+function correctedShiftName(entry: CarwashMoneyEntry): string | null {
+    return shiftCorrection.value === 'keep'
+        ? (entry.shift ?? null)
+        : (props.shiftOptions.find(
+              (shift) => shift.id === shiftCorrection.value,
+          )?.name ?? null);
+}
 
 const activeCategories = computed<string[]>(() =>
     activeLedger.value === 'in'
@@ -680,6 +693,16 @@ const attachmentError = computed<string | undefined>(() => {
 });
 
 function isEditable(entry: CarwashMoneyEntry): boolean {
+    if (props.mode === 'demo') {
+        const cutoff = new Date(`${props.filters.today}T00:00:00Z`);
+        cutoff.setUTCDate(cutoff.getUTCDate() - 30);
+
+        return (
+            entry.date >= cutoff.toISOString().slice(0, 10) &&
+            entry.date <= props.filters.today
+        );
+    }
+
     return (
         props.mode === 'live' &&
         entry.isMutable === true &&
@@ -779,8 +802,9 @@ function openEditForm(entry: CarwashMoneyEntry): void {
     }
 
     selectedTransactionEntry.value = null;
+    shiftCorrection.value = 'keep';
 
-    if (posTransactionId(entry) !== null) {
+    if (entry.source === 'pos') {
         editingPosEntry.value = entry;
         transactionForm.clearErrors();
         transactionForm.amount = entry.amount;
@@ -813,7 +837,11 @@ function openEditForm(entry: CarwashMoneyEntry): void {
 }
 
 function openDeleteEntry(entry: CarwashMoneyEntry): void {
-    if (!isEditable(entry) || !props.capabilities.delete) {
+    if (
+        props.mode !== 'live' ||
+        !isEditable(entry) ||
+        !props.capabilities.delete
+    ) {
         return;
     }
 
@@ -951,6 +979,62 @@ function closePosTransactionForm(): void {
 }
 
 function savePosTransaction(): void {
+    if (
+        props.mode === 'demo' &&
+        editingPosEntry.value &&
+        canSavePosTransaction.value
+    ) {
+        const entry = editingPosEntry.value;
+        const order = findRelatedOrder(entry);
+        const transaction = order?.transactions.find(
+            (item) => item.id === transactionIdFromEntry(entry),
+        );
+
+        if (!order || !transaction) {
+            return;
+        }
+
+        const paidAmount =
+            order.paidAmount - transaction.amount + transactionForm.amount;
+
+        if (
+            paidAmount > order.total ||
+            (order.status === 'selesai' && paidAmount !== order.total)
+        ) {
+            transactionForm.setError(
+                'amount',
+                'Koreksi harus sesuai total dan status pembayaran order.',
+            );
+
+            return;
+        }
+
+        const channels = transactionForm.channels.map((channel) => ({
+            label: channel.provider
+                ? `${channel.label} · ${channel.provider}`
+                : channel.label,
+            amount: channel.amount,
+            reference: channel.reference,
+        }));
+        const shift = correctedShiftName(entry);
+        Object.assign(transaction, {
+            amount: transactionForm.amount,
+            channelBreakdown: channels,
+            channels: channels.map((channel) => channel.label).join(' + '),
+            shift,
+        });
+        Object.assign(entry, {
+            amount: transactionForm.amount,
+            channelBreakdown: channels,
+            method: transaction.channels,
+            shift,
+        });
+        order.paidAmount = paidAmount;
+        closePosTransactionForm();
+
+        return;
+    }
+
     const transactionId =
         editingPosEntry.value === null
             ? null
@@ -960,10 +1044,19 @@ function savePosTransaction(): void {
         return;
     }
 
-    transactionForm.submit(updateOrderTransaction(transactionId), {
-        preserveScroll: true,
-        onSuccess: closePosTransactionForm,
-    });
+    transactionForm
+        .transform((data) => {
+            const payment = { ...data };
+            delete payment.transaction_shift_id;
+
+            return shiftCorrection.value === 'keep'
+                ? payment
+                : { ...payment, transaction_shift_id: shiftCorrection.value };
+        })
+        .submit(updateOrderTransaction(transactionId), {
+            preserveScroll: true,
+            onSuccess: closePosTransactionForm,
+        });
 }
 
 function openOrderRecap(entry: CarwashMoneyEntry): void {
@@ -1150,20 +1243,66 @@ function saveLiveEntry(transactionShiftId: number | null): void {
     const action =
         editingId === null ? storeCashEntry() : updateCashEntry(editingId);
 
-    entryForm.submit(action, {
-        preserveScroll: true,
-        onSuccess: () => {
-            isFormOpen.value = false;
-            editingEntry.value = null;
-            clearPendingAttachments();
-            removedAttachmentIds.value = [];
-            entryForm.reset();
-        },
-    });
+    entryForm
+        .transform((data) => {
+            if (editingId === null) {
+                return data;
+            }
+
+            const entry: Omit<typeof data, 'transaction_shift_id'> & {
+                transaction_shift_id?: number | null;
+            } = { ...data };
+            delete entry.transaction_shift_id;
+
+            return shiftCorrection.value === 'keep'
+                ? entry
+                : { ...entry, transaction_shift_id: shiftCorrection.value };
+        })
+        .submit(action, {
+            preserveScroll: true,
+            onSuccess: () => {
+                isFormOpen.value = false;
+                editingEntry.value = null;
+                clearPendingAttachments();
+                removedAttachmentIds.value = [];
+                entryForm.reset();
+            },
+        });
 }
 
 /** The demo console keeps its entries in memory instead of hitting the database. */
 function saveDemoEntry(transactionShiftId: number | null): void {
+    if (editingEntry.value !== null) {
+        const entry = editingEntry.value;
+        Object.assign(entry, {
+            ...draft.value,
+            date: entryForm.entry_date,
+            time: entryForm.entry_time.replace(':', '.'),
+            shift: correctedShiftName(entry),
+            channelBreakdown: [
+                { label: draft.value.method, amount: draft.value.amount },
+            ],
+            attachments: [
+                ...(entry.attachments ?? []).filter(
+                    (attachment) =>
+                        !removedAttachmentIds.value.includes(
+                            Number(attachment.id),
+                        ),
+                ),
+                ...pendingAttachments.value.map((attachment, index) => ({
+                    id: `demo-edit-${Date.now()}-${index}`,
+                    name: attachment.file.name,
+                    size: '—',
+                    url: null,
+                    isImage: attachment.file.type.startsWith('image/'),
+                })),
+            ],
+        });
+        closeEntryForm();
+
+        return;
+    }
+
     const isIncome = activeLedger.value === 'in';
     const sequence =
         (isIncome ? incomeList.value.length : expenseList.value.length) + 32;
@@ -1644,12 +1783,7 @@ function applyDate(date: string): void {
                             <th class="px-5 py-3">Dicatat oleh</th>
                             <th class="px-5 py-3">Lampiran</th>
                             <th class="px-5 py-3 text-right">Nominal</th>
-                            <th
-                                v-if="mode === 'live'"
-                                class="px-5 py-3 text-right"
-                            >
-                                Aksi
-                            </th>
+                            <th class="px-5 py-3 text-right">Aksi</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-50">
@@ -1832,7 +1966,7 @@ function applyDate(date: string): void {
                                 {{ activeLedger === 'in' ? '+' : '−'
                                 }}{{ formatCurrency(entry.amount) }}
                             </td>
-                            <td v-if="mode === 'live'" class="px-5 py-3.5">
+                            <td class="px-5 py-3.5">
                                 <div
                                     v-if="isEditable(entry)"
                                     class="flex items-center justify-end gap-1"
@@ -1848,6 +1982,7 @@ function applyDate(date: string): void {
                                     </button>
                                     <button
                                         v-if="
+                                            mode === 'live' &&
                                             capabilities.delete &&
                                             (cashEntryId(entry) !== null ||
                                                 posTransactionId(entry) !==
@@ -2420,6 +2555,13 @@ function applyDate(date: string): void {
         @close="closePosTransactionForm"
     >
         <div v-if="editingPosEntry" class="space-y-4">
+            <ShiftCorrectionSelect
+                id="transaction-shift"
+                v-model="shiftCorrection"
+                :current-shift="editingPosEntry.shift ?? null"
+                :options="shiftOptions"
+                :error="transactionForm.errors.transaction_shift_id"
+            />
             <div>
                 <label
                     class="text-xs font-medium text-slate-600"
@@ -2661,6 +2803,14 @@ function applyDate(date: string): void {
         @close="closeEntryForm"
     >
         <div class="space-y-4">
+            <ShiftCorrectionSelect
+                v-if="editingEntry"
+                id="entry-shift"
+                v-model="shiftCorrection"
+                :current-shift="editingEntry.shift ?? null"
+                :options="shiftOptions"
+                :error="entryForm.errors.transaction_shift_id"
+            />
             <div
                 v-if="capabilities.edit_cash_entry_backdate"
                 class="grid grid-cols-2 gap-3"

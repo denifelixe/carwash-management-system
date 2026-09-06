@@ -316,7 +316,7 @@ test('an owner can make a user follow the current shift schedule', function () {
         ->get(route('admin.users.index'))
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('staff.0.shift_mode', 'schedule')
-            ->where('staff.0.shift_name', 'Mengikuti Jam Shift'));
+            ->where('staff.0.shift_name', 'Mengikuti Jam Shift (Ketika Login)'));
 
     $this->actingAs($owner, 'admin')
         ->from(route('admin.users.index'))

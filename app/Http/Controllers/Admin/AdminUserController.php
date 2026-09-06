@@ -152,7 +152,7 @@ class AdminUserController extends Controller
             'shift_id' => $admin->shift_id,
             'shift_mode' => $admin->shift_mode,
             'shift_name' => $admin->shift_mode === TransactionShiftResolver::MODE_SCHEDULE
-                ? 'Mengikuti Jam Shift'
+                ? 'Mengikuti Jam Shift (Ketika Login)'
                 : ($workShift instanceof AdminShift ? $workShift->name : 'Tidak ada Shift'),
             'is_owner' => $admin->is_owner,
             'is_active' => $admin->is_active,

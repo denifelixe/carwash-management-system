@@ -302,7 +302,8 @@ test('the cashier page exposes the current overlap status and selectable windows
             ->where('transactionShift.mode', 'schedule')
             ->where('transactionShift.label', 'Pilih saat transaksi')
             ->where('transactionShift.caption', 'Shift Pagi & Shift Siang')
-            ->has('transactionShift.shifts', 3)
+            ->where('transactionShift.locked_at_login', true)
+            ->has('transactionShift.shifts', 2)
             ->where('transactionShift.shifts.0.starts_at', '08:00'));
 });
 

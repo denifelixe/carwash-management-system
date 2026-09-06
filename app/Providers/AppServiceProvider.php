@@ -4,12 +4,14 @@ namespace App\Providers;
 
 use App\Models\Admin;
 use App\Support\Admin\AdminModuleActions;
+use App\Support\Admin\TransactionShiftResolver;
 use App\Support\AppSettings;
 use App\Support\Auth\ActiveUserProvider;
 use App\Support\DangerousKeyManager;
 use App\Support\Demo\Brand;
 use App\Support\Session\DatabaseSessionHandler;
 use Carbon\CarbonImmutable;
+use Illuminate\Auth\Events\Login;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Contracts\Hashing\Hasher;
 use Illuminate\Database\DatabaseManager;
@@ -17,6 +19,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\View;
@@ -98,6 +101,12 @@ class AppServiceProvider extends ServiceProvider
      */
     protected function configureAuthentication(): void
     {
+        Event::listen(Login::class, function (Login $event): void {
+            if ($event->guard === 'admin' && $event->user instanceof Admin) {
+                $this->app->make(TransactionShiftResolver::class)->captureLogin($event->user);
+            }
+        });
+
         Auth::provider(
             'active_eloquent',
             /** @param array{model: class-string<Model>} $config */

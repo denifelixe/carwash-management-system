@@ -56,6 +56,11 @@ class FinanceController extends AdminController
             'paymentMethods' => Operations::paymentMethods(),
             'expenseMethods' => Operations::expenseMethods(),
             'shifts' => Brand::shifts(),
+            'shiftOptions' => array_map(
+                fn (array $shift, int $index): array => ['id' => $index + 1, 'name' => $shift['name']],
+                Brand::shifts(),
+                array_keys(Brand::shifts()),
+            ),
             'orders' => Operations::orders(),
             'capabilities' => [
                 'create' => true,

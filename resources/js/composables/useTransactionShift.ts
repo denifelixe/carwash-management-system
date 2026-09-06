@@ -63,5 +63,7 @@ function matchingShiftsForMinute(
         return [];
     }
 
-    return assignment.shifts.filter((shift) => containsMinute(shift, minute));
+    return assignment.locked_at_login
+        ? assignment.shifts
+        : assignment.shifts.filter((shift) => containsMinute(shift, minute));
 }

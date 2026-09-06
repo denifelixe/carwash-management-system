@@ -2,12 +2,14 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\AdminShift;
 use App\Models\OrderTransaction;
 use App\Support\Admin\OrderQueries;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class UpdateOrderTransactionRequest extends FormRequest
 {
@@ -27,6 +29,7 @@ class UpdateOrderTransactionRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'transaction_shift_id' => ['sometimes', 'nullable', 'integer', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
             'channels' => ['required', 'array', 'min:1', 'max:'.count(OrderQueries::PAYMENT_METHODS)],
             'channels.*.label' => ['required', 'string', 'max:100', 'distinct'],

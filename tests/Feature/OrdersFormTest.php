@@ -129,7 +129,9 @@ test('the order detail leads with its date and highlighted vehicle information',
         ->toContain('`${formatDate(detailOrder.date)} • ${detailOrder.time}`')
         ->not->toContain('`${detailOrder?.customer} • ${detailOrder?.time}`')
         ->toContain('Info Pelanggan')
-        ->toContain('class="mt-1 text-xl font-bold tracking-wide text-slate-900"')
+        ->toContain(
+            'class="mt-1 text-2xl font-bold tracking-wide text-slate-900"',
+        )
         ->toContain('{{ formatPlate(detailOrder.plate) }}')
         ->toContain('{{ detailOrder.vehicle }}')
         ->toContain('{{ orderSourceLabel(detailOrder) }}')
@@ -371,24 +373,26 @@ test('the whole order row opens the detail, not just the Detail button', functio
 });
 
 /*
- * A phone and a tablet only have room for three columns, so the customer joins
- * the vehicle cell and the Detail button drops away — the row itself opens the
- * order there.
+ * A phone and a tablet only have room for two columns, so the services and the
+ * customer join the vehicle cell and the Detail button drops away — the row
+ * itself opens the order there.
  */
-test('the narrow order list keeps only vehicle, services, and status', function () {
+test('the narrow order list keeps only vehicle and status', function () {
     $ordersPage = file_get_contents(
         resource_path('js/pages/admin/Orders.vue'),
     );
 
     expect($ordersPage)
-        // Customer column and the Detail button are wide-layout only.
+        // Customer, Layanan, and the Detail button are wide-layout only.
         ->toContain('<th class="hidden px-5 py-3 lg:table-cell">')
         ->toContain('<td class="hidden px-5 py-3.5 lg:table-cell">')
-        // Kendaraan, Layanan, and Status carry no such guard.
+        ->toContain(
+            'class="hidden px-5 py-3.5 text-slate-600 lg:table-cell lg:max-w-[200px]"',
+        )
+        // Kendaraan and Status carry no such guard.
         ->toContain('<th class="px-5 py-3">Kendaraan</th>')
-        ->toContain('<th class="px-5 py-3">Layanan</th>')
         ->toContain('<th class="px-5 py-3">Status</th>')
-        // The customer repeats inside the vehicle cell for that layout.
+        // The services and the customer repeat inside the vehicle cell there.
         ->toContain('<div class="mt-1 lg:hidden">')
         // Nothing forces a horizontal scroll before the wide layout.
         ->toContain('min-w-[340px] text-sm lg:min-w-[1100px]');
@@ -463,7 +467,9 @@ test('the order list leads with vehicle arrival information', function () {
         ->toBeLessThan(strpos($head, 'Customer'))
         ->and($ordersPage)
         ->not->toContain('<th class="px-5 py-3">Order</th>')
-        ->toContain('class="text-xl font-bold tracking-wide text-slate-900"')
+        ->toContain(
+            'class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"',
+        )
         ->toContain('{{ formatPlate(order.plate) }}')
         ->toContain('{{ order.vehicle }}')
         ->toContain("order.time === '—'")

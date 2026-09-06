@@ -3,6 +3,7 @@
 namespace App\Actions\Admin;
 
 use App\Models\Admin;
+use App\Models\AdminShift;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Support\Admin\OperationalDataWindow;
@@ -14,7 +15,7 @@ class UpdateOrderTransaction
     public function __construct(private UpdateDailyBalance $updateDailyBalance) {}
 
     /**
-     * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>}  $payment
+     * @param  array{amount: int, channels: list<array{label: string, amount: int, provider: string, reference: string}>, transaction_shift_id?: int|null}  $payment
      */
     public function handle(OrderTransaction $orderTransaction, Admin $admin, array $payment): void
     {
@@ -64,6 +65,11 @@ class UpdateOrderTransaction
             $correctedAmounts = UpdateDailyBalance::channelAmounts($channels);
 
             $transaction->update([
+                ...(array_key_exists('transaction_shift_id', $payment) ? [
+                    'shift_name' => $payment['transaction_shift_id'] === null
+                        ? null
+                        : AdminShift::query()->where('is_active', true)->findOrFail($payment['transaction_shift_id'])->name,
+                ] : []),
                 'amount' => $payment['amount'],
                 'channel_breakdown' => $channels,
                 'updated_by_admin_id' => $admin->getKey(),

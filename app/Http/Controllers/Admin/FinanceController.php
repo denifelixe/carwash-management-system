@@ -12,6 +12,7 @@ use App\Http\Requests\Admin\StoreCashEntryRequest;
 use App\Http\Requests\Admin\UpdateCashEntryRequest;
 use App\Http\Requests\Admin\UpdateOrderTransactionRequest;
 use App\Models\Admin;
+use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Models\CashEntryAttachment;
 use App\Models\Order;
@@ -94,6 +95,8 @@ class FinanceController extends Controller
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
             'expenseMethods' => OrderQueries::EXPENSE_METHODS,
             'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $selectedDate),
+            'shiftOptions' => OrderQueries::workShifts()
+                ->map(fn (AdminShift $shift): array => $shift->only(['id', 'name']))->all(),
             'orders' => FinanceQueries::ordersForDate($selectedDate)
                 ->map(fn (Order $order): array => OrderPresenter::order($order))
                 ->all(),
@@ -251,6 +254,11 @@ class FinanceController extends Controller
                     (int) $data['amount'],
                 );
                 $cashEntry->fill([
+                    ...(array_key_exists('transaction_shift_id', $data) ? [
+                        'shift_name' => $data['transaction_shift_id'] === null
+                            ? null
+                            : AdminShift::query()->where('is_active', true)->where('id', $data['transaction_shift_id'])->firstOrFail()->name,
+                    ] : []),
                     'category' => $data['category'],
                     'description' => $data['description'],
                     'amount' => $data['amount'],
@@ -311,10 +319,18 @@ class FinanceController extends Controller
         /** @var Admin $admin */
         $admin = $request->user('admin');
 
-        $updateOrderTransaction->handle($orderTransaction, $admin, [
+        $payment = [
             'amount' => $request->integer('amount'),
             'channels' => $request->channels(),
-        ]);
+        ];
+
+        if (array_key_exists('transaction_shift_id', $request->validated())) {
+            $payment['transaction_shift_id'] = $request->filled('transaction_shift_id')
+                ? $request->integer('transaction_shift_id')
+                : null;
+        }
+
+        $updateOrderTransaction->handle($orderTransaction, $admin, $payment);
 
         return to_route('admin.finance.index', ['date' => $orderTransaction->paid_at->toDateString()])
             ->with('success', 'Transaksi pembayaran berhasil diperbarui.');

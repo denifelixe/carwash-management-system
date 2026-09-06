@@ -1098,10 +1098,10 @@ const deleteForm = useForm({});
 
             <div v-if="section.orders.length > 0" class="overflow-x-auto">
                 <!--
-                    A phone and a tablet only get Kendaraan, Layanan, and
-                    Status; the customer folds into the vehicle cell and the
-                    whole row opens the detail. The wide layout keeps its own
-                    Customer column and Detail button.
+                    A phone and a tablet only get Kendaraan and Status; the
+                    service list and the customer fold into the vehicle cell
+                    and the whole row opens the detail. The wide layout keeps
+                    its own Layanan and Customer columns and a Detail button.
                 -->
                 <table class="w-full min-w-[340px] text-sm lg:min-w-[1100px]">
                     <thead>
@@ -1112,7 +1112,9 @@ const deleteForm = useForm({});
                             <th class="hidden px-5 py-3 lg:table-cell">
                                 Customer
                             </th>
-                            <th class="px-5 py-3">Layanan</th>
+                            <th class="hidden px-5 py-3 lg:table-cell">
+                                Layanan
+                            </th>
                             <th class="hidden px-5 py-3 lg:table-cell">
                                 Diinput oleh
                             </th>
@@ -1135,17 +1137,20 @@ const deleteForm = useForm({});
                         >
                             <td class="px-5 py-3.5 lg:min-w-52">
                                 <p
-                                    class="text-xl font-bold tracking-wide text-slate-900"
+                                    class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"
                                 >
                                     {{ formatPlate(order.plate) }}
                                 </p>
                                 <p
-                                    class="mt-0.5 text-base font-semibold text-slate-700"
+                                    class="mt-0.5 text-xl font-semibold text-slate-700"
                                 >
                                     {{ order.vehicle }}
                                 </p>
                                 <div class="mt-1 lg:hidden">
-                                    <p class="text-xs text-slate-700">
+                                    <p class="text-sm text-slate-600">
+                                        {{ order.items }}
+                                    </p>
+                                    <p class="mt-1 text-xs text-slate-700">
                                         {{ order.customer }}
                                     </p>
                                     <p class="text-[11px] text-slate-500">
@@ -1169,7 +1174,7 @@ const deleteForm = useForm({});
                                 </p>
                             </td>
                             <td
-                                class="px-5 py-3.5 text-slate-600 lg:max-w-[200px]"
+                                class="hidden px-5 py-3.5 text-slate-600 lg:table-cell lg:max-w-[200px]"
                             >
                                 {{ order.items }}
                             </td>
@@ -1304,10 +1309,10 @@ const deleteForm = useForm({});
 
             <div class="rounded-xl bg-slate-50 p-3">
                 <p class="text-[11px] text-slate-500">Info Pelanggan</p>
-                <p class="mt-1 text-xl font-bold tracking-wide text-slate-900">
+                <p class="mt-1 text-2xl font-bold tracking-wide text-slate-900">
                     {{ formatPlate(detailOrder.plate) }}
                 </p>
-                <p class="mt-0.5 text-base font-semibold text-slate-700">
+                <p class="mt-0.5 text-xl font-semibold text-slate-700">
                     {{ detailOrder.vehicle }}
                 </p>
                 <p class="mt-1 text-xs text-slate-500">
