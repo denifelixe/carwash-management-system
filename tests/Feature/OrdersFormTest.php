@@ -3,6 +3,7 @@
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
+use Illuminate\Support\Facades\Process;
 
 test('new orders keep account crew separate while accepting a manual handler', function () {
     $ordersPage = file_get_contents(
@@ -359,6 +360,38 @@ test('order metadata and status editing respect the operational window', functio
         ->toContain('(editingOrder.value?.transactions.length ?? 0) > 0')
         ->not->toContain('return canEditStatus(order);')
         ->not->toContain('v-if="isDetailReadOnly"');
+});
+
+test('completed status is locked in the order page and demo workflow', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8');
+const script = source.match(/<script setup lang="ts">([\s\S]*?)<\/script>/)[1];
+const ast = ts.createSourceFile('Orders.ts', script, ts.ScriptTarget.Latest, true);
+const functions = ast.statements.filter(node =>
+    ts.isFunctionDeclaration(node) && ['setStatus', 'canEditStatus'].includes(node.name.text)
+);
+const code = ts.transpile(functions.map(node => node.getText(ast)).join('\n'));
+const props = { capabilities: { update: true }, filters: { today: '2026-09-07' } };
+const { setStatus, canEditStatus } = new Function('props', `${code}; return { setStatus, canEditStatus };`)(props);
+const completed = { status: 'selesai', source: 'walk-in', isMutable: true };
+assert.equal(canEditStatus(completed), false);
+setStatus(completed, 'pelunasan');
+assert.equal(completed.status, 'selesai');
+const reopened = { status: 'pelunasan', source: 'walk-in', isMutable: true };
+assert.equal(canEditStatus(reopened), true);
+setStatus(reopened, 'proses');
+assert.equal(reopened.status, 'proses');
+assert.equal(canEditStatus({ ...reopened, isMutable: false }), false);
+props.capabilities.update = false;
+assert.equal(canEditStatus(reopened), false);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
 test('the whole order row opens the detail, not just the Detail button', function () {

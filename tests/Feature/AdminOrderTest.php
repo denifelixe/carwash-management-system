@@ -510,7 +510,7 @@ test('a member vehicle must belong to the selected member', function () {
     expect(Order::query()->count())->toBe(0);
 });
 
-test('order status can be updated even when cashier has completed it', function () {
+test('open order status can be updated', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create(['status' => 'menunggu']);
 
@@ -519,15 +519,6 @@ test('order status can be updated even when cashier has completed it', function 
         ->assertSessionHasNoErrors();
 
     expect($order->refresh()->status)->toBe('proses');
-
-    $order->update(['status' => 'selesai']);
-
-    $this->actingAs($owner, 'admin')
-        ->patch(route('admin.orders.status.update', $order), ['status' => 'menunggu'])
-        ->assertRedirect()
-        ->assertSessionHasNoErrors();
-
-    expect($order->refresh()->status)->toBe('menunggu');
 
     $order->update(['status' => 'proses', 'paid_amount' => $order->total]);
 
@@ -541,6 +532,34 @@ test('order status can be updated even when cashier has completed it', function 
     $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Baru'])
         ->assertSessionHasNoErrors();
+});
+
+test('completed order status cannot be changed manually', function (string $status) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($owner, 135000);
+    $attributes = $order->refresh()->getAttributes();
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.status.update', $order), ['status' => $status])
+        ->assertSessionHasErrors('status');
+
+    expect($order->refresh()->getAttributes())->toBe($attributes);
+})->with(['booking', 'menunggu', 'proses', 'pelunasan', 'batal']);
+
+test('deleting a settled payment reopens the order for status changes', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = paidOrder($owner, 135000);
+
+    $this->actingAs($owner, 'admin')
+        ->delete(route('admin.finance.transactions.destroy', $order->transactions()->sole()))
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())->status->toBe('pelunasan')->paid_amount->toBe(0);
+
+    $this->patch(route('admin.orders.status.update', $order), ['status' => 'proses'])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh()->status)->toBe('proses');
 });
 
 test('status updates preserve existing transactions and order amounts', function (string $status, int $paidAmount) {

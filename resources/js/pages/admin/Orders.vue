@@ -592,6 +592,10 @@ function normalizeCustomerSearch(value: string): string {
  * an order to 'selesai' happens in the cashier module once the bill is settled.
  */
 function setStatus(order: CarwashOrder, status: string): void {
+    if (!canEditStatus(order)) {
+        return;
+    }
+
     if (
         order.source === 'booking' &&
         ['booking', 'menunggu', 'proses', 'pelunasan'].includes(order.status) &&
@@ -612,9 +616,13 @@ function setStatus(order: CarwashOrder, status: string): void {
     order.status = status;
 }
 
-/** Status changes do not alter the order's payment records. */
+/** Settled orders reopen through payment deletion before their stage can change. */
 function canEditStatus(order: CarwashOrder): boolean {
-    return props.capabilities.update && order.isMutable !== false;
+    return (
+        props.capabilities.update &&
+        order.isMutable !== false &&
+        order.status !== 'selesai'
+    );
 }
 
 function canEditOrder(order: CarwashOrder): boolean {

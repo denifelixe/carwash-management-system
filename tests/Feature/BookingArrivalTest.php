@@ -45,9 +45,16 @@ test('status changes do not record arrivals for future closed or unchanged order
         'source' => 'booking', 'status' => 'booking', 'arrived_at' => null,
     ], $attributes));
 
-    $this->actingAs($owner, 'admin')
+    $response = $this->actingAs($owner, 'admin')
         ->patch(route('admin.orders.status.update', $order), ['status' => $status])
-        ->assertRedirect()->assertSessionHasNoErrors();
+        ->assertRedirect();
+
+    if ($order->status === 'selesai') {
+        $response->assertSessionHasErrors('status');
+        expect($order->refresh()->status)->toBe('selesai');
+    } else {
+        $response->assertSessionHasNoErrors();
+    }
 
     expect($order->refresh()->arrived_at)->toBeNull();
 })->with([
@@ -101,9 +108,9 @@ const ts = require('typescript');
 const assert = require('node:assert/strict');
 const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
 const ast = ts.createSourceFile('Orders.ts', source, ts.ScriptTarget.Latest, true);
-const names = ['orderArrivalLabel', 'setStatus'];
+const names = ['orderArrivalLabel', 'setStatus', 'canEditStatus'];
 const code = ts.transpile(ast.statements.filter(node => ts.isFunctionDeclaration(node) && names.includes(node.name.text)).map(node => node.getText(ast)).join('\n'), { target: ts.ScriptTarget.ES2020 });
-const props = { filters: { today: '2026-09-06', timezone: 'Asia/Jakarta' } };
+const props = { capabilities: { update: true }, filters: { today: '2026-09-06', timezone: 'Asia/Jakarta' } };
 const clock = class extends Date { constructor() { super('2026-09-06T03:15:00Z'); } };
 const { orderArrivalLabel, setStatus } = new Function('props', 'formatDate', 'Date', `${code}; return { orderArrivalLabel, setStatus };`)(props, date => date.split('-').reverse().join('/'), clock);
 const booking = { source: 'booking', status: 'booking', date: props.filters.today, time: '—' };

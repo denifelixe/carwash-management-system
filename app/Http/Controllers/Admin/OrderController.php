@@ -28,6 +28,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -193,6 +194,13 @@ class OrderController extends Controller
         DB::transaction(function () use ($order, $request): void {
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
             OperationalDataWindow::ensureAllows($order->service_date);
+
+            if ($order->status === 'selesai') {
+                throw ValidationException::withMessages([
+                    'status' => 'Status order selesai tidak dapat diubah. Hapus transaksi pembayaran terlebih dahulu untuk membuka kembali order.',
+                ]);
+            }
+
             $status = $request->validated('status');
             $arrivedAt = now();
             $recordsArrival = $order->source === 'booking'
