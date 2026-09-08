@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\Admin;
+use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,6 +42,9 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'loginShift' => $admin instanceof Admin && $request->routeIs('admin.*')
+                ? app(TransactionShiftResolver::class)->loginPresentation($admin)
+                : null,
             'auth' => [
                 'admin' => $admin instanceof Admin
                     ? [...$admin->toArray(), 'avatar' => $admin->profilePhotoUrl()]

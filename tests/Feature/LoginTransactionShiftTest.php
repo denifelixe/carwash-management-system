@@ -75,7 +75,11 @@ test('remembered admin login captures a new shift without affecting member login
 
     $resolver = app(TransactionShiftResolver::class);
     expect($resolver->resolve($admin, null, now())?->name)->toBe('Shift Pagi');
+    expect($resolver->loginPresentation($admin)['pending'])->toBeTrue();
+    $resolver->confirmLogin($admin, null);
+    expect($resolver->loginPresentation($admin)['pending'])->toBeFalse();
 
     event(new Login('admin', $admin, true));
     expect($resolver->resolve($admin, null, now())?->name)->toBe('Shift Sore');
+    expect($resolver->loginPresentation($admin)['pending'])->toBeTrue();
 });

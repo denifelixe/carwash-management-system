@@ -1480,7 +1480,7 @@ function submitPayment(): void {
         props.filters.timezone,
     );
 
-    if (matchingShifts.length > 1) {
+    if (props.mode === 'demo' && matchingShifts.length > 1) {
         pendingPayment.value = { order, snapshot };
         overlappingTransactionShifts.value = matchingShifts;
 

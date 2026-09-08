@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import AdminSessionDialogs from '@/components/admin/AdminSessionDialogs.vue';
 import AppContent from '@/components/AppContent.vue';
 import AppShell from '@/components/AppShell.vue';
 import AppSidebar from '@/components/AppSidebar.vue';
@@ -22,6 +23,7 @@ withDefaults(defineProps<Props>(), {
             <AppSidebarHeader :breadcrumbs="breadcrumbs" />
             <slot />
         </AppContent>
+        <AdminSessionDialogs />
         <Toaster />
     </AppShell>
 </template>

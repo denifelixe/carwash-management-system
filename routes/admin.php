@@ -57,6 +57,7 @@ Route::domain((string) config('domains.admin'))
         });
 
         Route::middleware('auth:admin')->group(function (): void {
+            Route::post('login-shift/confirm', [AdminAuthenticatedSessionController::class, 'confirmShift'])->block()->name('login-shift.confirm');
             Route::post('logout', [AdminAuthenticatedSessionController::class, 'destroy'])->name('logout');
             Route::get('dashboard', DashboardController::class)->name('dashboard');
             Route::get('orders', [OrderController::class, 'index'])->name('orders.index');

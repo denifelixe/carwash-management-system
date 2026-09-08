@@ -1296,7 +1296,7 @@ function saveEntry(): void {
         entryForm.entry_time,
     );
 
-    if (matchingShifts.length > 1) {
+    if (props.mode === 'demo' && matchingShifts.length > 1) {
         pendingShiftEntry.value = true;
         overlappingTransactionShifts.value = matchingShifts;
 

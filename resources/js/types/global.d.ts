@@ -19,6 +19,12 @@ declare module '@inertiajs/core' {
             name: string;
             auth: Auth;
             sidebarOpen: boolean;
+            loginShift: {
+                pending: boolean;
+                requires_selection: boolean;
+                label: string;
+                shifts: { id: number; name: string; time: string }[];
+            } | null;
             [key: string]: unknown;
         };
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Link, router } from '@inertiajs/vue3';
+import { Link } from '@inertiajs/vue3';
 import { LogOut, Settings } from '@lucide/vue';
 import AdminInfo from '@/components/AdminInfo.vue';
 import {
@@ -8,16 +8,12 @@ import {
     DropdownMenuLabel,
     DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import { logout } from '@/routes/admin';
+import { requestAdminLogout } from '@/composables/useAdminLogout';
 import { edit } from '@/routes/admin/profile';
 import type { Admin } from '@/types';
 
 type Props = {
     admin: Admin;
-};
-
-const handleLogout = () => {
-    router.flushAll();
 };
 
 defineProps<Props>();
@@ -39,16 +35,8 @@ defineProps<Props>();
         </DropdownMenuItem>
     </DropdownMenuGroup>
     <DropdownMenuSeparator />
-    <DropdownMenuItem :as-child="true">
-        <Link
-            class="block w-full cursor-pointer"
-            :href="logout()"
-            @click="handleLogout"
-            as="button"
-            data-test="logout-button"
-        >
-            <LogOut class="mr-2 h-4 w-4" />
-            Log out
-        </Link>
+    <DropdownMenuItem @select="requestAdminLogout" data-test="logout-button">
+        <LogOut class="mr-2 h-4 w-4" />
+        Log out
     </DropdownMenuItem>
 </template>

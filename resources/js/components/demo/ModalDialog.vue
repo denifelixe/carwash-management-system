@@ -11,6 +11,7 @@ const props = defineProps<{
     title?: string;
     caption?: string;
     size?: 'sm' | 'md' | 'lg' | 'xl';
+    dismissible?: boolean;
     layer?: 'default' | 'nested' | 'top';
 }>();
 
@@ -67,7 +68,7 @@ onBeforeUnmount(() => syncPageScrollLock(false));
             v-if="open"
             class="fixed inset-0 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
             :class="layers[layer ?? 'default']"
-            @click.self="emit('close')"
+            @click.self="dismissible !== false && emit('close')"
         >
             <div
                 class="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
@@ -90,6 +91,7 @@ onBeforeUnmount(() => syncPageScrollLock(false));
                         </p>
                     </div>
                     <button
+                        v-if="dismissible !== false"
                         type="button"
                         class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
                         aria-label="Tutup"

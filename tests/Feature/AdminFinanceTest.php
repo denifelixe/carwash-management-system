@@ -1362,7 +1362,7 @@ test('a hand-written entry takes the shift of the admin who wrote it', function 
         ->shift_name->toBeNull();
 });
 
-test('a scheduled hand-written entry requires a valid choice during overlapping shifts', function () {
+test('a scheduled hand-written entry uses the overlapping shift confirmed at login', function () {
     $this->travelTo('2026-08-30 14:30:00');
     $overlappingShift = AdminShift::query()->create([
         'key' => 'afternoon',
@@ -1389,6 +1389,8 @@ test('a scheduled hand-written entry requires a valid choice during overlapping 
     $this->actingAs($admin, 'admin')
         ->post(route('admin.finance.store'), $payload)
         ->assertSessionHasErrors('transaction_shift_id');
+
+    $this->post(route('admin.login-shift.confirm'), ['shift_id' => $overlappingShift->id])->assertSessionHasNoErrors();
 
     $this->actingAs($admin, 'admin')
         ->post(route('admin.finance.store'), [

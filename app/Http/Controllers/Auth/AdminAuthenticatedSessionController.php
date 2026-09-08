@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\AdminLoginRequest;
+use App\Http\Requests\Auth\ConfirmLoginShiftRequest;
 use App\Models\Admin;
+use App\Support\Admin\TransactionShiftResolver;
 use App\Support\Demo\Brand;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -46,6 +48,14 @@ class AdminAuthenticatedSessionController extends Controller
         }
 
         return redirect()->intended(route('admin.dashboard', absolute: false));
+    }
+
+    public function confirmShift(ConfirmLoginShiftRequest $request, TransactionShiftResolver $resolver): RedirectResponse
+    {
+        $shiftId = $request->validated('shift_id');
+        $resolver->confirmLogin($request->user('admin'), $shiftId === null ? null : (int) $shiftId);
+
+        return back();
     }
 
     /**

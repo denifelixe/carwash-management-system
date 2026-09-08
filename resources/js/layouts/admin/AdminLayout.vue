@@ -30,7 +30,9 @@ import {
 import type { LucideIcon } from '@lucide/vue';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
+import AdminSessionDialogs from '@/components/admin/AdminSessionDialogs.vue';
 import { Toaster } from '@/components/ui/sonner';
+import { requestAdminLogout } from '@/composables/useAdminLogout';
 import type {
     CarwashAdminModule,
     CarwashAdminShellProps,
@@ -496,7 +498,18 @@ function closeSidebar(module: CarwashAdminModule): void {
                             {{ role.name }}
                         </p>
                     </div>
+                    <button
+                        v-if="page.props.mode === 'live'"
+                        type="button"
+                        class="rounded-lg p-1.5 text-slate-500 transition hover:bg-white/5 hover:text-white"
+                        aria-label="Keluar"
+                        title="Keluar"
+                        @click="requestAdminLogout"
+                    >
+                        <LogOut class="h-4 w-4" />
+                    </button>
                     <Link
+                        v-else
                         :href="exitAction.href"
                         :method="exitAction.method"
                         as="button"
@@ -736,6 +749,7 @@ function closeSidebar(module: CarwashAdminModule): void {
                 <slot />
             </main>
         </div>
+        <AdminSessionDialogs />
         <Toaster />
     </div>
 </template>

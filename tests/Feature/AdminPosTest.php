@@ -298,9 +298,9 @@ test('the cashier page exposes the current overlap status and selectable windows
     $this->actingAs($cashier, 'admin')
         ->get(route('admin.pos.index'))
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('persona.shift', 'Pilih saat transaksi')
+            ->where('persona.shift', 'Pilih shift login')
             ->where('transactionShift.mode', 'schedule')
-            ->where('transactionShift.label', 'Pilih saat transaksi')
+            ->where('transactionShift.label', 'Pilih shift login')
             ->where('transactionShift.caption', 'Shift Pagi & Shift Siang')
             ->where('transactionShift.locked_at_login', true)
             ->has('transactionShift.shifts', 2)
@@ -682,7 +682,7 @@ test('a scheduled cashier payment outside every shift is stored without one', fu
     expect(OrderTransaction::query()->firstOrFail()->shift_name)->toBeNull();
 });
 
-test('a scheduled cashier must choose one of overlapping shifts for every payment', function () {
+test('a scheduled cashier chooses an overlapping shift once before payments', function () {
     $this->travelTo('2026-08-31 14:30:00');
     $overlappingShift = AdminShift::query()->create([
         'key' => 'afternoon',
@@ -718,6 +718,8 @@ test('a scheduled cashier must choose one of overlapping shifts for every paymen
             'transaction_shift_id' => $outsideShift->id,
         ])
         ->assertSessionHasErrors('transaction_shift_id');
+
+    $this->post(route('admin.login-shift.confirm'), ['shift_id' => $overlappingShift->id])->assertSessionHasNoErrors();
 
     $this->actingAs($cashier, 'admin')
         ->post(route('admin.pos.payments.store', $secondOrder), [
