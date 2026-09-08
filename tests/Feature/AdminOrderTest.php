@@ -63,7 +63,7 @@ test('an earlier order disappears from the unfinished section after cancellation
     $order = Order::factory()->create(['service_date' => today()->subDay()]);
 
     $this->actingAs($owner, 'admin')
-        ->patch(route('admin.orders.status.update', $order), ['status' => 'batal'])
+        ->patch(route('admin.orders.status.update', $order), ['status' => 'batal', 'reason' => 'Pelanggan membatalkan order'])
         ->assertSessionHasNoErrors();
 
     $this->get(route('admin.orders.index'))
@@ -540,7 +540,7 @@ test('completed order status cannot be changed manually', function (string $stat
     $attributes = $order->refresh()->getAttributes();
 
     $this->actingAs($owner, 'admin')
-        ->patch(route('admin.orders.status.update', $order), ['status' => $status])
+        ->patch(route('admin.orders.status.update', $order), ['status' => $status, 'reason' => 'Pelanggan membatalkan order'])
         ->assertSessionHasErrors('status');
 
     expect($order->refresh()->getAttributes())->toBe($attributes);
@@ -582,6 +582,7 @@ test('status updates preserve existing transactions and order amounts', function
         ->patch(route('admin.orders.status.update', $order), [
             'status' => $status,
             'paid_amount' => 0,
+            'reason' => 'Pelanggan membatalkan order',
             'total' => 0,
         ])
         ->assertRedirect()

@@ -16,7 +16,7 @@ import {
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import Multiselect from 'vue-multiselect';
 import 'vue-multiselect/dist/vue-multiselect.css';
 import {
@@ -646,6 +646,13 @@ function changeRowStatus(order: CarwashOrder, event: Event): void {
         return;
     }
 
+    if (status === 'batal') {
+        picker.value = order.status;
+        openCancellation(order);
+
+        return;
+    }
+
     if (props.mode === 'demo') {
         setStatus(order, status);
 
@@ -669,6 +676,13 @@ function changeRowStatus(order: CarwashOrder, event: Event): void {
 /** Writes the dropdown choice onto the open order. */
 function saveStatus(): void {
     if (detailOrder.value === null) {
+        return;
+    }
+
+    if (statusDraft.value === 'batal') {
+        openCancellation(detailOrder.value);
+        statusDraft.value = detailOrder.value.status;
+
         return;
     }
 
@@ -1083,6 +1097,214 @@ const orderForm = useForm({
 });
 
 const statusForm = useForm({ status: '' });
+const cancellingOrder = ref<CarwashOrder | null>(null);
+const cancellationForm = useForm({
+    _method: 'patch',
+    status: 'batal',
+    reason: '',
+    photos: [] as File[],
+});
+const cancellationPreviews = ref<string[]>([]);
+const demoCancellationProcessing = ref(false);
+const cancellationProcessing = computed(
+    () => cancellationForm.processing || demoCancellationProcessing.value,
+);
+const selectedCancellationPhoto = ref<{ url: string; name: string } | null>(
+    null,
+);
+
+function clearCancellationPhotos(): void {
+    cancellationPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+    cancellationPreviews.value = [];
+    cancellationForm.photos = [];
+}
+
+onBeforeUnmount(clearCancellationPhotos);
+
+function openCancellation(order: CarwashOrder): void {
+    if (
+        !canEditStatus(order) ||
+        order.status === 'batal' ||
+        cancellationProcessing.value
+    ) {
+        return;
+    }
+
+    clearCancellationPhotos();
+    cancellationForm.reset();
+    cancellationForm.clearErrors();
+    cancellingOrder.value = order;
+}
+
+function closeCancellation(): void {
+    if (cancellationProcessing.value) {
+        return;
+    }
+
+    cancellingOrder.value = null;
+    clearCancellationPhotos();
+    cancellationForm.resetAndClearErrors();
+}
+
+function addCancellationPhotos(event: Event): void {
+    const input = event.target as HTMLInputElement;
+    const photos = Array.from(input.files ?? []);
+    input.value = '';
+    cancellationForm.clearErrors('photos');
+
+    if (photos.length + cancellationForm.photos.length > 10) {
+        cancellationForm.setError(
+            'photos',
+            'Maksimal 10 foto untuk satu pembatalan.',
+        );
+
+        return;
+    }
+
+    if (
+        photos.some(
+            (photo) =>
+                !['image/jpeg', 'image/png', 'image/webp'].includes(
+                    photo.type,
+                ) || photo.size > 20 * 1024 * 1024,
+        )
+    ) {
+        cancellationForm.setError(
+            'photos',
+            'Gunakan foto JPG, PNG, atau WebP, maksimal 20 MB per foto.',
+        );
+
+        return;
+    }
+
+    cancellationForm.photos.push(...photos);
+    cancellationPreviews.value.push(
+        ...photos.map((photo) => URL.createObjectURL(photo)),
+    );
+}
+
+function removeCancellationPhoto(index: number): void {
+    if (cancellationProcessing.value) {
+        return;
+    }
+
+    URL.revokeObjectURL(cancellationPreviews.value[index]);
+    cancellationPreviews.value.splice(index, 1);
+    cancellationForm.photos.splice(index, 1);
+    cancellationForm.clearErrors();
+}
+
+function readCancellationPhoto(photo: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('Foto tidak dapat dibaca.'));
+        reader.readAsDataURL(photo);
+    });
+}
+
+async function submitCancellation(): Promise<void> {
+    const order = cancellingOrder.value;
+
+    if (order === null || cancellationProcessing.value) {
+        return;
+    }
+
+    cancellationForm.clearErrors();
+    cancellationForm.reason = cancellationForm.reason.trim();
+
+    if (
+        cancellationForm.reason === '' ||
+        cancellationForm.reason.length > 2000
+    ) {
+        cancellationForm.setError(
+            'reason',
+            'Alasan wajib diisi, maksimal 2.000 karakter.',
+        );
+
+        return;
+    }
+
+    if (props.mode === 'live') {
+        cancellationForm.post(updateOrderStatus.url(order.id), {
+            forceFormData: true,
+            preserveScroll: true,
+            onSuccess: () => {
+                cancellingOrder.value = null;
+                clearCancellationPhotos();
+                cancellationForm.resetAndClearErrors();
+            },
+        });
+
+        return;
+    }
+
+    if (!canEditStatus(order) || order.status === 'batal') {
+        cancellationForm.setError(
+            'status',
+            'Order ini tidak dapat dibatalkan.',
+        );
+
+        return;
+    }
+
+    demoCancellationProcessing.value = true;
+
+    try {
+        const photos = await Promise.all(
+            cancellationForm.photos.map(async (photo, index) => ({
+                id: index,
+                name: photo.name,
+                size: photo.size,
+                url: await readCancellationPhoto(photo),
+            })),
+        );
+
+        if (!canEditStatus(order) || order.status === 'batal') {
+            cancellationForm.setError(
+                'status',
+                'Order ini tidak dapat dibatalkan.',
+            );
+
+            return;
+        }
+
+        const parts = new Intl.DateTimeFormat('en-CA', {
+            timeZone: props.filters.timezone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23',
+        }).formatToParts(new Date());
+        const part = (type: string) =>
+            parts.find((value) => value.type === type)?.value ?? '';
+        order.cancellations = [
+            {
+                id: Date.now(),
+                reason: cancellationForm.reason,
+                previousStatus: order.status,
+                cancelledBy: props.persona.name,
+                date: `${part('year')}-${part('month')}-${part('day')}`,
+                time: `${part('hour')}.${part('minute')}`,
+                photos,
+            },
+            ...(order.cancellations ?? []),
+        ];
+        setStatus(order, 'batal');
+        cancellingOrder.value = null;
+        clearCancellationPhotos();
+        cancellationForm.resetAndClearErrors();
+    } catch {
+        cancellationForm.setError(
+            'photos',
+            'Foto tidak dapat dibaca. Silakan pilih ulang.',
+        );
+    } finally {
+        demoCancellationProcessing.value = false;
+    }
+}
 const deleteForm = useForm({});
 </script>
 
@@ -1348,6 +1570,7 @@ const deleteForm = useForm({});
                     <div class="mt-2 flex gap-2">
                         <select
                             v-model="statusDraft"
+                            @change="statusDraft === 'batal' && saveStatus()"
                             class="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 transition focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 focus:outline-none"
                         >
                             <option
@@ -1601,6 +1824,57 @@ const deleteForm = useForm({});
                 <Ban class="h-4 w-4 shrink-0" />
                 Order dibatalkan — tidak ada tagihan yang ditutup.
             </p>
+            <section
+                v-if="detailOrder.cancellations?.length"
+                class="space-y-3 rounded-2xl border border-rose-100 p-4"
+            >
+                <h3 class="text-sm font-semibold text-slate-900">
+                    Riwayat pembatalan
+                </h3>
+                <article
+                    v-for="cancellation in detailOrder.cancellations"
+                    :key="cancellation.id"
+                    class="space-y-2 border-t border-rose-100 pt-3"
+                >
+                    <p class="text-xs text-slate-500">
+                        {{ formatDate(cancellation.date) }} ·
+                        {{ cancellation.time }} · {{ cancellation.cancelledBy }}
+                    </p>
+                    <p class="text-xs text-slate-500">
+                        Status sebelumnya:
+                        <StatusPill :status="cancellation.previousStatus" />
+                    </p>
+                    <p class="text-sm whitespace-pre-wrap text-slate-700">
+                        {{ cancellation.reason }}
+                    </p>
+                    <div
+                        v-if="cancellation.photos.length"
+                        class="grid grid-cols-3 gap-2"
+                    >
+                        <button
+                            v-for="photo in cancellation.photos"
+                            :key="photo.id"
+                            type="button"
+                            class="overflow-hidden rounded-xl border border-slate-200 focus-visible:ring-2 focus-visible:ring-cyan-500"
+                            :aria-label="`Perbesar foto ${photo.name}`"
+                            @click="selectedCancellationPhoto = photo"
+                        >
+                            <img
+                                :src="photo.url"
+                                :alt="photo.name"
+                                class="aspect-square w-full object-cover"
+                                loading="lazy"
+                            />
+                        </button>
+                    </div>
+                </article>
+            </section>
+            <p
+                v-else-if="detailOrder.status === 'batal'"
+                class="text-xs text-slate-500"
+            >
+                Alasan pembatalan belum tercatat untuk order ini.
+            </p>
             <p
                 v-if="detailOrder.isMutable === false"
                 class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
@@ -1655,6 +1929,154 @@ const deleteForm = useForm({});
             </button>
         </template>
     </SlideOver>
+
+    <ModalDialog
+        :open="cancellingOrder !== null"
+        title="Batalkan order"
+        :caption="
+            cancellingOrder
+                ? `${cancellingOrder.orderNo} · ${formatPlate(cancellingOrder.plate)}`
+                : ''
+        "
+        layer="nested"
+        @close="closeCancellation"
+    >
+        <form
+            id="cancel-order-form"
+            class="space-y-4"
+            @submit.prevent="submitCancellation"
+        >
+            <div class="space-y-2">
+                <label
+                    for="cancellation-reason"
+                    class="text-sm font-medium text-slate-800"
+                    >Alasan pembatalan
+                    <span class="text-rose-600">*</span></label
+                >
+                <textarea
+                    id="cancellation-reason"
+                    v-model="cancellationForm.reason"
+                    required
+                    maxlength="2000"
+                    rows="4"
+                    :disabled="cancellationProcessing"
+                    class="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-rose-400 focus:ring-rose-400"
+                    placeholder="Tuliskan alasan order dibatalkan"
+                />
+                <p class="text-xs text-slate-500">Maksimal 2.000 karakter.</p>
+            </div>
+            <div class="space-y-2">
+                <label
+                    for="cancellation-photos"
+                    class="text-sm font-medium text-slate-800"
+                    >Foto pendukung (opsional)</label
+                >
+                <input
+                    id="cancellation-photos"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    :disabled="
+                        cancellationProcessing ||
+                        cancellationForm.photos.length >= 10
+                    "
+                    class="block w-full rounded-xl border border-slate-300 p-2 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-50 file:px-3 file:py-2 file:font-medium file:text-rose-700"
+                    @change="addCancellationPhotos"
+                />
+                <p class="text-xs text-slate-500">
+                    Maksimal 10 foto JPG, PNG, atau WebP, masing-masing 20 MB.
+                    {{ cancellationForm.photos.length }}/10 foto.
+                </p>
+                <div
+                    v-if="cancellationPreviews.length"
+                    class="grid grid-cols-3 gap-3"
+                >
+                    <div
+                        v-for="(url, index) in cancellationPreviews"
+                        :key="url"
+                        class="space-y-1"
+                    >
+                        <button
+                            type="button"
+                            class="w-full overflow-hidden rounded-xl border border-slate-200"
+                            :aria-label="`Perbesar foto ${cancellationForm.photos[index].name}`"
+                            @click="
+                                selectedCancellationPhoto = {
+                                    url,
+                                    name: cancellationForm.photos[index].name,
+                                }
+                            "
+                        >
+                            <img
+                                :src="url"
+                                :alt="cancellationForm.photos[index].name"
+                                class="aspect-square w-full object-cover"
+                            />
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="cancellationProcessing"
+                            class="w-full rounded-lg px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            :aria-label="`Hapus foto ${cancellationForm.photos[index].name}`"
+                            @click="removeCancellationPhoto(index)"
+                        >
+                            Hapus foto
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <ul
+                v-if="cancellationForm.hasErrors"
+                role="alert"
+                class="space-y-1 rounded-xl bg-rose-50 p-3 text-xs text-rose-700"
+            >
+                <li v-for="(error, key) in cancellationForm.errors" :key="key">
+                    {{ error }}
+                </li>
+            </ul>
+            <p
+                v-if="cancellationForm.progress"
+                role="status"
+                class="text-xs text-slate-500"
+            >
+                Mengunggah foto {{ cancellationForm.progress.percentage }}%
+            </p>
+        </form>
+        <template #footer>
+            <button
+                type="button"
+                :disabled="cancellationProcessing"
+                class="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 disabled:opacity-50"
+                @click="closeCancellation"
+            >
+                Kembali
+            </button>
+            <button
+                type="submit"
+                form="cancel-order-form"
+                :disabled="cancellationProcessing"
+                class="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+            >
+                {{ cancellationProcessing ? 'Menyimpan…' : 'Batalkan order' }}
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="selectedCancellationPhoto !== null"
+        title="Foto pembatalan"
+        :caption="selectedCancellationPhoto?.name"
+        layer="top"
+        size="xl"
+        @close="selectedCancellationPhoto = null"
+    >
+        <img
+            v-if="selectedCancellationPhoto"
+            :src="selectedCancellationPhoto.url"
+            :alt="selectedCancellationPhoto.name"
+            class="max-h-[70dvh] w-full object-contain"
+        />
+    </ModalDialog>
 
     <ModalDialog
         :open="deletingOrder !== null"

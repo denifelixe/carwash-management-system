@@ -64,6 +64,7 @@ Route::domain((string) config('domains.admin'))
             Route::patch('orders/{order}', [OrderController::class, 'update'])->name('orders.update');
             Route::patch('orders/{order}/handler', [OrderController::class, 'updateHandler'])->name('orders.handler.update');
             Route::patch('orders/{order}/status', [OrderController::class, 'updateStatus'])->name('orders.status.update');
+            Route::get('order-cancellation-photos/{photo}', [OrderController::class, 'cancellationPhoto'])->name('orders.cancellation-photos.show');
             Route::delete('orders/{order}', [OrderController::class, 'destroy'])->name('orders.destroy');
             Route::get('bookings', [BookingController::class, 'index'])->name('bookings.index');
             Route::post('bookings', [BookingController::class, 'store'])->name('bookings.store');

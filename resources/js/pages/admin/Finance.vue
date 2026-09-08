@@ -3224,7 +3224,7 @@ function applyDate(date: string): void {
                             }}
                         </span>
                         <span class="block text-[11px] text-slate-500">
-                            JPG, PNG, atau PDF · maks. 10 file, masing-masing 4
+                            JPG, PNG, atau PDF · maks. 10 file, masing-masing 20
                             MB
                         </span>
                     </span>

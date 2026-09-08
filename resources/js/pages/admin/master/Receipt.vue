@@ -244,7 +244,7 @@ function submit(): void {
                                 <p
                                     class="mt-1 text-xs leading-relaxed text-slate-500"
                                 >
-                                    PNG, JPG, atau WebP. Maksimal 2 MB. Struk
+                                    PNG, JPG, atau WebP. Maksimal 20 MB. Struk
                                     dicetak hitam-putih, jadi gambar berkontras
                                     tinggi terbaca paling baik.
                                 </p>

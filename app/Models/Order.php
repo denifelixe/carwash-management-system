@@ -103,6 +103,12 @@ class Order extends Model
             ->withPivot(['service_name', 'variations', 'unit_price', 'quantity', 'total_price', 'stamps']);
     }
 
+    /** @return HasMany<OrderCancellation, $this> */
+    public function cancellations(): HasMany
+    {
+        return $this->hasMany(OrderCancellation::class)->orderByDesc('cancelled_at')->orderByDesc('id');
+    }
+
     /** @return HasMany<OrderTransaction, $this> */
     public function transactions(): HasMany
     {

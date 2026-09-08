@@ -239,6 +239,7 @@ class OrderQueries
             'createdBy:id,name',
             'handledByAdmin:id,name',
             'crew:id,name',
+            'cancellations.photos',
         ]);
     }
 }

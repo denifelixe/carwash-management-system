@@ -62,7 +62,7 @@ class StoreCashEntryRequest extends FormRequest
             'attachments.*' => [
                 'file',
                 'mimes:jpg,jpeg,png,pdf',
-                'max:4096',
+                'max:20480',
             ],
         ];
     }

@@ -7,7 +7,48 @@ use App\Support\Demo\Finance;
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
+use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
+
+test('the POS order switch includes other statuses while preserving date and search filters', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { ref, computed } = require('vue');
+const source = fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8');
+const script = source.split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Pos.ts', script, ts.ScriptTarget.Latest, true);
+const names = ['search', 'showAllOrders', 'visibleOrders', 'settlementGroups'];
+const declarations = ast.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))));
+const code = ts.transpile(declarations.map(node => node.getText(ast)).join('\n'));
+const props = { filters: { date: '2026-09-08', today: '2026-09-08' } };
+const formatDate = value => value;
+const statuses = ['pelunasan', 'menunggu', 'proses', 'booking', 'selesai', 'batal'];
+const orderList = ref(statuses.map((status, id) => ({ id, status, date: '2026-09-08', orderNo: `ORD-${id}`, customer: `Customer ${id}`, plate: `B ${id} AA` })));
+orderList.value.push({ ...orderList.value[0], id: 6, date: '2026-09-07' });
+orderList.value.push({ ...orderList.value[0], id: 7, date: '2026-09-09' });
+eval(code + `
+assert.equal(showAllOrders.value, false);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 6]);
+showAllOrders.value = true;
+assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 1, 2, 3, 4, 5, 6]);
+assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 7);
+for (const query of ['ord-2', 'CUSTOMER 2', ' B 2 AA ']) {
+    search.value = query;
+    assert.deepEqual(visibleOrders.value.map(order => order.id), [2]);
+}
+showAllOrders.value = false;
+assert.equal(visibleOrders.value.length, 0);
+search.value = '';
+assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 6]);
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
 
 /**
  * The cashier settles orders that already exist, so every order has to carry a
@@ -460,7 +501,7 @@ test('the POS shows one lifecycle chip and describes an existing partial payment
 
     expect($posPage)
         ->toContain(':status="order.status"')
-        ->toContain('label="Pelunasan"')
+        ->not->toContain('label="Pelunasan"')
         ->not->toContain('<StatusPill :status="order.paymentStatus" />')
         ->toContain('Pembayaran Sisa/Lunas (Order Selesai)')
         ->not->toContain('Order untuk dibayar')

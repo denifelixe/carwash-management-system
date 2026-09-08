@@ -18,7 +18,7 @@ test('moving an unfinished booking into the floor records its first arrival', fu
     ]);
 
     $this->actingAs($owner, 'admin')
-        ->patch(route('admin.orders.status.update', $order), ['status' => $status])
+        ->patch(route('admin.orders.status.update', $order), ['status' => $status, 'reason' => 'Pelanggan membatalkan order'])
         ->assertRedirect()->assertSessionHasNoErrors();
 
     expect($order->refresh()->status)->toBe($status)
@@ -46,7 +46,7 @@ test('status changes do not record arrivals for future closed or unchanged order
     ], $attributes));
 
     $response = $this->actingAs($owner, 'admin')
-        ->patch(route('admin.orders.status.update', $order), ['status' => $status])
+        ->patch(route('admin.orders.status.update', $order), ['status' => $status, 'reason' => 'Pelanggan membatalkan order'])
         ->assertRedirect();
 
     if ($order->status === 'selesai') {

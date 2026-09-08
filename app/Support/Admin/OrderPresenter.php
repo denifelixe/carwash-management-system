@@ -8,6 +8,8 @@ use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
+use App\Models\OrderCancellation;
+use App\Models\OrderCancellationPhoto;
 use App\Models\OrderTransaction;
 use App\Models\Service;
 use App\Support\AppSettings;
@@ -82,6 +84,22 @@ class OrderPresenter
         return [
             'id' => $order->id,
             'orderNo' => $order->number,
+            'cancellations' => $order->relationLoaded('cancellations')
+                ? $order->cancellations->map(fn (OrderCancellation $cancellation): array => [
+                    'id' => $cancellation->id,
+                    'reason' => $cancellation->reason,
+                    'previousStatus' => $cancellation->previous_status,
+                    'cancelledBy' => $cancellation->cancelled_by_name,
+                    'date' => $cancellation->cancelled_at->toDateString(),
+                    'time' => $cancellation->cancelled_at->format('H.i'),
+                    'photos' => $cancellation->photos->map(fn (OrderCancellationPhoto $photo): array => [
+                        'id' => $photo->id,
+                        'name' => $photo->original_name,
+                        'size' => $photo->size,
+                        'url' => route('admin.orders.cancellation-photos.show', $photo),
+                    ])->values()->all(),
+                ])->values()->all()
+                : [],
             'invoice' => $order->invoice_number ?? '—',
             'date' => $order->service_date->toDateString(),
             'time' => $order->arrived_at?->format('H.i') ?? '—',

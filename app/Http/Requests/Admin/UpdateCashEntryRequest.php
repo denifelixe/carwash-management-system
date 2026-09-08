@@ -59,7 +59,7 @@ class UpdateCashEntryRequest extends FormRequest
             'attachments.*' => [
                 'file',
                 'mimes:jpg,jpeg,png,pdf',
-                'max:4096',
+                'max:20480',
             ],
             'removed_attachment_ids' => ['nullable', 'array', 'max:10'],
             'removed_attachment_ids.*' => [

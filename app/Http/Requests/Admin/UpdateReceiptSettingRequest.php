@@ -36,7 +36,7 @@ class UpdateReceiptSettingRequest extends FormRequest
             'remove_receipt_photo' => ['boolean'],
             'receipt_photo' => [
                 'nullable',
-                File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max('2mb'),
+                File::image()->types(['jpg', 'jpeg', 'png', 'webp'])->max(20480),
             ],
         ];
     }
@@ -52,7 +52,7 @@ class UpdateReceiptSettingRequest extends FormRequest
             'receipt_footer_note.max' => 'Catatan kaki struk maksimal 120 karakter.',
             'receipt_photo.image' => 'Logo struk harus berupa gambar yang valid.',
             'receipt_photo.mimes' => 'Logo struk harus berformat PNG, JPG, JPEG, atau WebP.',
-            'receipt_photo.max' => 'Ukuran logo struk maksimal 2 MB.',
+            'receipt_photo.max' => 'Ukuran logo struk maksimal 20 MB.',
             'receipt_logo_width.between' => 'Lebar logo struk harus antara '.AppSettings::RECEIPT_LOGO_WIDTH_MIN.' dan '.AppSettings::RECEIPT_LOGO_WIDTH_MAX.' mm.',
         ];
     }

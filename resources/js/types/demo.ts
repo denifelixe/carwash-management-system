@@ -307,7 +307,18 @@ export interface CarwashTransactionChannel {
     reference?: string;
 }
 
+export interface CarwashOrderCancellation {
+    id: number;
+    reason: string;
+    previousStatus: string;
+    cancelledBy: string;
+    date: string;
+    time: string;
+    photos: { id: number; name: string; size: number; url: string }[];
+}
+
 export interface CarwashOrder {
+    cancellations?: CarwashOrderCancellation[];
     id: number;
     orderNo: string;
     invoice: string;

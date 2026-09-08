@@ -75,7 +75,7 @@ const faviconAssets: Array<{
         field: 'favicon',
         label: 'favicon.ico',
         description:
-            'ICO maksimal 512 KB. Jika kosong, favicon bawaan tetap digunakan.',
+            'ICO maksimal 20 MB. Jika kosong, favicon bawaan tetap digunakan.',
         accept: '.ico,image/x-icon,image/vnd.microsoft.icon',
         currentUrl: props.settings.faviconUrl,
         required: false,
@@ -84,7 +84,7 @@ const faviconAssets: Array<{
     {
         field: 'favicon_16',
         label: 'favicon-16x16.png',
-        description: 'PNG tepat 16×16 piksel, maksimal 256 KB.',
+        description: 'PNG tepat 16×16 piksel, maksimal 20 MB.',
         accept: 'image/png',
         currentUrl: props.settings.favicon16Url,
         required: false,
@@ -93,7 +93,7 @@ const faviconAssets: Array<{
     {
         field: 'favicon_32',
         label: 'favicon-32x32.png',
-        description: 'PNG tepat 32×32 piksel, maksimal 256 KB.',
+        description: 'PNG tepat 32×32 piksel, maksimal 20 MB.',
         accept: 'image/png',
         currentUrl: props.settings.favicon32Url,
         required: false,
@@ -102,7 +102,7 @@ const faviconAssets: Array<{
     {
         field: 'apple_touch_icon',
         label: 'apple-touch-icon.png',
-        description: 'PNG tepat 180×180 piksel, maksimal 512 KB.',
+        description: 'PNG tepat 180×180 piksel, maksimal 20 MB.',
         accept: 'image/png',
         currentUrl: props.settings.appleTouchIconUrl,
         required: false,
@@ -111,7 +111,7 @@ const faviconAssets: Array<{
     {
         field: 'android_chrome_192',
         label: 'android-chrome-192x192.png',
-        description: 'PNG tepat 192×192 piksel, maksimal 1 MB.',
+        description: 'PNG tepat 192×192 piksel, maksimal 20 MB.',
         accept: 'image/png',
         currentUrl: props.settings.androidChrome192Url,
         required: false,
@@ -120,7 +120,7 @@ const faviconAssets: Array<{
     {
         field: 'android_chrome_512',
         label: 'android-chrome-512x512.png',
-        description: 'PNG tepat 512×512 piksel, maksimal 2 MB.',
+        description: 'PNG tepat 512×512 piksel, maksimal 20 MB.',
         accept: 'image/png',
         currentUrl: props.settings.androidChrome512Url,
         required: false,
@@ -129,7 +129,7 @@ const faviconAssets: Array<{
     {
         field: 'site_webmanifest',
         label: 'site.webmanifest',
-        description: 'Manifest JSON/webmanifest, maksimal 100 KB.',
+        description: 'Manifest JSON/webmanifest, maksimal 20 MB.',
         accept: '.webmanifest,application/manifest+json,application/json',
         currentUrl: props.settings.siteWebmanifestUrl,
         required: false,
@@ -522,7 +522,7 @@ onBeforeUnmount(() => {
                             />
                             <p class="mt-1.5 text-[11px] text-slate-500">
                                 PNG, JPG, atau WebP. Rekomendasi 1200×630
-                                piksel, maksimal 5 MB.
+                                piksel, maksimal 20 MB.
                             </p>
                             <InputError
                                 class="mt-2"
@@ -586,7 +586,7 @@ onBeforeUnmount(() => {
                                 <p
                                     class="mt-1 text-xs leading-relaxed text-slate-500"
                                 >
-                                    PNG, JPG, atau WebP. Maksimal 2 MB.
+                                    PNG, JPG, atau WebP. Maksimal 20 MB.
                                 </p>
                             </div>
                         </div>

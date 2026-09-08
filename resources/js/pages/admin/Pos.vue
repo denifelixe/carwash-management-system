@@ -176,6 +176,7 @@ const eMoneyOptions = [
 ];
 
 const search = ref<string>('');
+const showAllOrders = ref<boolean>(false);
 const partialPaymentSearch = ref<string>('');
 const completedSearch = ref<string>('');
 const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
@@ -787,8 +788,9 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
     return orderList.value.filter((order) => {
-        const isReadyForSettlement =
-            order.status === 'pelunasan' &&
+        const matchesStatus =
+            showAllOrders.value || order.status === 'pelunasan';
+        const matchesDate =
             order.date <= (props.filters.date || props.filters.today);
         const matchesQuery =
             query === '' ||
@@ -796,7 +798,7 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
             order.customer.toLowerCase().includes(query) ||
             order.plate.toLowerCase().includes(query);
 
-        return isReadyForSettlement && matchesQuery;
+        return matchesStatus && matchesDate && matchesQuery;
     });
 });
 
@@ -806,12 +808,14 @@ const settlementGroups = computed(() => {
     return [
         {
             key: 'selected',
-            title: `Pelunasan ${formatDate(date)}`,
+            title: `${showAllOrders.value ? 'Order' : 'Pelunasan'} ${formatDate(date)}`,
             orders: visibleOrders.value.filter((order) => order.date === date),
         },
         {
             key: 'overdue',
-            title: 'Pelunasan tertunggak',
+            title: showAllOrders.value
+                ? 'Order sebelumnya'
+                : 'Pelunasan tertunggak',
             orders: visibleOrders.value
                 .filter((order) => order.date < date)
                 .sort((first, second) => first.date.localeCompare(second.date)),
@@ -2897,10 +2901,27 @@ const memberForm = useForm({
                 default-open
             >
                 <template #toolbar>
-                    <DataToolbar
-                        v-model:search="search"
-                        placeholder="Cari order / plat"
-                    />
+                    <div class="flex flex-wrap items-center gap-3">
+                        <label
+                            class="flex cursor-pointer items-center gap-2 text-xs font-medium text-violet-900"
+                        >
+                            <input
+                                v-model="showAllOrders"
+                                type="checkbox"
+                                role="switch"
+                                class="peer sr-only"
+                            />
+                            <span
+                                aria-hidden="true"
+                                class="relative h-5 w-9 shrink-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-violet-600 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-500 peer-focus-visible:ring-offset-2 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
+                            ></span>
+                            Tampilkan semua order
+                        </label>
+                        <DataToolbar
+                            v-model:search="search"
+                            placeholder="Cari order / plat"
+                        />
+                    </div>
                 </template>
 
                 <div v-if="visibleOrders.length > 0" class="mt-4 space-y-5">
@@ -2923,6 +2944,11 @@ const memberForm = useForm({
                             <li v-for="order in group.orders" :key="order.id">
                                 <button
                                     type="button"
+                                    :disabled="
+                                        ['selesai', 'batal'].includes(
+                                            order.status,
+                                        )
+                                    "
                                     class="w-full rounded-2xl border p-4 text-left transition"
                                     :class="
                                         selectedOrderId === order.id
@@ -2954,7 +2980,6 @@ const memberForm = useForm({
                                         <div class="flex shrink-0 gap-1.5">
                                             <StatusPill
                                                 :status="order.status"
-                                                label="Pelunasan"
                                             />
                                         </div>
                                     </div>
@@ -3041,8 +3066,16 @@ const memberForm = useForm({
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    title="Tidak ada order untuk pembayaran sisa/lunas"
-                    caption="Belum ada order berstatus Pembayaran Sisa/Lunas (Order Selesai) atau pencarian tidak cocok."
+                    :title="
+                        showAllOrders
+                            ? 'Tidak ada order'
+                            : 'Tidak ada order untuk pembayaran sisa/lunas'
+                    "
+                    :caption="
+                        showAllOrders
+                            ? 'Belum ada order pada tanggal yang dipilih atau pencarian tidak cocok.'
+                            : 'Belum ada order berstatus Pembayaran Sisa/Lunas (Order Selesai) atau pencarian tidak cocok.'
+                    "
                 />
             </AccordionSection>
 

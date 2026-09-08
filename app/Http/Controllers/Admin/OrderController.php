@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Actions\Admin\CancelOrder;
 use App\Actions\Admin\CaptureOrderLead;
 use App\Actions\Admin\DeleteOrder;
 use App\Actions\Admin\UpdateOrder;
@@ -14,6 +15,7 @@ use App\Models\Admin;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
+use App\Models\OrderCancellationPhoto;
 use App\Models\ServiceVariation;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\LeadQueries;
@@ -27,10 +29,12 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OrderController extends Controller
 {
@@ -189,8 +193,16 @@ class OrderController extends Controller
         return back()->with('success', 'Handler order berhasil diperbarui.');
     }
 
-    public function updateStatus(UpdateOrderStatusRequest $request, Order $order): RedirectResponse
+    public function updateStatus(UpdateOrderStatusRequest $request, Order $order, CancelOrder $cancelOrder): RedirectResponse
     {
+        if ($request->validated('status') === 'batal') {
+            /** @var Admin $admin */
+            $admin = $request->user('admin');
+            $cancelOrder->handle($order, $admin, $request->validated('reason'), array_values($request->validated('photos', [])));
+
+            return back()->with('success', 'Order berhasil dibatalkan.');
+        }
+
         DB::transaction(function () use ($order, $request): void {
             $order = Order::query()->lockForUpdate()->findOrFail($order->id);
             OperationalDataWindow::ensureAllows($order->service_date);
@@ -217,6 +229,19 @@ class OrderController extends Controller
         });
 
         return back()->with('success', 'Status order berhasil diperbarui.');
+    }
+
+    public function cancellationPhoto(OrderCancellationPhoto $photo): StreamedResponse
+    {
+        Gate::authorize('admin.orders.read');
+        abort_unless($photo->cancellation()->whereHas('order')->exists(), 404);
+        $disk = Storage::disk($photo->disk);
+        abort_unless($disk->exists($photo->path), 404);
+
+        return $disk->response($photo->path, $photo->original_name, [
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function update(UpdateOrderRequest $request, Order $order, UpdateOrder $updateOrder): RedirectResponse
