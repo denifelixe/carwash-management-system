@@ -728,24 +728,52 @@ function openDeleteOrder(order: CarwashOrder): void {
     if (
         props.mode !== 'live' ||
         !props.capabilities.delete ||
-        order.isDeletable !== true
+        order.isDeletable !== true ||
+        deleteForm.processing
     ) {
         return;
     }
 
+    clearDeletionPhotos();
+    deleteForm.resetAndClearErrors();
     deletingOrder.value = order;
 }
 
-function confirmDeleteOrder(): void {
-    if (deletingOrder.value === null) {
+function closeDeleteOrder(): void {
+    if (deleteForm.processing) {
         return;
     }
 
-    deleteForm.submit(destroyOrder(deletingOrder.value.id), {
+    deletingOrder.value = null;
+    clearDeletionPhotos();
+    deleteForm.resetAndClearErrors();
+}
+
+function confirmDeleteOrder(): void {
+    if (deletingOrder.value === null || deleteForm.processing) {
+        return;
+    }
+
+    deleteForm.clearErrors();
+    deleteForm.reason = deleteForm.reason.trim();
+
+    if (deleteForm.reason === '' || deleteForm.reason.length > 2000) {
+        deleteForm.setError(
+            'reason',
+            'Alasan penghapusan wajib diisi, maksimal 2.000 karakter.',
+        );
+
+        return;
+    }
+
+    deleteForm.post(destroyOrder.url(deletingOrder.value.id), {
+        forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
             detailOrderId.value = null;
             deletingOrder.value = null;
+            clearDeletionPhotos();
+            deleteForm.resetAndClearErrors();
         },
     });
 }
@@ -1305,7 +1333,74 @@ async function submitCancellation(): Promise<void> {
         demoCancellationProcessing.value = false;
     }
 }
-const deleteForm = useForm({});
+const deleteForm = useForm({
+    _method: 'delete',
+    reason: '',
+    photos: [] as File[],
+});
+const deletionPreviews = ref<string[]>([]);
+const selectedDeletionPhoto = ref<{ url: string; name: string } | null>(null);
+
+function clearDeletionPhotos(): void {
+    selectedDeletionPhoto.value = null;
+    deletionPreviews.value.forEach((url) => URL.revokeObjectURL(url));
+    deletionPreviews.value = [];
+    deleteForm.photos = [];
+}
+
+onBeforeUnmount(clearDeletionPhotos);
+
+function addDeletionPhotos(event: Event): void {
+    if (deleteForm.processing) {
+        return;
+    }
+
+    const input = event.target as HTMLInputElement;
+    const photos = Array.from(input.files ?? []);
+    input.value = '';
+    deleteForm.clearErrors('photos');
+
+    if (photos.length + deleteForm.photos.length > 10) {
+        deleteForm.setError(
+            'photos',
+            'Maksimal 10 foto untuk satu penghapusan.',
+        );
+
+        return;
+    }
+
+    if (
+        photos.some(
+            (photo) =>
+                !['image/jpeg', 'image/png', 'image/webp'].includes(
+                    photo.type,
+                ) || photo.size > 20 * 1024 * 1024,
+        )
+    ) {
+        deleteForm.setError(
+            'photos',
+            'Gunakan foto JPG, PNG, atau WebP, maksimal 20 MB per foto.',
+        );
+
+        return;
+    }
+
+    deleteForm.photos.push(...photos);
+    deletionPreviews.value.push(
+        ...photos.map((photo) => URL.createObjectURL(photo)),
+    );
+}
+
+function removeDeletionPhoto(index: number): void {
+    if (deleteForm.processing) {
+        return;
+    }
+
+    URL.revokeObjectURL(deletionPreviews.value[index]);
+    deletionPreviews.value.splice(index, 1);
+    deleteForm.photos.splice(index, 1);
+    deleteForm.clearErrors();
+}
 </script>
 
 <template>
@@ -2081,34 +2176,153 @@ const deleteForm = useForm({});
     <ModalDialog
         :open="deletingOrder !== null"
         title="Hapus order"
-        caption="Order dan seluruh transaksi terkait akan disembunyikan dari operasional."
-        size="sm"
-        @close="deletingOrder = null"
+        :caption="
+            deletingOrder
+                ? `${deletingOrder.orderNo} · ${formatPlate(deletingOrder.plate)}`
+                : ''
+        "
+        layer="nested"
+        @close="closeDeleteOrder"
     >
-        <p v-if="deletingOrder" class="text-sm text-slate-600">
-            Yakin ingin menghapus
-            <span class="font-semibold text-slate-900">
-                {{ deletingOrder.orderNo }}
-            </span>
-            ? Saldo harian akan dihitung ulang.
-        </p>
+        <form
+            id="delete-order-form"
+            class="space-y-4"
+            @submit.prevent="confirmDeleteOrder"
+        >
+            <p class="text-sm text-slate-600">
+                Order dan seluruh pembayaran terkait akan dihapus dari
+                operasional. Saldo harian akan dihitung ulang.
+            </p>
+            <div class="space-y-2">
+                <label
+                    for="deletion-reason"
+                    class="text-sm font-medium text-slate-800"
+                    >Alasan penghapusan
+                    <span class="text-rose-600">*</span></label
+                >
+                <textarea
+                    id="deletion-reason"
+                    v-model="deleteForm.reason"
+                    required
+                    maxlength="2000"
+                    rows="4"
+                    :disabled="deleteForm.processing"
+                    class="w-full rounded-xl border border-slate-300 p-3 text-sm focus:border-rose-400 focus:ring-rose-400"
+                    placeholder="Tuliskan alasan order dihapus"
+                />
+                <p class="text-xs text-slate-500">Maksimal 2.000 karakter.</p>
+            </div>
+            <div class="space-y-2">
+                <label
+                    for="deletion-photos"
+                    class="text-sm font-medium text-slate-800"
+                    >Foto pendukung (opsional)</label
+                >
+                <input
+                    id="deletion-photos"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    multiple
+                    :disabled="
+                        deleteForm.processing || deleteForm.photos.length >= 10
+                    "
+                    class="block w-full rounded-xl border border-slate-300 p-2 text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-rose-50 file:px-3 file:py-2 file:font-medium file:text-rose-700"
+                    @change="addDeletionPhotos"
+                />
+                <p class="text-xs text-slate-500">
+                    Maksimal 10 foto JPG, PNG, atau WebP, masing-masing 20 MB.
+                    {{ deleteForm.photos.length }}/10 foto.
+                </p>
+                <div
+                    v-if="deletionPreviews.length"
+                    class="grid grid-cols-3 gap-3"
+                >
+                    <div
+                        v-for="(url, index) in deletionPreviews"
+                        :key="url"
+                        class="space-y-1"
+                    >
+                        <button
+                            type="button"
+                            class="w-full overflow-hidden rounded-xl border border-slate-200"
+                            :aria-label="`Perbesar foto ${deleteForm.photos[index].name}`"
+                            :disabled="deleteForm.processing"
+                            @click="
+                                selectedDeletionPhoto = {
+                                    url,
+                                    name: deleteForm.photos[index].name,
+                                }
+                            "
+                        >
+                            <img
+                                :src="url"
+                                :alt="deleteForm.photos[index].name"
+                                class="aspect-square w-full object-cover"
+                            />
+                        </button>
+                        <button
+                            type="button"
+                            :disabled="deleteForm.processing"
+                            class="w-full rounded-lg px-2 py-1 text-xs font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                            :aria-label="`Hapus foto ${deleteForm.photos[index].name}`"
+                            @click="removeDeletionPhoto(index)"
+                        >
+                            Hapus foto
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <ul
+                v-if="deleteForm.hasErrors"
+                role="alert"
+                class="space-y-1 rounded-xl bg-rose-50 p-3 text-xs text-rose-700"
+            >
+                <li v-for="(error, key) in deleteForm.errors" :key="key">
+                    {{ error }}
+                </li>
+            </ul>
+            <p
+                v-if="deleteForm.progress"
+                role="status"
+                class="text-xs text-slate-500"
+            >
+                Mengunggah foto {{ deleteForm.progress.percentage }}%
+            </p>
+        </form>
         <template #footer>
             <button
                 type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="deletingOrder = null"
+                :disabled="deleteForm.processing"
+                class="flex-1 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-medium text-slate-600 disabled:opacity-50"
+                @click="closeDeleteOrder"
             >
-                Batal
+                Kembali
             </button>
             <button
-                type="button"
-                class="flex-1 rounded-xl bg-rose-600 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                type="submit"
+                form="delete-order-form"
                 :disabled="deleteForm.processing"
-                @click="confirmDeleteOrder"
+                class="flex-1 rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
             >
-                {{ deleteForm.processing ? 'Menghapus...' : 'Hapus order' }}
+                {{ deleteForm.processing ? 'Menyimpan…' : 'Hapus order' }}
             </button>
         </template>
+    </ModalDialog>
+
+    <ModalDialog
+        :open="selectedDeletionPhoto !== null"
+        title="Foto penghapusan"
+        :caption="selectedDeletionPhoto?.name"
+        layer="top"
+        size="xl"
+        @close="selectedDeletionPhoto = null"
+    >
+        <img
+            v-if="selectedDeletionPhoto"
+            :src="selectedDeletionPhoto.url"
+            :alt="selectedDeletionPhoto.name"
+            class="max-h-[70dvh] w-full object-contain"
+        />
     </ModalDialog>
 
     <!-- Create or edit order -->

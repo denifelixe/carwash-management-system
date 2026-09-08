@@ -627,7 +627,7 @@ test('deleting an order soft deletes its transactions', function () {
     ]);
 
     $this->actingAs($owner, 'admin')
-        ->delete(route('admin.orders.destroy', $order))
+        ->delete(route('admin.orders.destroy', $order), ['reason' => 'Salah input order'])
         ->assertSessionHasNoErrors();
 
     $this->assertSoftDeleted($order);
@@ -648,7 +648,7 @@ test('an order cannot be deleted when one of its payments is older than H-30', f
     ]);
 
     $this->actingAs($owner, 'admin')
-        ->delete(route('admin.orders.destroy', $order))
+        ->delete(route('admin.orders.destroy', $order), ['reason' => 'Salah input order'])
         ->assertUnprocessable();
 
     $this->assertNotSoftDeleted($order);
@@ -686,7 +686,7 @@ test('order access follows the role permission matrix', function () {
         ->assertForbidden();
 
     $this->actingAs($admin, 'admin')
-        ->delete(route('admin.orders.destroy', $order))
+        ->delete(route('admin.orders.destroy', $order), ['reason' => 'Salah input order'])
         ->assertForbidden();
 });
 

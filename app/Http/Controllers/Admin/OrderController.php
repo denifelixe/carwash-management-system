@@ -4,9 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Actions\Admin\CancelOrder;
 use App\Actions\Admin\CaptureOrderLead;
-use App\Actions\Admin\DeleteOrder;
+use App\Actions\Admin\DeleteOrderWithEvidence;
 use App\Actions\Admin\UpdateOrder;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\DeleteOrderRequest;
 use App\Http\Requests\Admin\StoreOrderRequest;
 use App\Http\Requests\Admin\UpdateOrderHandlerRequest;
 use App\Http\Requests\Admin\UpdateOrderRequest;
@@ -251,13 +252,12 @@ class OrderController extends Controller
         return back()->with('success', 'Order berhasil diperbarui.');
     }
 
-    public function destroy(Request $request, Order $order, DeleteOrder $deleteOrder): RedirectResponse
+    public function destroy(DeleteOrderRequest $request, Order $order, DeleteOrderWithEvidence $deleteOrder): RedirectResponse
     {
-        Gate::authorize('admin.orders.delete');
         /** @var Admin $admin */
         $admin = $request->user('admin');
 
-        $serviceDate = $deleteOrder->handle($order, $admin);
+        $serviceDate = $deleteOrder->handle($order, $admin, $request->validated('reason'), array_values($request->validated('photos', [])));
 
         return to_route('admin.orders.index', ['date' => $serviceDate])
             ->with('success', 'Order berhasil dihapus.');

@@ -109,6 +109,12 @@ class Order extends Model
         return $this->hasMany(OrderCancellation::class)->orderByDesc('cancelled_at')->orderByDesc('id');
     }
 
+    /** @return HasMany<OrderDeletion, $this> */
+    public function deletions(): HasMany
+    {
+        return $this->hasMany(OrderDeletion::class)->orderByDesc('deleted_at')->orderByDesc('id');
+    }
+
     /** @return HasMany<OrderTransaction, $this> */
     public function transactions(): HasMany
     {

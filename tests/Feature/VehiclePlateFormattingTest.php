@@ -82,7 +82,7 @@ test('visible vehicle plates use the shared display formatter', function (string
 
     expect(substr_count($view, 'formatPlate('))->toBe($usageCount);
 })->with([
-    'orders' => ['js/pages/admin/Orders.vue', 8],
+    'orders' => ['js/pages/admin/Orders.vue', 9],
     'cashier' => ['js/pages/admin/Pos.vue', 7],
     'bookings' => ['js/pages/admin/Bookings.vue', 5],
     'members' => ['js/pages/admin/Customers.vue', 2],
