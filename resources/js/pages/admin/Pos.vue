@@ -788,8 +788,11 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
     return orderList.value.filter((order) => {
-        const matchesStatus =
-            showAllOrders.value || order.status === 'pelunasan';
+        const matchesStatus = showAllOrders.value
+            ? ['booking', 'menunggu', 'proses', 'pelunasan'].includes(
+                  order.status,
+              )
+            : order.status === 'pelunasan';
         const matchesDate =
             order.date <= (props.filters.date || props.filters.today);
         const matchesQuery =
@@ -2915,7 +2918,7 @@ const memberForm = useForm({
                                 aria-hidden="true"
                                 class="relative h-5 w-9 shrink-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-violet-600 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-500 peer-focus-visible:ring-offset-2 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
                             ></span>
-                            Tampilkan semua order
+                            Tampilkan semua order berjalan
                         </label>
                         <DataToolbar
                             v-model:search="search"

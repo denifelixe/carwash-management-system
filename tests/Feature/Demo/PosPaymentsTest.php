@@ -10,7 +10,7 @@ use App\Support\Demo\RoleAccess;
 use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
 
-test('the POS order switch includes other statuses while preserving date and search filters', function () {
+test('the POS order switch includes only ongoing orders while preserving date and search filters', function () {
     $script = <<<'JS'
 const fs = require('node:fs');
 const ts = require('typescript');
@@ -32,8 +32,12 @@ eval(code + `
 assert.equal(showAllOrders.value, false);
 assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 6]);
 showAllOrders.value = true;
-assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 1, 2, 3, 4, 5, 6]);
-assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 7);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 1, 2, 3, 6]);
+assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 5);
+for (const query of ['ord-4', 'ord-5']) {
+    search.value = query;
+    assert.equal(visibleOrders.value.length, 0);
+}
 for (const query of ['ord-2', 'CUSTOMER 2', ' B 2 AA ']) {
     search.value = query;
     assert.deepEqual(visibleOrders.value.map(order => order.id), [2]);
