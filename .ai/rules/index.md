@@ -13,7 +13,8 @@ Before planning or editing, find the row whose globs match the file's path and r
 | app/Support/Admin/** | .ai/rules/app-support-admin.md |
 | resources/js/components/admin/ServiceCartPicker.vue | .ai/rules/components-admin.md |
 | {app/Models/Lead.php,app/Actions/Admin/CaptureOrderLead.php,app/Actions/Admin/MarkLeadConverted.php,app/Support/Admin/LeadQueries.php,app/Http/Controllers/Admin/LeadController.php} | .ai/rules/controllers-admin.md |
-| {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue} | .ai/rules/demo-js-pages-admin.md |
+| {app/Support/Admin/OrderLogCsv.php,app/Http/Controllers/Admin/ReportController.php,app/Http/Controllers/Demo/ReportController.php} | .ai/rules/controllers-demo.md |
+| {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}, {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-js-pages-admin.md |
 | {app/Support/AppSettings.php,app/Support/Demo/Brand.php,app/Http/Controllers/Demo/**} | .ai/rules/demo.md |
 | {app/Http/Controllers/Admin/RecapQrController.php,app/Support/Admin/RecapLink.php,resources/js/lib/recapSheet*.ts} | .ai/rules/js-lib.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Support/Admin/OrderQueries.php,app/Support/Admin/OrderPresenter.php,resources/js/pages/admin/Pos.vue} | .ai/rules/js-pages-admin.md |
@@ -22,9 +23,10 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/js/pages/admin/master/** | .ai/rules/master.md |
 | {routes/member.php,app/Http/Middleware/EnsureMemberPortalIsAvailable.php,bootstrap/app.php} | .ai/rules/middleware.md |
 | database/migrations/** | .ai/rules/migrations.md |
-| {app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/Finance*.php,resources/js/pages/admin/Finance.vue} | .ai/rules/pages-admin.md |
+| {app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/Finance*.php,resources/js/pages/admin/Finance.vue}, {app/Http/Controllers/Admin/ReportController.php,app/Support/Admin/ReportQueries.php,resources/js/pages/admin/Reports.vue} | .ai/rules/pages-admin.md |
 | {config/auth.php,app/Support/Auth/**,app/Providers/AppServiceProvider.php} | .ai/rules/providers.md |
 | {app/Actions/Admin/RegisterOrderMember.php,app/Models/Member.php,app/Http/Requests/Admin/StoreOrderMemberRequest.php} | .ai/rules/requests-admin.md |
+| {app/Support/Admin/ReportQueries.php,app/Support/Admin/DashboardStats.php,resources/js/pages/admin/Reports.vue} | .ai/rules/support-admin-js-pages-admin.md |
 | {app/Http/Controllers/Admin/**,app/Actions/Admin/**,app/Support/Admin/**} | .ai/rules/support-admin.md |
 | {resources/js/lib/posReceipt*.ts,resources/js/lib/pdfDocument.ts,app/Support/AppSettings.php,app/Support/Demo/Brand.php} | .ai/rules/support-demo.md |
 | {app/Models/Order.php,app/Models/MemberVehicle.php,app/Http/Requests/Admin/StoreOrder*.php,app/Support/VehiclePlate.php} | .ai/rules/support.md |

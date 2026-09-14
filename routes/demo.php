@@ -73,6 +73,10 @@ Route::name('demo.')->group(function () {
             ->middleware('demo.module:reports')
             ->name('reports');
 
+        Route::get('reports/order.csv', [ReportController::class, 'exportOrders'])
+            ->middleware('demo.module:reports')
+            ->name('reports.orders.export');
+
         Route::get('master/layanan', [ServiceController::class, 'index'])
             ->middleware('demo.module:master_services')
             ->name('master.services');

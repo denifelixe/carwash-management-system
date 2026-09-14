@@ -10,7 +10,7 @@ const props = defineProps<{
     open: boolean;
     title?: string;
     caption?: string;
-    size?: 'sm' | 'md' | 'lg' | 'xl';
+    size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
     dismissible?: boolean;
     layer?: 'default' | 'nested' | 'top';
 }>();
@@ -24,6 +24,7 @@ const widths: Record<string, string> = {
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-4xl',
+    '2xl': 'max-w-6xl',
 };
 
 const layers: Record<NonNullable<typeof props.layer>, string> = {

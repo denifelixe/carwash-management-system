@@ -1,6 +1,7 @@
 ---
 paths:
   - '{app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}'
+  - '{app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue}'
 ---
 
 # Demo Js Pages Admin
@@ -18,3 +19,10 @@ Finance.vue's Saldo card shows FinanceQueries::dailyBalance (latest snapshot on 
 Only days that moved money own a snapshot, so a quiet day is absent from the history rather than repeated as a flat line. The dialog says as much; do not fill the gaps client-side.
 
 Demo mirrors the shape from fixtures in Finance::dailyBalanceHistory, and Finance::dailyBalance is its newest row — keep the two in step so both modes hand the page identical props.
+
+## The order log behind the contribution card is fetched only when opened
+Kontribusi Layanan (Order) is clickable: a service row opens the orders that produced its figure, and the card's "Semua order" action opens every order in the range. ReportQueries::orderLog reads the same set topServices counts — orders a payment landed on inside the range — so the list always reconciles with the bar it was opened from. Never switch it to service_date; the two would stop agreeing.
+
+orderLog ships as Inertia::optional and is paginated at ORDERS_PER_PAGE. A year-wide range holds thousands of orders and the report itself never shows them, so a full page load must not pay for it — the page fetches it with router.reload({ only: ['orderLog'] }) carrying `service` and `orderPage`. Tests for it need the X-Inertia-Partial-Data headers; a plain GET will not resolve the prop.
+
+Plates come back normalized (F1203MR) the way every other reader returns them — the page renders them through formatPlate from @/lib/vehiclePlate. Do not format them server-side.</note>

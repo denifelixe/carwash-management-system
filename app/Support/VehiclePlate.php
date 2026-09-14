@@ -24,4 +24,24 @@ class VehiclePlate
     {
         return Str::upper((string) preg_replace('/\s+/u', '', trim((string) $plate)));
     }
+
+    /**
+     * The stored plate rendered for people: "B 8120 DS".
+     *
+     * The server-side twin of formatPlate() in resources/js/lib/vehiclePlate.ts,
+     * for documents rendered without a browser — the CSV export. Every on-screen
+     * plate still goes through the JS one; keep the two producing the same
+     * string. A plate that does not fit the national pattern is passed through
+     * untouched rather than guessed at.
+     */
+    public static function format(?string $plate): string
+    {
+        $normalized = self::normalize($plate);
+
+        if (preg_match('/\A([A-Z]{1,2})(\d{1,4})([A-Z]{0,3})\z/', $normalized, $segments) !== 1) {
+            return $normalized;
+        }
+
+        return implode(' ', array_filter([$segments[1], $segments[2], $segments[3]]));
+    }
 }

@@ -623,20 +623,59 @@ export interface CarwashReportFilters {
     earliest: string;
 }
 
+/**
+ * One shift's performance across a report range. `status` is deliberately
+ * absent from {@link CarwashShift}'s shape here: whether a shift is running is
+ * a today-only fact and says nothing about a range.
+ */
+export interface CarwashReportShift {
+    id: string;
+    name: string;
+    time: string | null;
+    cashier: string;
+    initials: string;
+    revenue: number;
+    transactions: number;
+    vehiclesServed: number;
+    moneyIn: number;
+    moneyOut: number;
+}
+
+/** One line of the order log behind the service contribution card. */
+export interface CarwashReportOrder {
+    id: number;
+    orderNo: string;
+    date: string;
+    time: string;
+    vehicle: string;
+    plate: string;
+    customer: string;
+    phone: string;
+    services: string;
+    status: string;
+    total: number;
+}
+
 export interface CarwashTopService {
     name: string;
     orders: number;
     revenue: number;
 }
 
-export interface CarwashCustomerActivity {
-    newCustomers: number;
-    returningCustomers: number;
+/**
+ * How the customer base moved over a report range. Loyalty is absent on
+ * purpose: nothing records a stamp redemption until the rewards module ships.
+ */
+export interface CarwashCustomerBase {
+    newMembers: number;
+    returningMembers: number;
+    membersServed: number;
+    newLeads: number;
+    convertedLeads: number;
+    /** Current state, not a range figure: leads still waiting to convert. */
+    openLeads: number;
     churnRisk: number;
-    stampsIssued: number;
-    stampsRedeemed: number;
-    rewardsClaimed: number;
-    averageVisitsPerCustomer: number;
+    averageVisitsPerMember: number;
 }
 
 export interface CarwashBookingSummary {
@@ -645,7 +684,6 @@ export interface CarwashBookingSummary {
     completed: number;
     cancelled: number;
     showRate: number;
-    peakSlot: string;
 }
 
 export interface CarwashInventorySummary {

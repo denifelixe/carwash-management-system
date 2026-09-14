@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers\Demo;
 
-use App\Support\Demo\Brand;
-use App\Support\Demo\Finance;
+use App\Support\Admin\OrderLogCsv;
 use App\Support\Demo\Reports;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
  * Reporting and monitoring across operations and finance (BR-12).
@@ -22,16 +23,37 @@ class ReportController extends AdminController
 
         $scale = Reports::rangeScale($from, $to);
 
-        return $this->page($request, 'demo/admin/Reports', [
-            'stats' => Reports::todayStats(),
+        return $this->page($request, 'admin/Reports', [
             'trend' => Reports::trend($from, $to),
             'filters' => Reports::rangeMeta($from, $to),
             'topServices' => Reports::topServices($scale),
-            'customerActivity' => Reports::customerActivity($scale),
+            'customerBase' => Reports::customerBase($scale),
             'bookingSummary' => Reports::bookingSummary($scale),
+            'orderLog' => Inertia::optional(fn (): array => Reports::orderLog(
+                $from,
+                $to,
+                $request->string('service')->toString() ?: null,
+                (int) $request->integer('orderPage'),
+            )),
             'inventorySummary' => Reports::inventorySummary(),
-            'cashSummary' => Finance::summary(),
-            'shifts' => Brand::shifts(),
+            'shifts' => Reports::shiftSummary($from, $to),
+            'capabilities' => [
+                'read' => true,
+            ],
         ]);
+    }
+
+    public function exportOrders(Request $request): StreamedResponse
+    {
+        ['from' => $from, 'to' => $to] = Reports::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+        $service = $request->string('service')->toString() ?: null;
+
+        return OrderLogCsv::download(
+            Reports::orderLogRows($from, $to, $service),
+            OrderLogCsv::fileName($from, $to, $service),
+        );
     }
 }

@@ -15,6 +15,7 @@ use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\Admin\OrderController;
 use App\Http\Controllers\Admin\PosController;
 use App\Http\Controllers\Admin\RecapQrController;
+use App\Http\Controllers\Admin\ReportController;
 use App\Http\Controllers\Auth\AdminAuthenticatedSessionController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\SecurityController;
@@ -90,6 +91,8 @@ Route::domain((string) config('domains.admin'))
             Route::post('leads', [LeadController::class, 'store'])->name('leads.store');
             Route::patch('leads/{lead}', [LeadController::class, 'update'])->name('leads.update');
             Route::patch('leads/{lead}/status', [LeadController::class, 'updateStatus'])->name('leads.status.update');
+            Route::get('laporan', [ReportController::class, 'index'])->name('reports.index');
+            Route::get('laporan/order.csv', [ReportController::class, 'exportOrders'])->name('reports.orders.export');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
             Route::get('users/{adminUser}/photo', [AdminUserController::class, 'photo'])->name('users.photo');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');

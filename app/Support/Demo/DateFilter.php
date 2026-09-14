@@ -16,8 +16,14 @@ use Illuminate\Http\Request;
  */
 class DateFilter
 {
-    /** Indonesian short month names, indexed the way a date string numbers them. */
-    private const MONTHS = [1 => 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+    /**
+     * Indonesian short month names, indexed the way a date string numbers them.
+     * Public because the reporting modules spell their own labels from it —
+     * there is one copy of these names, not one per module.
+     *
+     * @var array<int, string>
+     */
+    public const MONTHS = [1 => 'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 
     /** Days ahead a schedule may be picked from. */
     private const FUTURE_DAYS = 365;

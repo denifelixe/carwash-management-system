@@ -2,16 +2,22 @@
 import { Head, router } from '@inertiajs/vue3';
 import {
     Boxes,
-    CalendarClock,
-    ChartColumn,
-    Sparkles,
+    ChevronRight,
+    Download,
+    ListOrdered,
     TrendingDown,
-    TrendingUp,
     Users,
     Wallet,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
+import {
+    exportOrders,
+    index as indexReports,
+} from '@/actions/App/Http/Controllers/Admin/ReportController';
+import DataPagination from '@/components/demo/DataPagination.vue';
 import DateRangeFilter from '@/components/demo/DateRangeFilter.vue';
+import EmptyState from '@/components/demo/EmptyState.vue';
+import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SectionCard from '@/components/demo/SectionCard.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
@@ -21,35 +27,35 @@ import {
     formatPercent,
     formatShortCurrency,
 } from '@/composables/useCarwashFormat';
+import { formatPlate } from '@/lib/vehiclePlate';
 import admin from '@/routes/demo/admin';
 import type {
     CarwashBookingSummary,
     CarwashBrand,
-    CarwashCashSummary,
-    CarwashCustomerActivity,
+    CarwashCustomerBase,
     CarwashInventorySummary,
+    CarwashPaginated,
     CarwashReportFilters,
-    CarwashShift,
-    CarwashStat,
+    CarwashReportOrder,
+    CarwashReportShift,
     CarwashTopService,
     CarwashTrendPoint,
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
-    stats: CarwashStat[];
     trend: CarwashTrendPoint[];
     filters: CarwashReportFilters;
     topServices: CarwashTopService[];
-    customerActivity: CarwashCustomerActivity;
+    customerBase: CarwashCustomerBase;
     bookingSummary: CarwashBookingSummary;
     inventorySummary: CarwashInventorySummary;
-    cashSummary: CarwashCashSummary;
-    shifts: CarwashShift[];
+    shifts: CarwashReportShift[];
+    /** Only present once the contribution card has been opened. */
+    orderLog?: CarwashPaginated<CarwashReportOrder>;
+    capabilities: { read: boolean };
 }>();
-
-/** Gross margin the business measures itself against, in percent. */
-const MARGIN_TARGET = 50;
 
 /** Most axis labels to print before they start colliding. */
 const MAX_AXIS_LABELS = 12;
@@ -59,24 +65,31 @@ const isLoading = ref<boolean>(false);
 
 /** The range lives in the URL, so a filtered report stays shareable. */
 function applyRange(range: { from: string; to: string }): void {
-    router.get(admin.reports.url(), range, {
-        preserveState: true,
-        preserveScroll: true,
-        replace: true,
-        only: [
-            'trend',
-            'filters',
-            'topServices',
-            'customerActivity',
-            'bookingSummary',
-        ],
-        onStart: () => {
-            isLoading.value = true;
+    router.get(
+        props.mode === 'demo' ? admin.reports.url() : indexReports.url(),
+        range,
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            /* The inventory card is left out on purpose: it does not move when
+             * only the range changes. */
+            only: [
+                'trend',
+                'filters',
+                'topServices',
+                'customerBase',
+                'bookingSummary',
+                'shifts',
+            ],
+            onStart: () => {
+                isLoading.value = true;
+            },
+            onFinish: () => {
+                isLoading.value = false;
+            },
         },
-        onFinish: () => {
-            isLoading.value = false;
-        },
-    });
+    );
 }
 
 /** Largest value in a list, or 0 when empty — `Math.max()` alone returns -Infinity. */
@@ -110,23 +123,6 @@ const periodTransactions = computed<number>(() =>
     props.trend.reduce((total, point) => total + point.transactions, 0),
 );
 
-const grossMargin = computed<number>(() =>
-    periodRevenue.value === 0
-        ? 0
-        : ((periodRevenue.value - periodExpense.value) / periodRevenue.value) *
-          100,
-);
-
-const averageTicket = computed<number>(() =>
-    periodTransactions.value === 0
-        ? 0
-        : Math.round(periodRevenue.value / periodTransactions.value),
-);
-
-const isMarginOnTarget = computed<boolean>(
-    () => grossMargin.value >= MARGIN_TARGET,
-);
-
 /** Both series share one scale so the bars stay comparable. */
 const trendPeak = computed<number>(() =>
     peakOf(props.trend.flatMap((point) => [point.revenue, point.expense])),
@@ -145,12 +141,71 @@ const totalServiceRevenue = computed<number>(() =>
     props.topServices.reduce((total, service) => total + service.revenue, 0),
 );
 
-const stampRedemptionRate = computed<number>(() =>
-    shareOf(
-        props.customerActivity.stampsRedeemed,
-        props.customerActivity.stampsIssued,
-    ),
+const hasInventory = computed<boolean>(
+    () => props.inventorySummary.totalItems > 0,
 );
+
+/** Which service the open order log is narrowed to; null is every order. */
+const openedService = ref<string | null>(null);
+const isOrderLogOpen = ref<boolean>(false);
+const isOrderLogLoading = ref<boolean>(false);
+
+/**
+ * The log is an optional prop, so opening the card is what fetches it. The
+ * range already lives in the URL — only the service and the page are added.
+ */
+function loadOrderLog(page: number): void {
+    router.reload({
+        only: ['orderLog'],
+        data: { service: openedService.value ?? undefined, orderPage: page },
+        onStart: () => {
+            isOrderLogLoading.value = true;
+        },
+        onFinish: () => {
+            isOrderLogLoading.value = false;
+        },
+    });
+}
+
+function openOrderLog(serviceName: string | null): void {
+    openedService.value = serviceName;
+    isOrderLogOpen.value = true;
+    loadOrderLog(1);
+}
+
+function closeOrderLog(): void {
+    isOrderLogOpen.value = false;
+}
+
+const orderLogRows = computed<CarwashReportOrder[]>(
+    () => props.orderLog?.data ?? [],
+);
+
+const orderLogTitle = computed<string>(() =>
+    openedService.value === null
+        ? 'Order pada periode ini'
+        : `Order — ${openedService.value}`,
+);
+
+/**
+ * A plain link rather than a visit: the CSV is streamed straight back as a
+ * download, so Inertia must not try to read it as a page. The range and the
+ * service travel in the URL so the file matches what is on screen — every row
+ * of it, not just the page being read.
+ */
+const orderLogDownloadUrl = computed<string>(() => {
+    const query = {
+        from: props.filters.from,
+        to: props.filters.to,
+        ...(openedService.value === null
+            ? {}
+            : { service: openedService.value }),
+    };
+
+    return props.mode === 'demo'
+        ? admin.reports.orders.export.url({ query })
+        : exportOrders.url({ query });
+});
 </script>
 
 <template>
@@ -177,7 +232,7 @@ const stampRedemptionRate = computed<number>(() =>
         </section>
 
         <!-- Headline numbers, all on the selected period -->
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <StatCard
                 label="Pendapatan"
                 :value="formatShortCurrency(periodRevenue)"
@@ -192,19 +247,6 @@ const stampRedemptionRate = computed<number>(() =>
                 :icon="TrendingDown"
                 tone="rose"
             />
-            <StatCard
-                label="Margin kotor"
-                :value="formatPercent(grossMargin)"
-                :caption="`target internal ${formatPercent(MARGIN_TARGET)}`"
-                :icon="isMarginOnTarget ? TrendingUp : TrendingDown"
-            />
-            <StatCard
-                label="Rata-rata transaksi"
-                :value="formatCurrency(averageTicket)"
-                caption="per kendaraan"
-                :icon="ChartColumn"
-                tone="amber"
-            />
         </section>
 
         <!-- Revenue vs expense -->
@@ -216,7 +258,7 @@ const stampRedemptionRate = computed<number>(() =>
                 <div class="flex items-center gap-4 text-[11px] text-slate-500">
                     <span class="flex items-center gap-1.5">
                         <span
-                            class="h-2.5 w-2.5 rounded-sm bg-gradient-to-t from-cyan-600 to-cyan-400"
+                            class="h-2.5 w-2.5 rounded-sm bg-gradient-to-t from-emerald-600 to-emerald-400"
                         ></span>
                         Pendapatan
                     </span>
@@ -273,7 +315,7 @@ const stampRedemptionRate = computed<number>(() =>
                                     {{ point.caption }}
                                 </p>
                                 <p
-                                    class="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-cyan-300"
+                                    class="mt-0.5 flex items-baseline justify-between gap-2 text-[11px] text-emerald-300"
                                 >
                                     <span>Masuk</span>
                                     <span
@@ -304,7 +346,7 @@ const stampRedemptionRate = computed<number>(() =>
                                 class="flex h-full items-end justify-center gap-1 pb-7"
                             >
                                 <div
-                                    class="w-1/2 rounded-t bg-gradient-to-t from-cyan-600 to-cyan-400 transition-all duration-300"
+                                    class="w-1/2 rounded-t bg-gradient-to-t from-emerald-600 to-emerald-400 transition-all duration-300"
                                     :style="{
                                         height: `${Math.max(2, shareOf(point.revenue, trendPeak))}%`,
                                     }"
@@ -340,132 +382,151 @@ const stampRedemptionRate = computed<number>(() =>
         <section class="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <!-- Service revenue -->
             <SectionCard
-                title="Kontribusi layanan"
-                :caption="`Total ${formatShortCurrency(totalServiceRevenue)} dari 5 layanan teratas`"
+                title="Kontribusi Layanan (Order)"
+                :caption="`Nilai layanan terjual ${formatShortCurrency(totalServiceRevenue)} dari 5 layanan teratas`"
             >
-                <ul class="mt-4 space-y-3.5">
+                <template #actions>
+                    <button
+                        type="button"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
+                        @click="openOrderLog(null)"
+                    >
+                        <ListOrdered class="h-3.5 w-3.5" />
+                        Semua order
+                    </button>
+                </template>
+
+                <ul class="mt-4 space-y-1">
                     <li v-for="service in rankedServices" :key="service.name">
-                        <div class="flex items-baseline justify-between gap-3">
-                            <p class="truncate text-sm text-slate-700">
-                                {{ service.name }}
-                            </p>
-                            <p
-                                class="shrink-0 text-xs font-medium text-slate-700 tabular-nums"
-                            >
-                                {{ formatShortCurrency(service.revenue) }}
-                            </p>
-                        </div>
-                        <div class="mt-1.5 flex items-center gap-3">
+                        <button
+                            type="button"
+                            class="group w-full cursor-pointer rounded-xl px-2 py-2 text-left transition hover:bg-slate-50"
+                            :title="`Lihat order ${service.name}`"
+                            @click="openOrderLog(service.name)"
+                        >
                             <div
-                                class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100"
+                                class="flex items-baseline justify-between gap-3"
                             >
-                                <div
-                                    class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500 transition-all duration-300"
-                                    :style="{
-                                        width: `${shareOf(service.revenue, topServiceRevenue)}%`,
-                                    }"
-                                ></div>
+                                <p
+                                    class="flex min-w-0 items-center gap-1.5 truncate text-sm text-slate-700"
+                                >
+                                    <span class="truncate">
+                                        {{ service.name }}
+                                    </span>
+                                    <ChevronRight
+                                        class="h-3.5 w-3.5 shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-slate-500"
+                                    />
+                                </p>
+                                <p
+                                    class="shrink-0 text-xs font-medium text-slate-700 tabular-nums"
+                                >
+                                    {{ formatShortCurrency(service.revenue) }}
+                                </p>
                             </div>
-                            <p
-                                class="w-24 shrink-0 text-right text-[11px] text-slate-400 tabular-nums"
-                            >
-                                {{
-                                    formatPercent(
-                                        shareOf(
-                                            service.revenue,
-                                            totalServiceRevenue,
-                                        ),
-                                    )
-                                }}
-                                · {{ formatNumber(service.orders) }}×
-                            </p>
-                        </div>
+                            <div class="mt-1.5 flex items-center gap-3">
+                                <div
+                                    class="h-1.5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100"
+                                >
+                                    <div
+                                        class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500 transition-all duration-300"
+                                        :style="{
+                                            width: `${shareOf(service.revenue, topServiceRevenue)}%`,
+                                        }"
+                                    ></div>
+                                </div>
+                                <p
+                                    class="w-24 shrink-0 text-right text-[11px] text-slate-400 tabular-nums"
+                                >
+                                    {{
+                                        formatPercent(
+                                            shareOf(
+                                                service.revenue,
+                                                totalServiceRevenue,
+                                            ),
+                                        )
+                                    }}
+                                    · {{ formatNumber(service.orders) }}×
+                                </p>
+                            </div>
+                        </button>
                     </li>
                 </ul>
             </SectionCard>
 
             <!-- Customer activity -->
             <SectionCard
-                title="Aktivitas customer & loyalty"
-                caption="Pertumbuhan dan penggunaan stempel"
+                title="Leads & Member"
+                caption="Pertumbuhan basis customer"
             >
                 <div class="mt-4 grid grid-cols-2 gap-3">
                     <div class="rounded-xl bg-slate-50 p-3">
-                        <p class="text-[11px] text-slate-500">Customer baru</p>
+                        <p class="text-[11px] text-slate-500">Member baru</p>
                         <p
                             class="mt-0.5 text-xl font-semibold text-slate-900 tabular-nums"
                         >
-                            {{ formatNumber(customerActivity.newCustomers) }}
+                            {{ formatNumber(customerBase.newMembers) }}
                         </p>
                     </div>
                     <div class="rounded-xl bg-slate-50 p-3">
-                        <p class="text-[11px] text-slate-500">
-                            Customer kembali
-                        </p>
+                        <p class="text-[11px] text-slate-500">Member kembali</p>
                         <p
                             class="mt-0.5 text-xl font-semibold text-slate-900 tabular-nums"
                         >
-                            {{
-                                formatNumber(
-                                    customerActivity.returningCustomers,
-                                )
-                            }}
+                            {{ formatNumber(customerBase.returningMembers) }}
+                        </p>
+                    </div>
+                    <div class="rounded-xl bg-cyan-50 p-3">
+                        <p class="text-[11px] text-cyan-700">Leads baru</p>
+                        <p
+                            class="mt-0.5 text-xl font-semibold text-cyan-700 tabular-nums"
+                        >
+                            {{ formatNumber(customerBase.newLeads) }}
                         </p>
                     </div>
                     <div class="rounded-xl bg-emerald-50 p-3">
                         <p class="text-[11px] text-emerald-700">
-                            Stempel diberikan
+                            Leads jadi member
                         </p>
                         <p
                             class="mt-0.5 text-xl font-semibold text-emerald-700 tabular-nums"
                         >
-                            {{ formatNumber(customerActivity.stampsIssued) }}
-                        </p>
-                    </div>
-                    <div class="rounded-xl bg-cyan-50 p-3">
-                        <p class="text-[11px] text-cyan-700">Stempel ditukar</p>
-                        <p
-                            class="mt-0.5 text-xl font-semibold text-cyan-700 tabular-nums"
-                        >
-                            {{ formatNumber(customerActivity.stampsRedeemed) }}
+                            {{ formatNumber(customerBase.convertedLeads) }}
                         </p>
                     </div>
                 </div>
 
-                <div class="mt-4">
-                    <div
-                        class="flex items-center justify-between text-[11px] text-slate-500"
-                    >
-                        <span>Tingkat penukaran stempel</span>
+                <ul class="mt-4 space-y-2.5 text-sm">
+                    <li class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">Member dilayani</span>
                         <span class="font-medium text-slate-700 tabular-nums">
-                            {{ formatPercent(stampRedemptionRate) }}
+                            {{ formatNumber(customerBase.membersServed) }}
                         </span>
-                    </div>
-                    <div
-                        class="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100"
-                    >
-                        <div
-                            class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500 transition-all duration-300"
-                            :style="{ width: `${stampRedemptionRate}%` }"
-                        ></div>
-                    </div>
-                </div>
+                    </li>
+                    <li class="flex items-center justify-between gap-3">
+                        <span class="text-slate-500">
+                            Rata-rata kunjungan per member
+                        </span>
+                        <span class="font-medium text-slate-700 tabular-nums">
+                            {{ customerBase.averageVisitsPerMember }}×
+                        </span>
+                    </li>
+                </ul>
 
-                <div
-                    class="mt-4 flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2.5 text-[11px] text-amber-800"
+                <p
+                    class="mt-4 flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-2.5 text-[11px] text-slate-600"
                 >
-                    <Sparkles class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <Users class="mt-0.5 h-3.5 w-3.5 shrink-0" />
                     <span>
-                        {{ formatNumber(customerActivity.rewardsClaimed) }}
-                        reward diklaim •
-                        {{ formatNumber(customerActivity.churnRisk) }} customer
+                        {{ formatNumber(customerBase.openLeads) }} leads belum
+                        jadi member •
+                        {{ formatNumber(customerBase.churnRisk) }} member
                         berisiko tidak kembali
                     </span>
-                </div>
+                </p>
             </SectionCard>
         </section>
 
-        <section class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <section class="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <!-- Booking summary -->
             <SectionCard title="Ringkasan booking" :caption="filters.label">
                 <ul class="mt-4 space-y-2.5 text-sm">
@@ -504,17 +565,17 @@ const stampRedemptionRate = computed<number>(() =>
                         </span>
                     </li>
                 </ul>
-                <p
-                    class="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
-                >
-                    <CalendarClock class="h-3.5 w-3.5 shrink-0" />
-                    Jam tersibuk: {{ bookingSummary.peakSlot }}
-                </p>
             </SectionCard>
 
             <!-- Inventory summary -->
             <SectionCard title="Ringkasan inventory" caption="Stok operasional">
-                <ul class="mt-4 space-y-2.5 text-sm">
+                <EmptyState
+                    v-if="!hasInventory"
+                    :icon="Boxes"
+                    title="Modul inventory belum aktif"
+                    caption="Angka stok muncul di sini setelah modul Inventory dirilis."
+                />
+                <ul v-else class="mt-4 space-y-2.5 text-sm">
                     <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Total item</span>
                         <span class="font-semibold text-slate-900 tabular-nums">
@@ -558,6 +619,7 @@ const stampRedemptionRate = computed<number>(() =>
                     </li>
                 </ul>
                 <p
+                    v-if="hasInventory"
                     class="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
                 >
                     <Boxes class="h-3.5 w-3.5 shrink-0" />
@@ -567,57 +629,12 @@ const stampRedemptionRate = computed<number>(() =>
                     </span>
                 </p>
             </SectionCard>
-
-            <!-- Cash position -->
-            <SectionCard title="Posisi kas" caption="Hari ini">
-                <ul class="mt-4 space-y-2.5 text-sm">
-                    <li class="flex items-center justify-between gap-3">
-                        <span class="text-slate-500">Saldo awal</span>
-                        <span class="text-slate-800 tabular-nums">
-                            {{
-                                formatShortCurrency(cashSummary.openingBalance)
-                            }}
-                        </span>
-                    </li>
-                    <li class="flex items-center justify-between gap-3">
-                        <span class="text-slate-500">Uang masuk</span>
-                        <span class="font-medium text-emerald-600 tabular-nums">
-                            +{{ formatShortCurrency(cashSummary.todayIn) }}
-                        </span>
-                    </li>
-                    <li class="flex items-center justify-between gap-3">
-                        <span class="text-slate-500">Uang keluar</span>
-                        <span class="font-medium text-rose-600 tabular-nums">
-                            −{{ formatShortCurrency(cashSummary.todayOut) }}
-                        </span>
-                    </li>
-                    <li
-                        class="flex items-center justify-between gap-3 border-t border-slate-100 pt-2.5"
-                    >
-                        <span class="font-medium text-slate-600">
-                            Saldo akhir
-                        </span>
-                        <span class="font-semibold text-slate-900 tabular-nums">
-                            {{
-                                formatShortCurrency(cashSummary.closingBalance)
-                            }}
-                        </span>
-                    </li>
-                </ul>
-                <p
-                    class="mt-3 flex items-center gap-2 rounded-xl bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
-                >
-                    <Wallet class="h-3.5 w-3.5 shrink-0" />
-                    {{ formatCurrency(cashSummary.pendingPayments) }} belum
-                    tertagih
-                </p>
-            </SectionCard>
         </section>
 
         <!-- Shift report -->
         <SectionCard
             title="Laporan per shift"
-            caption="Rekap kasir dan arus kas tiap shift"
+            :caption="`Rekap kasir dan arus kas tiap shift — ${filters.label}`"
             :padded="false"
         >
             <div class="overflow-x-auto">
@@ -628,7 +645,7 @@ const stampRedemptionRate = computed<number>(() =>
                         >
                             <th class="px-5 py-3">Shift</th>
                             <th class="px-5 py-3">Kasir</th>
-                            <th class="px-5 py-3">Status</th>
+                            <th class="px-5 py-3 text-right">Kendaraan</th>
                             <th class="px-5 py-3 text-right">Transaksi</th>
                             <th class="px-5 py-3 text-right">Uang masuk</th>
                             <th class="px-5 py-3 text-right">Uang keluar</th>
@@ -646,23 +663,26 @@ const stampRedemptionRate = computed<number>(() =>
                                     {{ shift.name }}
                                 </p>
                                 <p class="text-[11px] text-slate-500">
-                                    {{ shift.time }}
+                                    {{ shift.time ?? 'Di luar jadwal aktif' }}
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
                                 <div class="flex items-center gap-2">
                                     <span
+                                        v-if="shift.initials"
                                         class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-100 text-[10px] font-semibold text-slate-600"
                                     >
                                         {{ shift.initials }}
                                     </span>
                                     <span class="text-slate-700">
-                                        {{ shift.cashier }}
+                                        {{ shift.cashier || '—' }}
                                     </span>
                                 </div>
                             </td>
-                            <td class="px-5 py-3.5">
-                                <StatusPill :status="shift.status" />
+                            <td
+                                class="px-5 py-3.5 text-right text-slate-700 tabular-nums"
+                            >
+                                {{ formatNumber(shift.vehiclesServed) }}
                             </td>
                             <td
                                 class="px-5 py-3.5 text-right text-slate-700 tabular-nums"
@@ -694,48 +714,122 @@ const stampRedemptionRate = computed<number>(() =>
             </div>
         </SectionCard>
 
-        <!-- Customer retention note -->
-        <SectionCard
-            title="Catatan monitoring"
-            :caption="`Ringkasan otomatis — ${filters.label}`"
+        <!-- The orders behind the contribution card -->
+        <ModalDialog
+            :open="isOrderLogOpen"
+            :title="orderLogTitle"
+            :caption="`${filters.label} · ${formatNumber(orderLog?.meta.total ?? 0)} order`"
+            size="2xl"
+            dismissible
+            @close="closeOrderLog"
         >
-            <ul class="mt-3 space-y-2 text-xs text-slate-600">
-                <li class="flex items-start gap-2">
-                    <Users class="mt-0.5 h-3.5 w-3.5 shrink-0 text-cyan-600" />
-                    <span>
-                        Rata-rata
-                        {{ customerActivity.averageVisitsPerCustomer }}
-                        kunjungan per customer — naikkan dengan promo double
-                        stempel akhir pekan.
-                    </span>
-                </li>
-                <li class="flex items-start gap-2">
-                    <component
-                        :is="isMarginOnTarget ? TrendingUp : TrendingDown"
-                        class="mt-0.5 h-3.5 w-3.5 shrink-0"
-                        :class="
-                            isMarginOnTarget
-                                ? 'text-emerald-600'
-                                : 'text-rose-600'
-                        "
-                    />
-                    <span>
-                        Margin kotor {{ formatPercent(grossMargin) }},
-                        {{ isMarginOnTarget ? 'di atas' : 'di bawah' }} target
-                        internal {{ formatPercent(MARGIN_TARGET) }}.
-                    </span>
-                </li>
-                <li
-                    v-if="inventorySummary.lowStock > 0"
-                    class="flex items-start gap-2"
+            <div
+                class="-mx-5 -mb-5 transition-opacity duration-200"
+                :class="isOrderLogLoading ? 'opacity-40' : 'opacity-100'"
+            >
+                <EmptyState
+                    v-if="!isOrderLogLoading && orderLogRows.length === 0"
+                    :icon="ListOrdered"
+                    title="Belum ada order"
+                    caption="Tidak ada order yang dibayar pada rentang tanggal ini."
+                />
+
+                <div v-else class="max-h-[60vh] overflow-auto">
+                    <table class="w-full min-w-[780px] text-sm">
+                        <thead
+                            class="sticky top-0 z-10 bg-white text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                        >
+                            <tr class="border-b border-slate-100">
+                                <th class="px-5 py-3">Waktu</th>
+                                <th class="px-5 py-3">Kendaraan</th>
+                                <th class="px-5 py-3">Customer</th>
+                                <th class="px-5 py-3">Layanan</th>
+                                <th class="px-5 py-3">Status</th>
+                                <th class="px-5 py-3 text-right">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            <tr
+                                v-for="order in orderLogRows"
+                                :key="order.id"
+                                class="transition hover:bg-slate-50/70"
+                            >
+                                <td class="px-5 py-3 whitespace-nowrap">
+                                    <p
+                                        class="font-medium text-slate-900 tabular-nums"
+                                    >
+                                        {{ order.date }}
+                                    </p>
+                                    <p
+                                        class="text-[11px] text-slate-500 tabular-nums"
+                                    >
+                                        {{ order.time }} · {{ order.orderNo }}
+                                    </p>
+                                </td>
+                                <td class="px-5 py-3">
+                                    <p class="text-slate-700">
+                                        {{ order.vehicle }}
+                                    </p>
+                                    <p
+                                        class="text-[11px] font-medium tracking-wide text-slate-500 uppercase"
+                                    >
+                                        {{ formatPlate(order.plate) }}
+                                    </p>
+                                </td>
+                                <td class="px-5 py-3">
+                                    <p class="text-slate-700">
+                                        {{ order.customer }}
+                                    </p>
+                                    <p
+                                        class="text-[11px] text-slate-500 tabular-nums"
+                                    >
+                                        {{ order.phone }}
+                                    </p>
+                                </td>
+                                <td
+                                    class="max-w-[220px] px-5 py-3 text-slate-600"
+                                >
+                                    {{ order.services || '—' }}
+                                </td>
+                                <td class="px-5 py-3">
+                                    <StatusPill :status="order.status" />
+                                </td>
+                                <td
+                                    class="px-5 py-3 text-right font-semibold whitespace-nowrap text-slate-900 tabular-nums"
+                                >
+                                    {{ formatCurrency(order.total) }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <DataPagination
+                    v-if="orderLog"
+                    :meta="orderLog.meta"
+                    label="order"
+                    @change="loadOrderLog"
+                />
+            </div>
+
+            <template #footer>
+                <div
+                    class="flex w-full flex-wrap items-center justify-between gap-3"
                 >
-                    <Boxes class="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-600" />
-                    <span>
-                        {{ formatNumber(inventorySummary.lowStock) }} item stok
-                        menipis berpotensi menghambat layanan detailing.
-                    </span>
-                </li>
-            </ul>
-        </SectionCard>
+                    <p class="text-[11px] text-slate-500">
+                        Unduhan berisi seluruh order pada rentang ini, bukan
+                        hanya halaman yang tampil.
+                    </p>
+                    <a
+                        :href="orderLogDownloadUrl"
+                        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700"
+                        download
+                    >
+                        <Download class="h-3.5 w-3.5" />
+                        Unduh Excel (CSV)
+                    </a>
+                </div>
+            </template>
+        </ModalDialog>
     </div>
 </template>

@@ -96,11 +96,12 @@ test('count figures grow with the range so the cards stay coherent', function ()
     $quarter = openReports(['from' => '2026-05-06', 'to' => '2026-08-03'])->toArray()['props'];
 
     expect($quarter['bookingSummary']['total'])->toBeGreaterThan($week['bookingSummary']['total'])
-        ->and($quarter['customerActivity']['stampsIssued'])->toBeGreaterThan($week['customerActivity']['stampsIssued'])
+        ->and($quarter['customerBase']['newLeads'])->toBeGreaterThan($week['customerBase']['newLeads'])
         ->and($quarter['topServices'][0]['orders'])->toBeGreaterThan($week['topServices'][0]['orders'])
         // Rates and current-state counts describe a moment, not a span.
         ->and($quarter['bookingSummary']['showRate'])->toBe($week['bookingSummary']['showRate'])
-        ->and($quarter['customerActivity']['churnRisk'])->toBe($week['customerActivity']['churnRisk']);
+        ->and($quarter['customerBase']['openLeads'])->toBe($week['customerBase']['openLeads'])
+        ->and($quarter['customerBase']['churnRisk'])->toBe($week['customerBase']['churnRisk']);
 });
 
 dataset('unusable ranges', [

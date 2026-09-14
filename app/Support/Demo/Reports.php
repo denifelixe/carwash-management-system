@@ -2,6 +2,7 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\Paginated;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
 
@@ -24,6 +25,9 @@ class Reports
 
     /** Widest range still charted day by day; anything longer rolls up to months. */
     private const DAILY_RANGE_LIMIT = 62;
+
+    /** Rows per page in the order log, matching the live reader. */
+    private const ORDERS_PER_PAGE = 25;
 
     /** Hand-tuned figures for the running week, keyed by days back from today. */
     private const CURATED_DAYS = [
@@ -346,27 +350,28 @@ class Reports
     }
 
     /**
-     * Customer activity rollup for the reports module. Flow figures grow with
-     * the range; distinct-people and current-state figures do not scale
-     * linearly, so they are damped or left alone.
+     * How the customer base moved over the range. Flow figures grow with the
+     * range; distinct-people and current-state figures do not scale linearly,
+     * so they are damped or left alone.
      *
-     * @return array{newCustomers: int, returningCustomers: int, churnRisk: int, stampsIssued: int, stampsRedeemed: int, rewardsClaimed: int, averageVisitsPerCustomer: float}
+     * @return array{newMembers: int, returningMembers: int, membersServed: int, newLeads: int, convertedLeads: int, openLeads: int, churnRisk: int, averageVisitsPerMember: float}
      */
-    public static function customerActivity(float $scale = 1.0): array
+    public static function customerBase(float $scale = 1.0): array
     {
         return [
-            'newCustomers' => self::scaleFlow(24, $scale),
-            'returningCustomers' => self::scaleDistinct(186, $scale),
+            'newMembers' => self::scaleFlow(24, $scale),
+            'returningMembers' => self::scaleDistinct(186, $scale),
+            'membersServed' => self::scaleDistinct(214, $scale),
+            'newLeads' => self::scaleFlow(38, $scale),
+            'convertedLeads' => self::scaleFlow(11, $scale),
+            'openLeads' => 42,
             'churnRisk' => 12,
-            'stampsIssued' => self::scaleFlow(418, $scale),
-            'stampsRedeemed' => self::scaleFlow(142, $scale),
-            'rewardsClaimed' => self::scaleFlow(19, $scale),
-            'averageVisitsPerCustomer' => 3.4,
+            'averageVisitsPerMember' => 3.4,
         ];
     }
 
     /**
-     * @return array{total: int, scheduled: int, completed: int, cancelled: int, showRate: float, peakSlot: string}
+     * @return array{total: int, scheduled: int, completed: int, cancelled: int, showRate: float}
      */
     public static function bookingSummary(float $scale = 1.0): array
     {
@@ -376,8 +381,97 @@ class Reports
             'completed' => self::scaleFlow(38, $scale),
             'cancelled' => self::scaleFlow(5, $scale),
             'showRate' => 92.2,
-            'peakSlot' => '09.00 - 11.00',
         ];
+    }
+
+    /**
+     * The orders behind the contribution card, mirroring the shape live
+     * ReportQueries::orderLog hands the same page.
+     *
+     * @return array{data: list<array<string, mixed>>, meta: array{currentPage: int, lastPage: int, perPage: int, total: int, from: int|null, to: int|null}}
+     */
+    public static function orderLog(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?string $serviceName = null,
+        int $page = 1,
+    ): array {
+        return Paginated::fromArray(
+            self::orderLogRows($from, $to, $serviceName),
+            max($page, 1),
+            self::ORDERS_PER_PAGE,
+        );
+    }
+
+    /**
+     * Every row of that log, the way the spreadsheet export reads it.
+     *
+     * @return list<array<string, mixed>>
+     */
+    public static function orderLogRows(
+        CarbonImmutable $from,
+        CarbonImmutable $to,
+        ?string $serviceName = null,
+    ): array {
+        $rows = [];
+
+        foreach (Operations::orders() as $order) {
+            $date = $order['date'];
+
+            if ($date < $from->toDateString() || $date > $to->toDateString()) {
+                continue;
+            }
+
+            $services = array_map('trim', explode(',', (string) $order['items']));
+
+            if ($serviceName !== null && $serviceName !== '' && ! in_array($serviceName, $services, strict: true)) {
+                continue;
+            }
+
+            $rows[] = [
+                'id' => $order['id'],
+                'orderNo' => $order['orderNo'],
+                'date' => CarbonImmutable::createFromFormat('!Y-m-d', $date)->format('d/m/Y'),
+                /* The fixtures carry the dotted clock the operational modules
+                 * print; the log spells a timestamp with a colon. */
+                'time' => str_replace('.', ':', (string) $order['time']),
+                'vehicle' => $order['vehicle'],
+                'plate' => $order['plate'],
+                'customer' => $order['customer'],
+                'phone' => $order['phone'],
+                'services' => $order['items'],
+                'status' => $order['status'],
+                'total' => $order['total'],
+            ];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * Shift performance across the range, mirroring the shape live
+     * ReportQueries::shiftSummary hands the same page. `status` is deliberately
+     * absent: whether a shift is running is a today-only fact and says nothing
+     * about a range.
+     *
+     * @return list<array{id: string, name: string, time: string|null, cashier: string, initials: string, revenue: int, transactions: int, vehiclesServed: int, moneyIn: int, moneyOut: int}>
+     */
+    public static function shiftSummary(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $scale = self::rangeScale($from, $to);
+
+        return array_map(static fn (array $shift): array => [
+            'id' => $shift['id'],
+            'name' => $shift['name'],
+            'time' => $shift['time'],
+            'cashier' => $shift['cashier'],
+            'initials' => $shift['initials'],
+            'revenue' => self::scaleFlow($shift['revenue'], $scale),
+            'transactions' => self::scaleFlow($shift['transactions'], $scale),
+            'vehiclesServed' => self::scaleFlow($shift['vehiclesServed'], $scale),
+            'moneyIn' => self::scaleFlow($shift['moneyIn'], $scale),
+            'moneyOut' => self::scaleFlow($shift['moneyOut'], $scale),
+        ], Brand::shifts());
     }
 
     /**
