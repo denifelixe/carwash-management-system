@@ -328,6 +328,7 @@ export interface CarwashOrder {
     time: string;
     /** Actual arrival day, which can differ from the scheduled service day. */
     arrivalDate?: string | null;
+    settlementEnteredAt?: number | null;
     /** ISO day the booking was first recorded; null for walk-in orders. */
     bookingDate: string | null;
     customerId: number | null;

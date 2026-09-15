@@ -32,6 +32,7 @@ use Illuminate\Support\Carbon;
  * @property string $vehicle_plate
  * @property Carbon $service_date
  * @property Carbon|null $arrived_at
+ * @property Carbon|null $settlement_entered_at
  * @property Carbon|null $booking_date
  * @property string $source
  * @property string $status
@@ -53,6 +54,15 @@ class Order extends Model
 {
     /** @use HasFactory<OrderFactory> */
     use HasFactory, SoftDeletes;
+
+    protected static function booted(): void
+    {
+        static::saving(function (Order $order): void {
+            if ($order->isDirty('status') && $order->status === 'pelunasan') {
+                $order->settlement_entered_at = now();
+            }
+        });
+    }
 
     /** @return BelongsTo<Member, $this> */
     public function member(): BelongsTo
@@ -138,6 +148,7 @@ class Order extends Model
         return [
             'service_date' => 'date',
             'arrived_at' => 'datetime',
+            'settlement_entered_at' => 'datetime',
             'booking_date' => 'date',
         ];
     }

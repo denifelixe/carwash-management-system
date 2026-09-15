@@ -30,7 +30,7 @@ orderList.value.push({ ...orderList.value[0], id: 6, date: '2026-09-07' });
 orderList.value.push({ ...orderList.value[0], id: 7, date: '2026-09-09' });
 eval(code + `
 assert.equal(showAllOrders.value, false);
-assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 6]);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0]);
 showAllOrders.value = true;
 assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 1, 2, 3, 6]);
 assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 5);
@@ -45,7 +45,7 @@ for (const query of ['ord-2', 'CUSTOMER 2', ' B 2 AA ']) {
 showAllOrders.value = false;
 assert.equal(visibleOrders.value.length, 0);
 search.value = '';
-assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 6]);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0]);
 `);
 JS;
 

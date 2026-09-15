@@ -613,6 +613,10 @@ function setStatus(order: CarwashOrder, status: string): void {
         }).format(new Date());
     }
 
+    if (status === 'pelunasan' && order.status !== status) {
+        order.settlementEnteredAt = Date.now();
+    }
+
     order.status = status;
 }
 

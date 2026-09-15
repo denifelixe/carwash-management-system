@@ -787,22 +787,36 @@ function bookingDisplayStatus(order: CarwashOrder): string {
 const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
 
-    return orderList.value.filter((order) => {
-        const matchesStatus = showAllOrders.value
-            ? ['booking', 'menunggu', 'proses', 'pelunasan'].includes(
-                  order.status,
-              )
-            : order.status === 'pelunasan';
-        const matchesDate =
-            order.date <= (props.filters.date || props.filters.today);
-        const matchesQuery =
-            query === '' ||
-            order.orderNo.toLowerCase().includes(query) ||
-            order.customer.toLowerCase().includes(query) ||
-            order.plate.toLowerCase().includes(query);
+    return orderList.value
+        .filter((order) => {
+            const matchesStatus = showAllOrders.value
+                ? ['booking', 'menunggu', 'proses', 'pelunasan'].includes(
+                      order.status,
+                  )
+                : order.status === 'pelunasan';
+            const matchesDate =
+                order.date <= (props.filters.date || props.filters.today);
+            const matchesQuery =
+                query === '' ||
+                order.orderNo.toLowerCase().includes(query) ||
+                order.customer.toLowerCase().includes(query) ||
+                order.plate.toLowerCase().includes(query);
 
-        return matchesStatus && matchesDate && matchesQuery;
-    });
+            return matchesStatus && matchesDate && matchesQuery;
+        })
+        .sort((first, second) => {
+            if (showAllOrders.value) {
+                return 0;
+            }
+
+            return (
+                (first.settlementEnteredAt ?? 0) -
+                    (second.settlementEnteredAt ?? 0) ||
+                first.date.localeCompare(second.date) ||
+                (first.time ?? '').localeCompare(second.time ?? '') ||
+                first.id - second.id
+            );
+        });
 });
 
 const settlementGroups = computed(() => {
@@ -821,7 +835,11 @@ const settlementGroups = computed(() => {
                 : 'Pelunasan tertunggak',
             orders: visibleOrders.value
                 .filter((order) => order.date < date)
-                .sort((first, second) => first.date.localeCompare(second.date)),
+                .sort((first, second) =>
+                    showAllOrders.value
+                        ? first.date.localeCompare(second.date)
+                        : 0,
+                ),
         },
     ].filter((group) => group.orders.length > 0);
 });
