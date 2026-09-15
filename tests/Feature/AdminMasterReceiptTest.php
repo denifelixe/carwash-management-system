@@ -56,6 +56,7 @@ test('an owner sees the receipt module in the master sidebar', function () {
                 ->where('mode', 'live')
                 ->where('settings.receiptBusinessName', 'ZenWash Auto Care')
                 ->where('settings.receiptFooterNote', 'Struk ini adalah bukti pembayaran yang sah.')
+                ->where('settings.receiptAdditionalNote', '')
                 ->where('settings.receiptShowLogo', true)
                 ->where('settings.receiptShowQr', false)
                 ->where('settings.appPhotoUrl', null)
@@ -86,6 +87,7 @@ test('receipt settings are saved and handed to the slip', function () {
         ->post(route('admin.master.receipt.update'), [
             'receipt_business_name' => '  CV   Kilap Mandiri  ',
             'receipt_footer_note' => 'Barang yang sudah dicuci tidak dapat ditukar.',
+            'receipt_additional_note' => "Promo cuci berikutnya.\nTunjukkan struk ini.",
             'receipt_show_logo' => false,
             'receipt_show_qr' => true,
         ])
@@ -96,6 +98,7 @@ test('receipt settings are saved and handed to the slip', function () {
 
     expect(AppSettings::receiptBusinessName())->toBe('CV Kilap Mandiri')
         ->and(AppSettings::receiptFooterNote())->toBe('Barang yang sudah dicuci tidak dapat ditukar.')
+        ->and(AppSettings::receiptAdditionalNote())->toBe("Promo cuci berikutnya.\nTunjukkan struk ini.")
         ->and(AppSettings::receiptShowsLogo())->toBeFalse()
         ->and(AppSettings::receiptShowsQr())->toBeTrue();
 
@@ -107,6 +110,8 @@ test('receipt settings are saved and handed to the slip', function () {
                 ->where('brand.name', 'Kilap Auto Spa')
                 ->where('brand.receipt.name', 'CV Kilap Mandiri')
                 ->where('brand.receipt.footerNote', 'Barang yang sudah dicuci tidak dapat ditukar.')
+                ->where('brand.receipt.additionalNote', "Promo cuci berikutnya.\nTunjukkan struk ini.")
+                ->where('settings.receiptAdditionalNote', "Promo cuci berikutnya.\nTunjukkan struk ini.")
                 ->where('brand.receipt.showLogo', false)
                 ->where('brand.receipt.showQr', true)
                 ->where('settings.receiptBusinessName', 'CV Kilap Mandiri')
@@ -121,6 +126,46 @@ test('an unset receipt name follows the app name', function () {
     AppSettings::put(AppSettings::APP_NAME, 'Kilap Auto Spa', $owner->id);
 
     expect(AppSettings::receiptBusinessName())->toBe('Kilap Auto Spa');
+});
+
+test('an admin can clear the additional note', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    AppSettings::put(AppSettings::RECEIPT_ADDITIONAL_NOTE, 'Promo lama', $owner->id);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.receipt.update'), [
+            'receipt_business_name' => 'Kilap Auto Spa',
+            'receipt_additional_note' => '   ',
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect(AppSettings::receiptAdditionalNote())->toBe('');
+});
+
+test('additional notes reject invalid values', function (mixed $note) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.master.receipt.update'), [
+            'receipt_business_name' => 'Kilap Auto Spa',
+            'receipt_additional_note' => $note,
+        ])
+        ->assertSessionHasErrors('receipt_additional_note');
+
+    expect(AppSettings::receiptAdditionalNote())->toBe('');
+})->with([str_repeat('a', 501), [['invalid']]]);
+
+test('read-only staff cannot change the additional note', function () {
+    $staff = receiptStaff(['read' => true]);
+
+    $this->actingAs($staff, 'admin')
+        ->post(route('admin.master.receipt.update'), [
+            'receipt_business_name' => 'Kilap Auto Spa',
+            'receipt_additional_note' => 'Tidak diizinkan',
+        ])
+        ->assertForbidden();
+
+    expect(AppSettings::receiptAdditionalNote())->toBe('');
 });
 
 /* An outlet that wants no fine print saves it blank, and blank must stick. */

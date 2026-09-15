@@ -93,6 +93,27 @@ test('the slip opens in its own window instead of inside the SPA', function () {
         ->toContain('return null;');
 });
 
+test('additional notes appear above the footnote only on customer slips', function () {
+    $html = posReceiptModule();
+    $pdf = file_get_contents(resource_path('js/lib/posReceiptPdf.ts'));
+
+    expect($html)
+        ->toContain("brand.receipt.additionalNote === '' ? '' :")
+        ->toContain('escapeHtml(brand.receipt.additionalNote)')
+        ->toContain('white-space: pre-wrap');
+    expect($pdf)->toContain("if (brand.receipt.additionalNote !== '') {");
+
+    foreach ([$html, $pdf] as $source) {
+        expect(strpos($source, 'brand.receipt.additionalNote'))
+            ->toBeLessThan(strpos($source, 'brand.receipt.footerNote'));
+    }
+
+    foreach (['recapSheet.ts', 'recapSheetPdf.ts'] as $file) {
+        expect(file_get_contents(resource_path('js/lib/'.$file)))
+            ->not->toContain('additionalNote');
+    }
+});
+
 test('processing a payment hands the settlement straight to the slip', function () {
     expect(posModule())
         ->toContain("from '@/lib/posReceipt'")

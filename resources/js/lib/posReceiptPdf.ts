@@ -319,6 +319,11 @@ function footerBlock(
     slip.gap(0.8);
     slip.paragraph('Terima kasih atas kunjungan Anda.', 'center');
 
+    if (brand.receipt.additionalNote !== '') {
+        slip.gap(0.8);
+        slip.paragraph(brand.receipt.additionalNote, 'center');
+    }
+
     if (brand.receipt.footerNote !== '') {
         slip.gap(0.8);
         slip.paragraph(brand.receipt.footerNote, 'center', {

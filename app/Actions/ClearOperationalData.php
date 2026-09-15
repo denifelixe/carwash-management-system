@@ -12,6 +12,12 @@ class ClearOperationalData
      * @var list<string>
      */
     private const TABLES = [
+        /*
+         * The movement log is history and goes; stock_items stays. On hand is a
+         * fact about the shelf, not a record of trading, so it survives a reset
+         * the same way the service catalogue does.
+         */
+        'stock_movements',
         'daily_balance',
         'cash_entry_attachments',
         'cash_entries',

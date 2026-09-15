@@ -8,6 +8,7 @@ export interface CarwashReceiptBrand {
     name: string;
     /** Fine print under the thank-you line; blank prints no line at all. */
     footerNote: string;
+    additionalNote: string;
     /** The slip's own mark, falling back to the app photo until one is uploaded. */
     photo: string | null;
     /** Printed width of that mark, in millimetres of the 72mm printable area. */
@@ -477,16 +478,24 @@ export interface CarwashOrderSummary {
     awaitingBooking: number;
 }
 
-export interface CarwashStockItem {
+/** The half of an item the movement dialog needs. */
+export interface CarwashStockItemOption {
     id: number;
     sku: string;
     name: string;
-    category: string;
     unit: string;
     quantity: number;
     minQuantity: number;
+    isLowStock: boolean;
+}
+
+export interface CarwashStockItem extends CarwashStockItemOption {
+    category: string;
     unitCost: number;
+    stockValue: number;
     supplier: string;
+    notes: string;
+    isActive: boolean;
     updatedAt: string;
 }
 
@@ -495,12 +504,28 @@ export interface CarwashStockMovement {
     itemId: number;
     item: string;
     sku: string;
+    unit: string;
     type: string;
     quantity: number;
+    quantityAfter: number;
     note: string;
     date: string;
     time: string;
     by: string;
+}
+
+export interface CarwashStockFilters {
+    q: string;
+    category: string;
+    status: string;
+    stock: string;
+    page: number;
+    movementPage: number;
+}
+
+export interface CarwashStockStats {
+    totalItems: number;
+    lowStock: number;
 }
 
 export interface CarwashModule {

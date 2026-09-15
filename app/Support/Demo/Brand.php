@@ -10,7 +10,7 @@ use App\Support\AppSettings;
 class Brand
 {
     /**
-     * @return array{name: string, system: string, logo: string, photo: string|null, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string, receipt: array{name: string, footerNote: string, photo: string|null, logoWidth: int, showLogo: bool, showQr: bool}}
+     * @return array{name: string, system: string, logo: string, photo: string|null, whatsapp: string, instagram: string, stampTarget: int, stampReward: string, today: string, receipt: array{name: string, additionalNote: string, footerNote: string, photo: string|null, logoWidth: int, showLogo: bool, showQr: bool}}
      */
     public static function identity(): array
     {
@@ -34,13 +34,14 @@ class Brand
      * How the thermal slip is dressed, set in Master > Struk. Only the
      * receipt reads this: the recap sheet and the console keep the app name.
      *
-     * @return array{name: string, footerNote: string, photo: string|null, logoWidth: int, showLogo: bool, showQr: bool}
+     * @return array{name: string, additionalNote: string, footerNote: string, photo: string|null, logoWidth: int, showLogo: bool, showQr: bool}
      */
     public static function receipt(): array
     {
         return [
             'name' => AppSettings::receiptBusinessName(),
             'footerNote' => AppSettings::receiptFooterNote(),
+            'additionalNote' => AppSettings::receiptAdditionalNote(),
             'photo' => AppSettings::receiptPhotoUrl(),
             'logoWidth' => AppSettings::receiptLogoWidth(),
             'showLogo' => AppSettings::receiptShowsLogo(),

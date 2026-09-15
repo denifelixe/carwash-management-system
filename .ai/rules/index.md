@@ -16,6 +16,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | {app/Support/Admin/OrderLogCsv.php,app/Http/Controllers/Admin/ReportController.php,app/Http/Controllers/Demo/ReportController.php} | .ai/rules/controllers-demo.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}, {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-js-pages-admin.md |
 | {app/Support/AppSettings.php,app/Support/Demo/Brand.php,app/Http/Controllers/Demo/**} | .ai/rules/demo.md |
+| {app/Models/StockItem.php,app/Actions/Admin/RecordStockMovement.php,app/Actions/Admin/SaveStockItem.php,app/Support/Admin/StockQueries.php,app/Http/Requests/Admin/StoreStockMovementRequest.php} | .ai/rules/http-requests-admin.md |
 | {app/Http/Controllers/Admin/RecapQrController.php,app/Support/Admin/RecapLink.php,resources/js/lib/recapSheet*.ts} | .ai/rules/js-lib.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Support/Admin/OrderQueries.php,app/Support/Admin/OrderPresenter.php,resources/js/pages/admin/Pos.vue} | .ai/rules/js-pages-admin.md |
 | {resources/js/lib/recapSheet*.ts,resources/js/pages/admin/Finance.vue} | .ai/rules/lib-js-pages-admin.md |

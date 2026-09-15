@@ -14,6 +14,7 @@ class ReceiptController extends AdminController
             'settings' => [
                 'receiptBusinessName' => AppSettings::receiptBusinessName(),
                 'receiptFooterNote' => AppSettings::receiptFooterNote(),
+                'receiptAdditionalNote' => AppSettings::receiptAdditionalNote(),
                 'receiptShowLogo' => AppSettings::receiptShowsLogo(),
                 'receiptShowQr' => AppSettings::receiptShowsQr(),
                 'receiptPhotoUrl' => AppSettings::receiptPhotoUrl(),

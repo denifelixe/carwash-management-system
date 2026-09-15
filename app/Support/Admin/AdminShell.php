@@ -126,6 +126,7 @@ class AdminShell
             'finance' => 'admin.finance.index',
             'members' => 'admin.members.index',
             'leads' => 'admin.leads.index',
+            'inventory' => 'admin.inventory.index',
             'reports' => 'admin.reports.index',
             'users_and_roles' => 'admin.users.index',
             'master_services' => 'admin.master.services.index',

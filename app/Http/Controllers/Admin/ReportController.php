@@ -51,7 +51,7 @@ class ReportController extends Controller
                 $request->string('service')->toString() ?: null,
                 (int) $request->integer('orderPage'),
             )),
-            'inventorySummary' => ReportQueries::EMPTY_INVENTORY,
+            'inventorySummary' => ReportQueries::inventorySummary(),
             'shifts' => ReportQueries::shiftSummary($from, $to),
             'capabilities' => [
                 'read' => true,

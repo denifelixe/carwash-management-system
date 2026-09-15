@@ -11,6 +11,8 @@ use App\Models\Member;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Models\StockItem;
+use App\Models\StockMovement;
 use App\Support\Admin\FinanceQueries;
 use Carbon\CarbonImmutable;
 use Illuminate\Testing\TestResponse;
@@ -579,11 +581,55 @@ test('downloading from one service narrows the file and names it', function (): 
         ->and($csv)->not->toContain('Regular');
 });
 
-test('the inventory card is served an empty summary until the module exists', function (): void {
+test('the inventory card reads the live stock module', function (): void {
+    $short = StockItem::factory()->create([
+        'name' => 'Snow Foam pH Netral',
+        'quantity' => 3,
+        'min_quantity' => 6,
+        'unit_cost' => 320_000,
+    ]);
+    StockItem::factory()->create([
+        'name' => 'Spons Cuci Halus',
+        'quantity' => 10,
+        'min_quantity' => 4,
+        'unit_cost' => 12_000,
+    ]);
+    /* A retired item is out of every figure the card prints. */
+    StockItem::factory()->create(['quantity' => 99, 'unit_cost' => 1_000, 'is_active' => false]);
+
+    StockMovement::factory()->for($short, 'stockItem')->create([
+        'type' => 'keluar',
+        'quantity' => -5,
+        'recorded_at' => now()->subDay(),
+    ]);
+    StockMovement::factory()->for($short, 'stockItem')->create([
+        'type' => 'keluar',
+        'quantity' => -2,
+        'recorded_at' => now(),
+    ]);
+    /* Older than the rolling week, so it counts for nothing. */
+    StockMovement::factory()->for($short, 'stockItem')->create([
+        'type' => 'keluar',
+        'quantity' => -40,
+        'recorded_at' => now()->subDays(20),
+    ]);
+
     $summary = openReport(Admin::factory()->create(['is_owner' => true]))['inventorySummary'];
 
-    expect($summary['totalItems'])->toBe(0)
+    expect($summary['totalItems'])->toBe(2)
+        ->and($summary['lowStock'])->toBe(1)
+        ->and($summary['stockValue'])->toBe(3 * 320_000 + 10 * 12_000)
+        ->and($summary['movementsThisWeek'])->toBe(2)
+        ->and($summary['topConsumed'])->toBe('Snow Foam pH Netral');
+});
+
+test('the inventory card says nothing was consumed when nothing moved', function (): void {
+    StockItem::factory()->create(['quantity' => 10, 'min_quantity' => 2, 'unit_cost' => 5_000]);
+
+    $summary = openReport(Admin::factory()->create(['is_owner' => true]))['inventorySummary'];
+
+    expect($summary['totalItems'])->toBe(1)
         ->and($summary['lowStock'])->toBe(0)
-        ->and($summary['stockValue'])->toBe(0)
+        ->and($summary['movementsThisWeek'])->toBe(0)
         ->and($summary['topConsumed'])->toBe('—');
 });

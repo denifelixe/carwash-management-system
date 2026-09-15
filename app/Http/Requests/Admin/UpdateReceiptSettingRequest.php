@@ -26,6 +26,7 @@ class UpdateReceiptSettingRequest extends FormRequest
         return [
             'receipt_business_name' => ['required', 'string', 'max:60'],
             'receipt_footer_note' => ['nullable', 'string', 'max:120'],
+            'receipt_additional_note' => ['nullable', 'string', 'max:500'],
             'receipt_show_logo' => ['boolean'],
             'receipt_show_qr' => ['boolean'],
             'receipt_logo_width' => [
@@ -50,6 +51,7 @@ class UpdateReceiptSettingRequest extends FormRequest
             'receipt_business_name.required' => 'Nama bisnis pada struk wajib diisi.',
             'receipt_business_name.max' => 'Nama bisnis pada struk maksimal 60 karakter, agar muat pada roll 80mm.',
             'receipt_footer_note.max' => 'Catatan kaki struk maksimal 120 karakter.',
+            'receipt_additional_note.max' => 'Catatan tambahan struk maksimal 500 karakter.',
             'receipt_photo.image' => 'Logo struk harus berupa gambar yang valid.',
             'receipt_photo.mimes' => 'Logo struk harus berformat PNG, JPG, JPEG, atau WebP.',
             'receipt_photo.max' => 'Ukuran logo struk maksimal 20 MB.',
@@ -58,13 +60,14 @@ class UpdateReceiptSettingRequest extends FormRequest
     }
 
     /**
-     * @return array{receipt_business_name: string, receipt_footer_note: string, receipt_show_logo: bool, receipt_show_qr: bool, receipt_logo_width: int, remove_receipt_photo: bool, receipt_photo: UploadedFile|null}
+     * @return array{receipt_business_name: string, receipt_additional_note: string, receipt_footer_note: string, receipt_show_logo: bool, receipt_show_qr: bool, receipt_logo_width: int, remove_receipt_photo: bool, receipt_photo: UploadedFile|null}
      */
     public function receipt(): array
     {
         return [
             'receipt_business_name' => $this->string('receipt_business_name')->toString(),
             'receipt_footer_note' => $this->string('receipt_footer_note')->toString(),
+            'receipt_additional_note' => $this->string('receipt_additional_note')->trim()->toString(),
             'receipt_show_logo' => $this->boolean('receipt_show_logo'),
             'receipt_show_qr' => $this->boolean('receipt_show_qr'),
             /* An absent size leaves the printed mark exactly as it is. */

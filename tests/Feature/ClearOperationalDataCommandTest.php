@@ -12,6 +12,8 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Models\StockItem;
+use App\Models\StockMovement;
 use App\Support\DangerousKeyManager;
 use Dotenv\Dotenv;
 use Illuminate\Support\Facades\DB;
@@ -102,6 +104,7 @@ test('it clears operational data while preserving users roles and masters', func
     $cashEntry = CashEntry::factory()->create(['recorded_by_admin_id' => $admin->id]);
     CashEntryAttachment::factory()->for($cashEntry)->create();
     DailyBalance::factory()->create();
+    StockMovement::factory()->for(StockItem::factory()->create(), 'stockItem')->create();
 
     DB::table('admin_password_reset_tokens')->insert([
         'email' => $admin->email,
@@ -160,6 +163,8 @@ test('it clears operational data while preserving users roles and masters', func
         'admin_role_module',
         'admin_shifts',
         'services',
+        /* On hand is a fact about the shelf, so the items outlive a reset. */
+        'stock_items',
         'app_settings',
         'migrations',
     ])->mapWithKeys(fn (string $table): array => [$table => DB::table($table)->count()]);
@@ -171,6 +176,7 @@ test('it clears operational data while preserving users roles and masters', func
             ->assertSuccessful();
 
         foreach ([
+            'stock_movements',
             'daily_balance',
             'cash_entry_attachments',
             'cash_entries',

@@ -141,10 +141,6 @@ const totalServiceRevenue = computed<number>(() =>
     props.topServices.reduce((total, service) => total + service.revenue, 0),
 );
 
-const hasInventory = computed<boolean>(
-    () => props.inventorySummary.totalItems > 0,
-);
-
 /** Which service the open order log is narrowed to; null is every order. */
 const openedService = ref<string | null>(null);
 const isOrderLogOpen = ref<boolean>(false);
@@ -569,13 +565,7 @@ const orderLogDownloadUrl = computed<string>(() => {
 
             <!-- Inventory summary -->
             <SectionCard title="Ringkasan inventory" caption="Stok operasional">
-                <EmptyState
-                    v-if="!hasInventory"
-                    :icon="Boxes"
-                    title="Modul inventory belum aktif"
-                    caption="Angka stok muncul di sini setelah modul Inventory dirilis."
-                />
-                <ul v-else class="mt-4 space-y-2.5 text-sm">
+                <ul class="mt-4 space-y-2.5 text-sm">
                     <li class="flex items-center justify-between gap-3">
                         <span class="text-slate-500">Total item</span>
                         <span class="font-semibold text-slate-900 tabular-nums">
@@ -619,7 +609,6 @@ const orderLogDownloadUrl = computed<string>(() => {
                     </li>
                 </ul>
                 <p
-                    v-if="hasInventory"
                     class="mt-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-600"
                 >
                     <Boxes class="h-3.5 w-3.5 shrink-0" />

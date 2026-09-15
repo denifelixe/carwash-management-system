@@ -44,19 +44,16 @@ class ReportQueries
     public const ORDERS_PER_PAGE = 25;
 
     /**
-     * The inventory module has no tables yet, so the card is served zeroes and
-     * renders its own empty state. Kept here rather than in the controller so
-     * both modes are handed the same prop shape.
+     * The stock card. Deliberately takes no range: on hand is a figure for right
+     * now and the movement count is a rolling week, which is why the Reports
+     * page leaves this prop out of its range reload.
      *
-     * @var array{totalItems: int, lowStock: int, stockValue: int, movementsThisWeek: int, topConsumed: string}
+     * @return array{totalItems: int, lowStock: int, stockValue: int, movementsThisWeek: int, topConsumed: string}
      */
-    public const EMPTY_INVENTORY = [
-        'totalItems' => 0,
-        'lowStock' => 0,
-        'stockValue' => 0,
-        'movementsThisWeek' => 0,
-        'topConsumed' => '—',
-    ];
+    public static function inventorySummary(): array
+    {
+        return StockQueries::summary();
+    }
 
     /**
      * Turn the raw query string into a usable range, falling back to the last

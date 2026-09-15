@@ -284,6 +284,7 @@ ${outstandingBlock(receipt)}
 <footer class="footer">
     <p class="status">${receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'}</p>
     <p>Terima kasih atas kunjungan Anda.</p>
+    ${brand.receipt.additionalNote === '' ? '' : `<p class="additional-note">${escapeHtml(brand.receipt.additionalNote)}</p>`}
     ${brand.receipt.footerNote === '' ? '' : `<p class="fineprint">${escapeHtml(brand.receipt.footerNote)}</p>`}
     ${receipt.isReprint ? `<p class="fineprint">Dicetak ulang ${escapeHtml(printedAt(receipt.timezone))}.</p>` : ''}
     ${verificationBlock(receipt, brand)}
@@ -419,6 +420,7 @@ ${toolbarStyles()}
     letter-spacing: 0.18em;
     margin-bottom: 4px;
 }
+.additional-note { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
 .fineprint { color: #64748b; font-size: 10px; margin-top: 6px; }
 .verification { border-top: 1px dashed #94a3b8; break-inside: avoid; display: none; margin-top: 8px; page-break-inside: avoid; padding-top: 8px; }
 .verification-qr-image { display: block; height: 30mm; margin: 0 auto 3px; width: 30mm; }

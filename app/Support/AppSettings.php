@@ -55,6 +55,8 @@ class AppSettings
 
     public const RECEIPT_SHOW_QR = 'receipt_show_qr';
 
+    public const RECEIPT_ADDITIONAL_NOTE = 'receipt_additional_note';
+
     public const RECEIPT_FOOTER_NOTE = 'receipt_footer_note';
 
     public const RECEIPT_PHOTO = 'receipt_photo';
@@ -169,6 +171,11 @@ class AppSettings
     public static function receiptBusinessName(): string
     {
         return self::brand(self::RECEIPT_BUSINESS_NAME) ?? self::appName();
+    }
+
+    public static function receiptAdditionalNote(): string
+    {
+        return self::brand(self::RECEIPT_ADDITIONAL_NOTE) ?? '';
     }
 
     /**

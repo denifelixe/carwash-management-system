@@ -17,12 +17,13 @@ use RuntimeException;
 class UpdateReceiptSettings
 {
     /**
-     * @param  array{receipt_business_name: string, receipt_footer_note: string, receipt_show_logo: bool, receipt_show_qr: bool, receipt_logo_width: int, remove_receipt_photo: bool, receipt_photo: UploadedFile|null}  $settings
+     * @param  array{receipt_business_name: string, receipt_additional_note: string, receipt_footer_note: string, receipt_show_logo: bool, receipt_show_qr: bool, receipt_logo_width: int, remove_receipt_photo: bool, receipt_photo: UploadedFile|null}  $settings
      */
     public function handle(array $settings, Admin $admin): void
     {
         AppSettings::put(AppSettings::RECEIPT_BUSINESS_NAME, $settings['receipt_business_name'], $admin->id);
         AppSettings::put(AppSettings::RECEIPT_FOOTER_NOTE, $settings['receipt_footer_note'], $admin->id);
+        AppSettings::put(AppSettings::RECEIPT_ADDITIONAL_NOTE, $settings['receipt_additional_note'], $admin->id);
         AppSettings::put(AppSettings::RECEIPT_SHOW_LOGO, $settings['receipt_show_logo'] ? '1' : '0', $admin->id);
         AppSettings::put(AppSettings::RECEIPT_SHOW_QR, $settings['receipt_show_qr'] ? '1' : '0', $admin->id);
         AppSettings::put(AppSettings::RECEIPT_LOGO_WIDTH, (string) $settings['receipt_logo_width'], $admin->id);

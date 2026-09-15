@@ -11,6 +11,7 @@ const props = defineProps<{
     settings: {
         receiptBusinessName: string;
         receiptFooterNote: string;
+        receiptAdditionalNote: string;
         receiptShowLogo: boolean;
         receiptShowQr: boolean;
         appPhotoUrl: string | null;
@@ -26,6 +27,7 @@ const props = defineProps<{
 const form = useForm({
     receipt_business_name: props.settings.receiptBusinessName,
     receipt_footer_note: props.settings.receiptFooterNote,
+    receipt_additional_note: props.settings.receiptAdditionalNote,
     receipt_show_logo: props.settings.receiptShowLogo,
     receipt_show_qr: props.settings.receiptShowQr,
     receipt_logo_width: props.settings.receiptLogoWidth,
@@ -175,6 +177,37 @@ function submit(): void {
                     <InputError
                         class="mt-2"
                         :message="form.errors.receipt_business_name"
+                    />
+                </div>
+
+                <div class="border-b border-slate-100 p-5">
+                    <div class="flex items-center justify-between gap-3">
+                        <label
+                            for="receipt_additional_note"
+                            class="text-sm font-semibold text-slate-900"
+                        >
+                            Catatan tambahan
+                        </label>
+                        <span class="text-[11px] text-slate-400">
+                            {{ form.receipt_additional_note.length }}/500
+                        </span>
+                    </div>
+                    <p class="mt-0.5 text-sm text-slate-500">
+                        Dicetak di atas catatan kaki pada struk transaksi/order.
+                        Kosongkan bila tidak perlu dicetak.
+                    </p>
+                    <textarea
+                        id="receipt_additional_note"
+                        v-model="form.receipt_additional_note"
+                        rows="4"
+                        maxlength="500"
+                        placeholder="Tambahkan informasi atau pesan untuk pelanggan."
+                        :disabled="!capabilities.update"
+                        class="mt-3 block w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 transition outline-none placeholder:text-slate-400 focus:border-cyan-400 focus:ring-3 focus:ring-cyan-500/10 disabled:cursor-not-allowed disabled:bg-slate-50"
+                    />
+                    <InputError
+                        class="mt-2"
+                        :message="form.errors.receipt_additional_note"
                     />
                 </div>
 
