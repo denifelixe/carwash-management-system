@@ -99,6 +99,7 @@ Route::domain((string) config('domains.admin'))
             Route::post('stok/{stockItem}/pergerakan', [InventoryController::class, 'storeMovement'])->name('inventory.movements.store');
             Route::get('laporan', [ReportController::class, 'index'])->name('reports.index');
             Route::get('laporan/order.csv', [ReportController::class, 'exportOrders'])->name('reports.orders.export');
+            Route::get('laporan/keuangan.csv', [ReportController::class, 'exportFinance'])->name('reports.finance.export');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
             Route::get('users/{adminUser}/photo', [AdminUserController::class, 'photo'])->name('users.photo');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');

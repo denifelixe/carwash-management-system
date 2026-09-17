@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\FinanceLogCsv;
+use App\Support\Admin\FinanceReportQueries;
 use App\Support\Admin\OrderLogCsv;
 use App\Support\Admin\ReportQueries;
 use Illuminate\Http\Request;
@@ -37,6 +39,13 @@ class ReportController extends Controller
             ...$adminShell->props($admin, 'Laporan', 'reports'),
             'trend' => ReportQueries::trend($from, $to),
             'filters' => ReportQueries::rangeMeta($from, $to),
+            'financeSummary' => fn (): array => FinanceReportQueries::summary($from, $to),
+            'financeLog' => Inertia::optional(fn (): array => FinanceReportQueries::log(
+                $from,
+                $to,
+                $request->string('direction')->toString(),
+                $request->integer('financePage'),
+            )),
             'topServices' => ReportQueries::topServices($from, $to),
             'customerBase' => ReportQueries::customerBase($from, $to),
             'bookingSummary' => ReportQueries::bookingSummary($from, $to),
@@ -76,6 +85,22 @@ class ReportController extends Controller
         return OrderLogCsv::download(
             ReportQueries::orderLogRows($from, $to, $service),
             OrderLogCsv::fileName($from, $to, $service),
+        );
+    }
+
+    public function exportFinance(Request $request): StreamedResponse
+    {
+        Gate::authorize('admin.reports.read');
+
+        ['from' => $from, 'to' => $to] = ReportQueries::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+        $direction = FinanceReportQueries::direction($request->string('direction')->toString());
+
+        return FinanceLogCsv::download(
+            FinanceReportQueries::rows($from, $to, $direction),
+            FinanceLogCsv::fileName($from, $to, $direction),
         );
     }
 }

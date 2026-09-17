@@ -80,6 +80,96 @@ function openOrderLog(Admin $admin, array $query = []): TestResponse
     );
 }
 
+function openFinanceLog(Admin $admin, array $query = []): TestResponse
+{
+    return test()->actingAs($admin, 'admin')->get(route('admin.reports.index', $query), [
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(request()),
+        'X-Inertia-Partial-Component' => 'admin/Reports',
+        'X-Inertia-Partial-Data' => 'financeLog',
+    ]);
+}
+
+test('finance report reconciles with the ledger and uses payment and entry dates', function (): void {
+    $admin = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create(['service_date' => '2026-09-01']);
+    reportPayment('2026-08-29 23:59:59', 70000, ['order_id' => $order->id, 'channel_breakdown' => [['label' => 'Tunai', 'amount' => 100000]]]);
+    CashEntry::factory()->create(['direction' => 'in', 'amount' => 30000, 'entry_date' => '2026-08-29']);
+    CashEntry::factory()->create(['direction' => 'out', 'amount' => 20000, 'entry_date' => '2026-08-29']);
+    reportPayment('2026-08-30 00:00:00', 90000);
+    reportPayment('2026-08-29 12:00:00', 0);
+    reportPayment('2026-08-29 12:00:00', 50000)->delete();
+    CashEntry::factory()->create(['entry_date' => '2026-08-29', 'amount' => 40000])->delete();
+    $query = ['from' => '2026-08-29', 'to' => '2026-08-29'];
+    $props = openReport($admin, $query);
+    $ledger = FinanceQueries::ledgerForDate('2026-08-29');
+
+    expect($props)->not->toHaveKey('financeLog')
+        ->and($props['financeSummary'])->toBe([
+            'moneyIn' => 100000, 'moneyOut' => 20000, 'net' => 80000, 'transactions' => 3,
+        ])
+        ->and($props['financeSummary']['moneyIn'])->toBe(collect($ledger['moneyIn'])->sum('amount'))
+        ->and($props['financeSummary']['moneyOut'])->toBe(collect($ledger['moneyOut'])->sum('amount'));
+
+    $rows = openFinanceLog($admin, $query)->assertOk()
+        ->assertJsonCount(3, 'props.financeLog.data')
+        ->assertJsonPath('props.financeLog.meta.total', 3)->json('props.financeLog.data');
+    expect(collect($rows)->sum('amount'))->toBe(120000);
+});
+
+test('finance log filters and paginates while export includes every matching row', function (): void {
+    $admin = reportStaff(['read' => true]);
+    CashEntry::factory()->count(27)->create(['direction' => 'out', 'entry_date' => '2026-08-29', 'occurred_at' => '2026-08-29 10:00:00', 'amount' => 15000]);
+    reportPayment('2026-08-29 11:00:00', 70000);
+    $query = ['from' => '2026-08-29', 'to' => '2026-08-29', 'direction' => 'out'];
+
+    openFinanceLog($admin, $query)->assertOk()
+        ->assertJsonCount(25, 'props.financeLog.data')->assertJsonPath('props.financeLog.meta.total', 27)
+        ->assertJsonPath('props.financeLog.data.0.direction', 'out');
+    openFinanceLog($admin, [...$query, 'financePage' => 2])->assertOk()
+        ->assertJsonCount(2, 'props.financeLog.data')->assertJsonPath('props.financeLog.meta.currentPage', 2);
+
+    $csv = $this->get(route('admin.reports.finance.export', [...$query, 'financePage' => 2]))
+        ->assertOk()->assertDownload('laporan-keuangan-pengeluaran-2026-08-29-sd-2026-08-29.csv')->streamedContent();
+    expect($csv)->toStartWith("\u{FEFF}Tanggal;Jam;Referensi;")
+        ->and(array_filter(explode("\r\n", $csv)))->toHaveCount(28)
+        ->and($csv)->not->toContain(';POS;');
+});
+
+test('finance export preserves numeric amounts and escapes spreadsheet formulas', function (): void {
+    CashEntry::factory()->create([
+        'direction' => 'in', 'entry_date' => '2026-08-29', 'occurred_at' => '2026-08-29 08:30:00',
+        'description' => '=1+1', 'category' => 'Pendapatan Lain', 'amount' => 25000,
+    ]);
+    reportPayment('2026-08-29 09:00:00', 45000);
+    $csv = $this->actingAs(reportStaff(['read' => true]), 'admin')
+        ->get(route('admin.reports.finance.export', ['from' => '2026-08-29', 'to' => '2026-08-29', 'direction' => 'in']))
+        ->assertOk()->streamedContent();
+    $rows = array_map(fn (string $line): array => str_getcsv($line, ';', '"', ''), array_filter(explode("\r\n", $csv)));
+
+    expect($rows)->toHaveCount(3)
+        ->and($rows[1][4])->toBe('POS')
+        ->and($rows[1][11])->toBe('45000')
+        ->and($rows[2][1])->toBe('08:30')
+        ->and($rows[2][6])->toBe("'=1+1")
+        ->and($rows[2][11])->toBe('25000')
+        ->and($rows[2][12])->toBe('0');
+});
+
+test('empty finance reports and downloads are valid', function (): void {
+    $admin = reportStaff(['read' => true]);
+    expect(openReport($admin)['financeSummary'])->toBe(['moneyIn' => 0, 'moneyOut' => 0, 'net' => 0, 'transactions' => 0]);
+    openFinanceLog($admin)->assertOk()->assertJsonCount(0, 'props.financeLog.data')->assertJsonPath('props.financeLog.meta.total', 0);
+    $csv = $this->get(route('admin.reports.finance.export'))->assertOk()->streamedContent();
+    expect(array_filter(explode("\r\n", $csv)))->toHaveCount(1);
+});
+
+test('finance report downloads require report read access', function (): void {
+    $this->get(route('admin.reports.finance.export'))->assertRedirect(route('admin.login'));
+    $this->actingAs(reportStaff(['read' => false]), 'admin')->get(route('admin.reports.finance.export'))->assertForbidden();
+    openFinanceLog(reportStaff(['read' => false]))->assertForbidden();
+});
+
 /** @return array<string, mixed> */
 function openReport(Admin $admin, array $query = []): array
 {

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Demo;
 
+use App\Support\Admin\FinanceLogCsv;
+use App\Support\Admin\FinanceReportQueries;
 use App\Support\Admin\OrderLogCsv;
 use App\Support\Demo\Reports;
 use Illuminate\Http\Request;
@@ -26,6 +28,13 @@ class ReportController extends AdminController
         return $this->page($request, 'admin/Reports', [
             'trend' => Reports::trend($from, $to),
             'filters' => Reports::rangeMeta($from, $to),
+            'financeSummary' => fn (): array => Reports::financeSummary($from, $to),
+            'financeLog' => Inertia::optional(fn (): array => Reports::financeLog(
+                $from,
+                $to,
+                $request->string('direction')->toString(),
+                $request->integer('financePage'),
+            )),
             'topServices' => Reports::topServices($scale),
             'customerBase' => Reports::customerBase($scale),
             'bookingSummary' => Reports::bookingSummary($scale),
@@ -54,6 +63,20 @@ class ReportController extends AdminController
         return OrderLogCsv::download(
             Reports::orderLogRows($from, $to, $service),
             OrderLogCsv::fileName($from, $to, $service),
+        );
+    }
+
+    public function exportFinance(Request $request): StreamedResponse
+    {
+        ['from' => $from, 'to' => $to] = Reports::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+        $direction = FinanceReportQueries::direction($request->string('direction')->toString());
+
+        return FinanceLogCsv::download(
+            Reports::financeLogRows($from, $to, $direction),
+            FinanceLogCsv::fileName($from, $to, $direction),
         );
     }
 }

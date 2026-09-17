@@ -2,6 +2,7 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\FinanceReportQueries;
 use App\Support\Admin\Paginated;
 use Carbon\CarbonImmutable;
 use Carbon\Exceptions\InvalidFormatException;
@@ -17,6 +18,37 @@ use Carbon\Exceptions\InvalidFormatException;
  */
 class Reports
 {
+    /** @return list<array<string, mixed>> */
+    public static function financeLogRows(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all'): array
+    {
+        $direction = FinanceReportQueries::direction($direction);
+
+        return array_values(collect(Finance::moneyIn())
+            ->map(fn (array $row): array => [...$row, 'direction' => 'in'])
+            ->concat(collect(Finance::moneyOut())->map(fn (array $row): array => [...$row, 'source' => 'manual', 'direction' => 'out']))
+            ->filter(fn (array $row): bool => $row['date'] >= $from->toDateString()
+                && $row['date'] <= $to->toDateString()
+                && ($direction === 'all' || $row['direction'] === $direction))
+            ->sortByDesc(fn (array $row): string => $row['date'].' '.$row['time'].' '.$row['ref'])
+            ->all());
+    }
+
+    /** @return array{data: list<array<string, mixed>>, meta: array<string, int|null>} */
+    public static function financeLog(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', int $page = 1): array
+    {
+        return Paginated::fromArray(self::financeLogRows($from, $to, $direction), $page, FinanceReportQueries::PER_PAGE);
+    }
+
+    /** @return array{moneyIn: int, moneyOut: int, net: int, transactions: int} */
+    public static function financeSummary(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $rows = collect(self::financeLogRows($from, $to));
+        $moneyIn = (int) $rows->where('direction', 'in')->sum('amount');
+        $moneyOut = (int) $rows->where('direction', 'out')->sum('amount');
+
+        return ['moneyIn' => $moneyIn, 'moneyOut' => $moneyOut, 'net' => $moneyIn - $moneyOut, 'transactions' => $rows->count()];
+    }
+
     /** Days of history a report may reach back over. */
     private const HISTORY_DAYS = 730;
 

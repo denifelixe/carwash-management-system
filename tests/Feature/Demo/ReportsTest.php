@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
 use Carbon\CarbonImmutable;
@@ -29,6 +30,29 @@ function openReports(array $query = []): AssertableInertia
  */
 beforeEach(function () {
     $this->travelTo('2026-08-03 09:00:00');
+});
+
+test('demo finance report and export use the same filtered ledger rows', function (): void {
+    $from = CarbonImmutable::parse('2026-08-01');
+    $to = CarbonImmutable::parse('2026-08-03');
+    $rows = Reports::financeLogRows($from, $to);
+    $props = openReports(['from' => '2026-08-01', 'to' => '2026-08-03'])->toArray()['props'];
+
+    expect($props['financeSummary']['moneyIn'])->toBe(collect($rows)->where('direction', 'in')->sum('amount'))
+        ->and($props['financeSummary']['moneyOut'])->toBe(collect($rows)->where('direction', 'out')->sum('amount'))
+        ->and($props)->not->toHaveKey('financeLog');
+
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])->get(route('demo.admin.reports', ['from' => '2026-08-01', 'to' => '2026-08-03', 'direction' => 'out']), [
+        'X-Inertia' => 'true',
+        'X-Inertia-Version' => app(HandleInertiaRequests::class)->version(request()),
+        'X-Inertia-Partial-Component' => 'admin/Reports',
+        'X-Inertia-Partial-Data' => 'financeLog',
+    ])->assertOk()->assertJsonCount(6, 'props.financeLog.data')->assertJsonPath('props.financeLog.data.0.direction', 'out');
+
+    $csv = $this->get(route('demo.admin.reports.finance.export', ['from' => '2026-08-01', 'to' => '2026-08-03', 'direction' => 'out']))
+        ->assertOk()->assertDownload('laporan-keuangan-pengeluaran-2026-08-01-sd-2026-08-03.csv')->streamedContent();
+
+    expect(array_filter(explode("\r\n", $csv)))->toHaveCount(7);
 });
 
 test('the report defaults to the last seven days', function () {

@@ -5,12 +5,12 @@ import {
     ChevronRight,
     Download,
     ListOrdered,
-    TrendingDown,
     Users,
     Wallet,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import {
+    exportFinance,
     exportOrders,
     index as indexReports,
 } from '@/actions/App/Http/Controllers/Admin/ReportController';
@@ -19,7 +19,6 @@ import DateRangeFilter from '@/components/demo/DateRangeFilter.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SectionCard from '@/components/demo/SectionCard.vue';
-import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import {
     formatCurrency,
@@ -34,6 +33,7 @@ import type {
     CarwashBrand,
     CarwashCustomerBase,
     CarwashInventorySummary,
+    CarwashMoneyEntry,
     CarwashPaginated,
     CarwashReportFilters,
     CarwashReportOrder,
@@ -54,6 +54,15 @@ const props = defineProps<{
     shifts: CarwashReportShift[];
     /** Only present once the contribution card has been opened. */
     orderLog?: CarwashPaginated<CarwashReportOrder>;
+    financeSummary: {
+        moneyIn: number;
+        moneyOut: number;
+        net: number;
+        transactions: number;
+    };
+    financeLog?: CarwashPaginated<
+        CarwashMoneyEntry & { direction: 'in' | 'out' }
+    >;
     capabilities: { read: boolean };
 }>();
 
@@ -65,6 +74,7 @@ const isLoading = ref<boolean>(false);
 
 /** The range lives in the URL, so a filtered report stays shareable. */
 function applyRange(range: { from: string; to: string }): void {
+    isFinanceLogOpen.value = false;
     router.get(
         props.mode === 'demo' ? admin.reports.url() : indexReports.url(),
         range,
@@ -81,6 +91,7 @@ function applyRange(range: { from: string; to: string }): void {
                 'customerBase',
                 'bookingSummary',
                 'shifts',
+                'financeSummary',
             ],
             onStart: () => {
                 isLoading.value = true;
@@ -109,18 +120,6 @@ function shareOf(value: number, total: number): number {
 /** Print every nth label so a 60-day range keeps a readable axis. */
 const axisStride = computed<number>(() =>
     Math.ceil(props.trend.length / MAX_AXIS_LABELS),
-);
-
-const periodRevenue = computed<number>(() =>
-    props.trend.reduce((total, point) => total + point.revenue, 0),
-);
-
-const periodExpense = computed<number>(() =>
-    props.trend.reduce((total, point) => total + point.expense, 0),
-);
-
-const periodTransactions = computed<number>(() =>
-    props.trend.reduce((total, point) => total + point.transactions, 0),
 );
 
 /** Both series share one scale so the bars stay comparable. */
@@ -202,6 +201,57 @@ const orderLogDownloadUrl = computed<string>(() => {
         ? admin.reports.orders.export.url({ query })
         : exportOrders.url({ query });
 });
+
+const isFinanceLogOpen = ref(false);
+const isFinanceLogLoading = ref(false);
+const financeLogError = ref(false);
+const financeDirection = ref<'all' | 'in' | 'out'>('all');
+const financeDirections = [
+    { value: 'all', label: 'Semua transaksi' },
+    { value: 'in', label: 'Pemasukan' },
+    { value: 'out', label: 'Pengeluaran' },
+] as const;
+
+function loadFinanceLog(page: number): void {
+    financeLogError.value = false;
+    isFinanceLogLoading.value = true;
+    router.reload({
+        only: ['financeLog'],
+        data: {
+            from: props.filters.from,
+            to: props.filters.to,
+            direction: financeDirection.value,
+            financePage: page,
+        },
+        onSuccess: () => {
+            financeLogError.value = false;
+        },
+        onError: () => {
+            financeLogError.value = true;
+        },
+        onFinish: () => {
+            isFinanceLogLoading.value = false;
+        },
+    });
+}
+
+function openFinanceLog(direction: 'all' | 'in' | 'out' = 'all'): void {
+    financeDirection.value = direction;
+    isFinanceLogOpen.value = true;
+    loadFinanceLog(1);
+}
+
+const financeLogDownloadUrl = computed(() => {
+    const query = {
+        from: props.filters.from,
+        to: props.filters.to,
+        direction: financeDirection.value,
+    };
+
+    return props.mode === 'demo'
+        ? admin.reports.finance.export.url({ query })
+        : exportFinance.url({ query });
+});
 </script>
 
 <template>
@@ -227,30 +277,74 @@ const orderLogDownloadUrl = computed<string>(() => {
             />
         </section>
 
-        <!-- Headline numbers, all on the selected period -->
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <StatCard
-                label="Pendapatan"
-                :value="formatShortCurrency(periodRevenue)"
-                :caption="`${formatNumber(periodTransactions)} transaksi`"
-                :icon="Wallet"
-                tone="emerald"
-            />
-            <StatCard
-                label="Pengeluaran"
-                :value="formatShortCurrency(periodExpense)"
-                caption="biaya operasional"
-                :icon="TrendingDown"
-                tone="rose"
-            />
-        </section>
-
-        <!-- Revenue vs expense -->
         <SectionCard
-            title="Pendapatan vs pengeluaran"
-            :caption="`Perbandingan ${filters.granularity} · ${filters.label}`"
+            title="Laporan Keuangan"
+            :caption="`Arus kas tercatat · ${filters.label} · ${formatNumber(financeSummary.transactions)} transaksi`"
         >
             <template #actions>
+                <button
+                    type="button"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
+                    @click="openFinanceLog()"
+                >
+                    <ListOrdered class="h-3.5 w-3.5" />
+                    Semua transaksi
+                </button>
+            </template>
+            <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                <button
+                    type="button"
+                    class="rounded-xl bg-emerald-50 p-4 text-left transition hover:bg-emerald-100"
+                    @click="openFinanceLog('in')"
+                >
+                    <p class="text-xs text-emerald-700">Total pemasukan</p>
+                    <p
+                        class="mt-1 text-lg font-semibold text-emerald-800 tabular-nums"
+                    >
+                        {{ formatCurrency(financeSummary.moneyIn) }}
+                    </p>
+                    <p class="mt-1 text-[11px] text-emerald-700">
+                        Pembayaran POS dan pemasukan manual
+                    </p>
+                </button>
+                <button
+                    type="button"
+                    class="rounded-xl bg-rose-50 p-4 text-left transition hover:bg-rose-100"
+                    @click="openFinanceLog('out')"
+                >
+                    <p class="text-xs text-rose-700">Total pengeluaran</p>
+                    <p
+                        class="mt-1 text-lg font-semibold text-rose-800 tabular-nums"
+                    >
+                        {{ formatCurrency(financeSummary.moneyOut) }}
+                    </p>
+                    <p class="mt-1 text-[11px] text-rose-700">
+                        Lihat rincian pengeluaran
+                    </p>
+                </button>
+                <div class="rounded-xl bg-slate-50 p-4">
+                    <p class="text-xs text-slate-600">Selisih periode</p>
+                    <p
+                        class="mt-1 text-lg font-semibold text-slate-900 tabular-nums"
+                    >
+                        {{ formatCurrency(financeSummary.net) }}
+                    </p>
+                    <p class="mt-1 text-[11px] text-slate-500">
+                        Pemasukan dikurangi pengeluaran
+                    </p>
+                </div>
+            </div>
+            <div
+                class="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5"
+            >
+                <div>
+                    <h3 class="text-sm font-medium text-slate-900">
+                        Pendapatan vs pengeluaran
+                    </h3>
+                    <p class="mt-0.5 text-xs text-slate-500">
+                        Perbandingan {{ filters.granularity }}
+                    </p>
+                </div>
                 <div class="flex items-center gap-4 text-[11px] text-slate-500">
                     <span class="flex items-center gap-1.5">
                         <span
@@ -265,7 +359,7 @@ const orderLogDownloadUrl = computed<string>(() => {
                         Pengeluaran
                     </span>
                 </div>
-            </template>
+            </div>
 
             <div
                 class="mt-6 flex gap-3 transition-opacity duration-200"
@@ -702,6 +796,168 @@ const orderLogDownloadUrl = computed<string>(() => {
                 </table>
             </div>
         </SectionCard>
+
+        <ModalDialog
+            :open="isFinanceLogOpen"
+            title="Daftar transaksi keuangan"
+            :caption="filters.label"
+            size="2xl"
+            dismissible
+            @close="isFinanceLogOpen = false"
+        >
+            <div class="mb-4 flex flex-wrap gap-2">
+                <button
+                    v-for="option in financeDirections"
+                    :key="option.value"
+                    type="button"
+                    :disabled="isFinanceLogLoading"
+                    :aria-pressed="financeDirection === option.value"
+                    class="rounded-lg px-3 py-2 text-xs font-medium transition disabled:opacity-50"
+                    :class="
+                        financeDirection === option.value
+                            ? 'bg-slate-900 text-white'
+                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    "
+                    @click="openFinanceLog(option.value)"
+                >
+                    {{ option.label }}
+                </button>
+            </div>
+            <div
+                v-if="isFinanceLogLoading"
+                class="space-y-3 py-6"
+                role="status"
+                aria-label="Memuat transaksi keuangan"
+            >
+                <div
+                    v-for="line in 4"
+                    :key="line"
+                    class="h-8 animate-pulse rounded bg-slate-100"
+                ></div>
+            </div>
+            <div
+                v-else-if="financeLogError"
+                class="py-6 text-center text-sm text-slate-600"
+            >
+                <p>Transaksi keuangan belum berhasil dimuat.</p>
+                <button
+                    type="button"
+                    class="mt-2 underline"
+                    @click="loadFinanceLog(1)"
+                >
+                    Coba lagi
+                </button>
+            </div>
+            <EmptyState
+                v-else-if="!financeLog?.data.length"
+                :icon="Wallet"
+                title="Belum ada transaksi keuangan"
+                caption="Tidak ada transaksi sesuai jenis dan rentang tanggal ini."
+            />
+            <div v-else class="-mx-5 -mb-5">
+                <div class="max-h-[60vh] overflow-auto">
+                    <table class="w-full min-w-[980px] text-sm">
+                        <thead
+                            class="sticky top-0 bg-white text-left text-[11px] tracking-wider text-slate-400 uppercase"
+                        >
+                            <tr class="border-b border-slate-100">
+                                <th class="px-5 py-3">Waktu / Referensi</th>
+                                <th class="px-5 py-3">Kategori / Keterangan</th>
+                                <th class="px-5 py-3">Metode</th>
+                                <th class="px-5 py-3">Shift / Petugas</th>
+                                <th class="px-5 py-3 text-right">Pemasukan</th>
+                                <th class="px-5 py-3 text-right">
+                                    Pengeluaran
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50">
+                            <tr
+                                v-for="entry in financeLog.data"
+                                :key="`${entry.source}-${entry.id}`"
+                                class="hover:bg-slate-50"
+                            >
+                                <td class="px-5 py-3 whitespace-nowrap">
+                                    <p class="font-medium text-slate-900">
+                                        {{ entry.date }} · {{ entry.time }}
+                                    </p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{ entry.ref }}
+                                    </p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{
+                                            entry.source === 'pos'
+                                                ? 'POS'
+                                                : 'Manual'
+                                        }}<span v-if="entry.orderNo">
+                                            · {{ entry.orderNo }}</span
+                                        >
+                                    </p>
+                                </td>
+                                <td class="max-w-64 px-5 py-3">
+                                    <p class="text-slate-700">
+                                        {{ entry.category }}
+                                    </p>
+                                    <p class="text-xs text-slate-500">
+                                        {{ entry.description || '—' }}
+                                    </p>
+                                </td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    {{ entry.method }}
+                                </td>
+                                <td class="px-5 py-3 text-slate-600">
+                                    <p>{{ entry.shift ?? 'Tanpa Shift' }}</p>
+                                    <p class="text-[11px] text-slate-500">
+                                        {{ entry.recordedBy }}
+                                    </p>
+                                </td>
+                                <td
+                                    class="px-5 py-3 text-right font-medium whitespace-nowrap text-emerald-700 tabular-nums"
+                                >
+                                    {{
+                                        entry.direction === 'in'
+                                            ? formatCurrency(entry.amount)
+                                            : '—'
+                                    }}
+                                </td>
+                                <td
+                                    class="px-5 py-3 text-right font-medium whitespace-nowrap text-rose-700 tabular-nums"
+                                >
+                                    {{
+                                        entry.direction === 'out'
+                                            ? formatCurrency(entry.amount)
+                                            : '—'
+                                    }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                <DataPagination
+                    :meta="financeLog.meta"
+                    label="transaksi"
+                    @change="loadFinanceLog"
+                />
+            </div>
+            <template #footer>
+                <div
+                    class="flex w-full flex-wrap items-center justify-between gap-3"
+                >
+                    <p class="text-[11px] text-slate-500">
+                        Unduhan berisi seluruh transaksi sesuai jenis dan
+                        rentang tanggal terpilih.
+                    </p>
+                    <a
+                        :href="financeLogDownloadUrl"
+                        class="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white transition hover:bg-slate-700"
+                        download
+                    >
+                        <Download class="h-3.5 w-3.5" />
+                        Unduh Excel (CSV)
+                    </a>
+                </div>
+            </template>
+        </ModalDialog>
 
         <!-- The orders behind the contribution card -->
         <ModalDialog
