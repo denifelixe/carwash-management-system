@@ -131,6 +131,28 @@ class FinanceController extends Controller
             )
             : CarbonImmutable::now();
         $entryDate = $occurredAt->toDateString();
+
+        if (! $request->boolean('confirm_duplicate')) {
+            $duplicates = FinanceQueries::possibleDuplicateCashEntries(
+                $data['direction'],
+                $data['category'],
+                (int) $data['amount'],
+                $occurredAt,
+            );
+
+            if ($duplicates->isNotEmpty()) {
+                Inertia::flash(
+                    'duplicateCashEntries',
+                    $duplicates->map(fn (CashEntry $entry): array => FinancePresenter::cashEntry($entry))->all(),
+                );
+
+                return back()->withErrors([
+                    'duplicate' => 'Sudah ada transaksi '.$data['category'].' dengan nominal yang sama dalam '
+                        .FinanceQueries::DUPLICATE_WINDOW_MINUTES.' menit. Periksa agar tidak tercatat dua kali.',
+                ]);
+            }
+        }
+
         $shift = $transactionShiftResolver->resolve(
             $admin,
             $request->integer('transaction_shift_id') ?: null,

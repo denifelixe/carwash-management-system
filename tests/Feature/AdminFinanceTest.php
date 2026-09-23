@@ -12,6 +12,7 @@ use App\Models\OrderTransaction;
 use App\Support\Admin\AdminModuleActions;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia;
 
@@ -1348,7 +1349,8 @@ test('a hand-written entry takes the shift of the admin who wrote it', function 
                 'direction' => 'in',
                 'category' => 'Penjualan Produk',
                 'description' => 'Parfum mobil',
-                'amount' => 50000,
+                /* Different amounts, or the second save is held back as a possible duplicate. */
+                'amount' => $admin->is($rostered) ? 50000 : 75000,
                 'method' => 'Tunai',
                 'entry_date' => '2026-08-30',
                 'entry_time' => '10:00',
@@ -1400,4 +1402,90 @@ test('a scheduled hand-written entry uses the overlapping shift confirmed at log
         ->assertSessionHasNoErrors();
 
     expect(CashEntry::query()->sole()->shift_name)->toBe('Shift Siang');
+});
+
+test('a matching entry within thirty minutes is flagged instead of saved', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-09-23 10:00:00'));
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload())
+        ->assertSessionHasNoErrors();
+
+    $first = CashEntry::query()->sole();
+    $this->travel(29)->minutes();
+
+    $this->from(route('admin.finance.index'))
+        ->post(route('admin.finance.store'), cashEntryPayload(['description' => 'Parfum mobil lagi']))
+        ->assertRedirect(route('admin.finance.index'))
+        ->assertSessionHasErrors('duplicate')
+        ->assertInertiaFlash('duplicateCashEntries.0.ref', $first->reference)
+        ->assertInertiaFlash('duplicateCashEntries.0.description', 'Penjualan parfum mobil 6 botol')
+        ->assertInertiaFlash('duplicateCashEntries.0.amount', 360000)
+        ->assertInertiaFlash('duplicateCashEntries.0.time', '10.00')
+        ->assertInertiaFlash('duplicateCashEntries.0.recordedBy', $owner->name);
+
+    expect(CashEntry::query()->count())->toBe(1);
+
+    $this->post(route('admin.finance.store'), cashEntryPayload([
+        'description' => 'Parfum mobil lagi',
+        'confirm_duplicate' => true,
+    ]))->assertSessionHasNoErrors();
+
+    expect(CashEntry::query()->count())->toBe(2);
+});
+
+test('only the same direction, category and amount inside thirty minutes counts as a duplicate', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-09-23 10:00:00'));
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.finance.store'), cashEntryPayload())
+        ->assertSessionHasNoErrors();
+
+    $this->post(route('admin.finance.store'), cashEntryPayload(['amount' => 360001]))
+        ->assertSessionHasNoErrors();
+    $this->post(route('admin.finance.store'), cashEntryPayload(['category' => 'Pendapatan Lain']))
+        ->assertSessionHasNoErrors();
+
+    $this->travel(30)->minutes();
+
+    $this->post(route('admin.finance.store'), cashEntryPayload())
+        ->assertSessionHasNoErrors()
+        ->assertInertiaFlashMissing('duplicateCashEntries');
+
+    expect(CashEntry::query()->count())->toBe(4);
+});
+
+test('the demo ledger flags the same duplicates as the live one', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Finance.ts', source, ts.ScriptTarget.Latest, true);
+const code = ts.transpile(ast.statements
+    .filter(node => (ts.isFunctionDeclaration(node) && ['minutesOfDay', 'demoDuplicateEntries'].includes(node.name?.text))
+        || (ts.isVariableStatement(node) && node.getText(ast).includes('DUPLICATE_WINDOW_MINUTES = ')))
+    .map(node => node.getText(ast))
+    .join('\n'));
+const draft = { value: { category: 'Penjualan Produk', amount: 360000 } };
+eval(code + `
+const entry = (id, time, overrides = {}) => ({ id, date: '2026-09-23', time, category: 'Penjualan Produk', amount: 360000, source: 'manual', ...overrides });
+const entries = [
+    entry(1, '09.31'),
+    entry(2, '09.30'),
+    entry(3, '10.20', { amount: 360001 }),
+    entry(4, '10.10', { category: 'Sewa Tempat' }),
+    entry(5, '10.05', { date: '2026-09-22' }),
+    entry(6, '10.05', { source: 'pos' }),
+    entry(7, '10.29'),
+];
+assert.deepEqual(demoDuplicateEntries(entries, '2026-09-23', '10:00').map(item => item.id), [1, 7]);
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
 });

@@ -48,6 +48,8 @@ class StoreCashEntryRequest extends FormRequest
             'description' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
             'method' => ['required', Rule::in(OrderQueries::recordableMethods($this->input('direction')))],
+            /* Set once the cashier has seen the possible-duplicate warning and saves anyway. */
+            'confirm_duplicate' => ['sometimes', 'boolean'],
             'transaction_shift_id' => [
                 'nullable',
                 'integer',

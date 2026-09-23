@@ -24,6 +24,9 @@ class FinanceQueries
     /** How many daily snapshots the balance card hands its history dialog. */
     public const BALANCE_HISTORY_DAYS = 30;
 
+    /** Same category and amount this close together is flagged as a possible double entry. */
+    public const DUPLICATE_WINDOW_MINUTES = 30;
+
     /**
      * One day of the ledger, ready to hand to a page. Both the finance module
      * and the dashboard read a day through here, so a figure shown on one
@@ -75,6 +78,31 @@ class FinanceQueries
             ->where('paid_at', '<', $dayStart->addDay())
             ->where('amount', '>', 0)
             ->orderByDesc('paid_at')
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    /**
+     * Hand-written entries that look like the one about to be saved: same
+     * direction, category and amount, fewer than DUPLICATE_WINDOW_MINUTES
+     * either side of when it happened. The cashier is warned, not blocked.
+     *
+     * @return Collection<int, CashEntry>
+     */
+    public static function possibleDuplicateCashEntries(
+        string $direction,
+        string $category,
+        int $amount,
+        CarbonImmutable $occurredAt,
+    ): Collection {
+        return CashEntry::query()
+            ->with(['recordedBy:id,name', 'updatedBy:id,name', 'attachments'])
+            ->where('direction', $direction)
+            ->where('category', $category)
+            ->where('amount', $amount)
+            ->where('occurred_at', '>', $occurredAt->subMinutes(self::DUPLICATE_WINDOW_MINUTES))
+            ->where('occurred_at', '<', $occurredAt->addMinutes(self::DUPLICATE_WINDOW_MINUTES))
+            ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->get();
     }

@@ -157,7 +157,7 @@ const state = {
     editingPosEntry: { value: null }, editingEntry: { value: null },
     canSavePosTransaction: { value: true },
     transactionForm: { amount: 50000, channels: [{ label: 'Tunai', amount: 50000, provider: '', reference: '' }], setError() { throw Error('Unexpected validation failure'); } },
-    closePosTransactionForm() {}, closeEntryForm() {},
+    closePosTransactionForm() {}, closeEntryForm() {}, clearDuplicateWarning() {},
     findRelatedOrder() { return state.order; },
     transactionIdFromEntry(entry) { return entry.id.slice(4); },
     posTransactionId() { return 1; }, cashEntryId() { return 1; },

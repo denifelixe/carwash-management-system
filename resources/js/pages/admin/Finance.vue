@@ -17,7 +17,7 @@ import {
     Wallet,
 } from '@lucide/vue';
 import '@fancyapps/ui/dist/fancybox/fancybox.css';
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
     destroy as destroyCashEntry,
     destroyTransaction as destroyOrderTransaction,
@@ -193,6 +193,7 @@ const entryForm = useForm<{
     attachments: File[];
     removed_attachment_ids: number[];
     transaction_shift_id: number | null;
+    confirm_duplicate: boolean;
 }>({
     entry_date: props.filters.date,
     entry_time: outletClock(),
@@ -204,7 +205,59 @@ const entryForm = useForm<{
     attachments: [],
     removed_attachment_ids: [],
     transaction_shift_id: null,
+    confirm_duplicate: false,
 });
+
+/** Mirrors FinanceQueries::DUPLICATE_WINDOW_MINUTES for the demo ledger. */
+const DUPLICATE_WINDOW_MINUTES = 30;
+
+/**
+ * Entries with the same category and amount recorded close to the new one. The
+ * cashier sees them before the save goes through and can still save anyway.
+ */
+const duplicateWarning = ref<string | null>(null);
+const duplicateEntries = ref<CarwashMoneyEntry[]>([]);
+
+function clearDuplicateWarning(): void {
+    duplicateWarning.value = null;
+    duplicateEntries.value = [];
+    entryForm.confirm_duplicate = false;
+}
+
+/* A warning belongs to the figures it was raised for; changing them drops it. */
+watch(
+    () => [activeLedger.value, draft.value.category, draft.value.amount],
+    clearDuplicateWarning,
+);
+
+/** Saves the entry the warning was raised for, knowing it may be a repeat. */
+function saveDespiteDuplicate(): void {
+    entryForm.confirm_duplicate = true;
+    saveEntry();
+}
+
+function minutesOfDay(time: string): number {
+    const [hours, minutes] = time.split(/[.:]/).map(Number);
+
+    return hours * 60 + minutes;
+}
+
+/** The demo ledger's version of FinanceQueries::possibleDuplicateCashEntries. */
+function demoDuplicateEntries(
+    entries: CarwashMoneyEntry[],
+    date: string,
+    time: string,
+): CarwashMoneyEntry[] {
+    return entries.filter(
+        (entry) =>
+            entry.source !== 'pos' &&
+            entry.category === draft.value.category &&
+            entry.amount === draft.value.amount &&
+            entry.date === date &&
+            Math.abs(minutesOfDay(entry.time) - minutesOfDay(time)) <
+                DUPLICATE_WINDOW_MINUTES,
+    );
+}
 
 const deleteForm = useForm({});
 
@@ -849,10 +902,12 @@ function resetAttachmentDraft(): void {
 function closeEntryForm(): void {
     isFormOpen.value = false;
     resetAttachmentDraft();
+    clearDuplicateWarning();
 }
 
 function openForm(): void {
     resetAttachmentDraft();
+    clearDuplicateWarning();
     editingEntry.value = null;
     draft.value = {
         category: activeCategories.value[0],
@@ -1357,7 +1412,21 @@ function saveLiveEntry(transactionShiftId: number | null): void {
         })
         .submit(action, {
             preserveScroll: true,
+            onFlash: (flash) => {
+                const duplicates = flash.duplicateCashEntries;
+
+                duplicateEntries.value = Array.isArray(duplicates)
+                    ? (duplicates as CarwashMoneyEntry[])
+                    : [];
+            },
+            onError: (errors) => {
+                duplicateWarning.value = errors.duplicate ?? null;
+            },
+            onFinish: () => {
+                entryForm.confirm_duplicate = false;
+            },
             onSuccess: () => {
+                clearDuplicateWarning();
                 const entry = editingEntry.value;
                 isFormOpen.value = false;
                 editingEntry.value = null;
@@ -1407,6 +1476,21 @@ function saveDemoEntry(transactionShiftId: number | null): void {
     }
 
     const isIncome = activeLedger.value === 'in';
+    const duplicates = demoDuplicateEntries(
+        isIncome ? incomeList.value : expenseList.value,
+        entryForm.entry_date,
+        entryForm.entry_time,
+    );
+
+    if (!entryForm.confirm_duplicate && duplicates.length > 0) {
+        duplicateEntries.value = duplicates;
+        duplicateWarning.value = `Sudah ada transaksi ${draft.value.category} dengan nominal yang sama dalam ${DUPLICATE_WINDOW_MINUTES} menit. Periksa agar tidak tercatat dua kali.`;
+
+        return;
+    }
+
+    clearDuplicateWarning();
+
     const sequence =
         (isIncome ? incomeList.value.length : expenseList.value.length) + 32;
 
@@ -3263,21 +3347,89 @@ function applyDate(date: string): void {
         </div>
 
         <template #footer>
-            <button
-                type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="closeEntryForm"
-            >
-                Batal
-            </button>
-            <button
-                type="button"
-                class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canSave || entryForm.processing"
-                @click="saveEntry"
-            >
-                {{ entryForm.processing ? 'Menyimpan...' : 'Simpan catatan' }}
-            </button>
+            <div class="flex w-full flex-col gap-3">
+                <!--
+                    In the pinned footer so the warning is in view next to the
+                    button that raised it, however far the form is scrolled.
+                -->
+                <div
+                    v-if="duplicateWarning"
+                    class="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200"
+                    role="alert"
+                    data-duplicate-warning
+                >
+                    <p class="flex items-start gap-1.5 font-semibold">
+                        <TriangleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {{ duplicateWarning }}
+                    </p>
+                    <ul
+                        v-if="duplicateEntries.length > 0"
+                        class="mt-2 max-h-40 space-y-1.5 overflow-y-auto"
+                    >
+                        <li
+                            v-for="entry in duplicateEntries"
+                            :key="entry.id"
+                            class="rounded-lg bg-white/80 px-2.5 py-2 ring-1 ring-amber-100"
+                        >
+                            <p
+                                class="flex items-center justify-between gap-2 font-semibold text-slate-900"
+                            >
+                                <span class="truncate">{{
+                                    entry.description
+                                }}</span>
+                                <span class="shrink-0 tabular-nums">{{
+                                    formatCurrency(entry.amount)
+                                }}</span>
+                            </p>
+                            <p class="mt-0.5 text-[11px] text-slate-500">
+                                {{ formatDate(entry.date) }} ·
+                                {{ entry.time }} · {{ entry.category }} ·
+                                {{ entry.method }} ·
+                                {{ entry.recordedBy }}
+                            </p>
+                            <p class="text-[11px] text-slate-400">
+                                {{ entry.ref }}
+                            </p>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="flex gap-2">
+                    <button
+                        type="button"
+                        class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                        @click="closeEntryForm"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        v-if="duplicateWarning"
+                        type="button"
+                        class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        :disabled="!canSave || entryForm.processing"
+                        @click="saveDespiteDuplicate"
+                    >
+                        {{
+                            entryForm.processing
+                                ? 'Menyimpan...'
+                                : 'Tetap simpan'
+                        }}
+                    </button>
+                    <button
+                        v-else
+                        type="button"
+                        class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                        :disabled="!canSave || entryForm.processing"
+                        @click="saveEntry"
+                    >
+                        {{
+                            entryForm.processing
+                                ? 'Menyimpan...'
+                                : 'Simpan catatan'
+                        }}
+                    </button>
+                </div>
+            </div>
         </template>
     </ModalDialog>
 
