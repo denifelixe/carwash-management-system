@@ -12,10 +12,13 @@ import {
     PT_TO_MM,
 } from '@/lib/pdfDocument';
 import type { PageMetrics, RasterImage } from '@/lib/pdfDocument';
-import { paymentChannelLabel } from '@/lib/posReceipt';
+import {
+    paymentChannelLabel,
+    receiptCustomerRows,
+    receiptTransactionRows,
+} from '@/lib/posReceipt';
 import type { PosReceipt, PosReceiptHistoryEntry } from '@/lib/posReceipt';
 import { formatWhatsapp, printedAt } from '@/lib/printDocument';
-import { formatPlate } from '@/lib/vehiclePlate';
 import type { CarwashBrand } from '@/types/demo';
 
 /**
@@ -110,23 +113,16 @@ function summaryBlock(slip: PdfCursor, receipt: PosReceipt): void {
     }
 
     slip.gap(0.8);
-    slip.meta('No.', receipt.isSettled ? receipt.invoice : receipt.orderNo);
 
-    if (receipt.isSettled) {
-        slip.meta('Order', receipt.orderNo);
+    for (const [label, value] of receiptTransactionRows(receipt)) {
+        slip.meta(label, value);
     }
 
-    slip.meta('Ref.', receipt.reference);
-    slip.meta('Tanggal', formatDate(receipt.date));
-    slip.meta('Jam', receipt.time);
-    slip.meta('Kasir', receipt.cashier);
-    slip.meta('Shift', receipt.shift);
-
     slip.block();
-    slip.meta('Customer', receipt.customer);
-    slip.meta('Status', receipt.customerStatus);
-    slip.meta('Kendaraan', receipt.vehicle);
-    slip.meta('Plat', formatPlate(receipt.plate));
+
+    for (const [label, value] of receiptCustomerRows(receipt)) {
+        slip.meta(label, value);
+    }
 }
 
 function servicesBlock(slip: PdfCursor, receipt: PosReceipt): void {

@@ -173,12 +173,18 @@ export class PdfCursor {
     /**
      * The muted label / dark value pairing both documents head their blocks
      * with. `width` narrows the pair, so a wide sheet does not strand its value
-     * an inch away from its label.
+     * an inch away from its label. A value too long for what the label leaves
+     * wraps onto right-aligned lines instead of running over the label.
      */
     meta(label: string, value: string, width = this.contentWidth): void {
         const size = this.apply();
+        const labelWidth = this.doc.getTextWidth(pdfText(label));
+        const valueLines: string[] = this.doc.splitTextToSize(
+            pdfText(value),
+            Math.max(width - labelWidth - 1.5, 12),
+        );
 
-        if (this.ensureRoom(lineHeight(size))) {
+        if (this.ensureRoom(lineHeight(size) * valueLines.length)) {
             this.apply();
         }
 
@@ -187,11 +193,14 @@ export class PdfCursor {
             baseline: 'top',
         });
         this.doc.setTextColor(...INK);
-        this.doc.text(pdfText(value), this.page.margin + width, this.y, {
-            align: 'right',
-            baseline: 'top',
-        });
-        this.y += lineHeight(size);
+
+        for (const line of valueLines) {
+            this.doc.text(line, this.page.margin + width, this.y, {
+                align: 'right',
+                baseline: 'top',
+            });
+            this.y += lineHeight(size);
+        }
     }
 
     /** A rule across the content width, dashed or solid as the paper asks. */

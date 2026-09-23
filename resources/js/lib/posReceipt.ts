@@ -117,6 +117,31 @@ export function paymentChannelLabel(payment: PosPaymentBreakdown): string {
         : `${payment.method} · ${payment.provider}`;
 }
 
+export type ReceiptMetaRow = [label: string, value: string];
+
+/*
+ * The slip's header, shared by the HTML and the PDF so the two layouts cannot
+ * drift. Kept short on purpose (MoM 17 Sep 2026): no invoice No., Ref. or
+ * shift, and date/time, customer/status and vehicle/plate each share a line.
+ */
+export function receiptTransactionRows(receipt: PosReceipt): ReceiptMetaRow[] {
+    return [
+        ['Order', receipt.orderNo],
+        ['Tanggal', `${formatDate(receipt.date)} · ${receipt.time}`],
+        ['Kasir', receipt.cashier],
+    ];
+}
+
+export function receiptCustomerRows(receipt: PosReceipt): ReceiptMetaRow[] {
+    return [
+        ['Customer', `${receipt.customer} (${receipt.customerStatus})`],
+        [
+            'Kendaraan / Plat',
+            `${receipt.vehicle} / ${formatPlate(receipt.plate)}`,
+        ],
+    ];
+}
+
 function metaRow(label: string, value: string): string {
     return `<div class="meta"><span>${escapeHtml(label)}</span><span>${escapeHtml(value)}</span></div>`;
 }
@@ -259,19 +284,14 @@ function receiptBody(receipt: PosReceipt, brand: CarwashBrand): string {
 <section class="block">
     <p class="title">${title}</p>
     ${receipt.isReprint ? '<p class="copy">— SALINAN / CETAK ULANG —</p>' : ''}
-    ${metaRow('No.', receipt.isSettled ? receipt.invoice : receipt.orderNo)}
-    ${receipt.isSettled ? metaRow('Order', receipt.orderNo) : ''}
-    ${metaRow('Ref.', receipt.reference)}
-    ${metaRow('Tanggal', formatDate(receipt.date))}
-    ${metaRow('Jam', receipt.time)}
-    ${metaRow('Kasir', receipt.cashier)}
-    ${metaRow('Shift', receipt.shift)}
+    ${receiptTransactionRows(receipt)
+        .map(([label, value]) => metaRow(label, value))
+        .join('')}
 </section>
 <section class="block">
-    ${metaRow('Customer', receipt.customer)}
-    ${metaRow('Status', receipt.customerStatus)}
-    ${metaRow('Kendaraan', receipt.vehicle)}
-    ${metaRow('Plat', formatPlate(receipt.plate))}
+    ${receiptCustomerRows(receipt)
+        .map(([label, value]) => metaRow(label, value))
+        .join('')}
 </section>
 <section class="block">
     <p class="heading">Rincian layanan</p>

@@ -64,7 +64,7 @@ test('the slip is dressed by the receipt settings', function () {
         ->toContain('const HEADING_SIZE = 11;')
         ->toContain('const FINE_SIZE = 7.5;')
         ->toContain("slip.paragraph(brand.receipt.name, 'center', {")
-        ->toContain("slip.meta('Status', receipt.customerStatus)")
+        ->toContain('for (const [label, value] of receiptCustomerRows(receipt)) {')
         ->toContain("if (brand.receipt.footerNote !== '') {")
         // Nothing is rasterised for a slip that prints no logo.
         ->toContain('const logo = brand.receipt.showLogo')
@@ -127,10 +127,10 @@ test('processing a payment hands the settlement straight to the slip', function 
 
 test('the slip carries everything the customer needs to reconcile the payment', function () {
     expect(posReceiptModule())
-        ->toContain("metaRow('Ref.', receipt.reference)")
-        ->toContain("metaRow('Kasir', receipt.cashier)")
-        ->toContain("metaRow('Status', receipt.customerStatus)")
-        ->toContain("metaRow('Plat', formatPlate(receipt.plate))")
+        ->toContain("['Order', receipt.orderNo]")
+        ->toContain("['Kasir', receipt.cashier]")
+        ->toContain('`${receipt.customer} (${receipt.customerStatus})`')
+        ->toContain("'Kendaraan / Plat'")
         ->toContain("amountRow('TOTAL', receipt.total, 'grand')")
         ->toContain("amountRow('Sisa tagihan', receipt.dueAfter, 'strong')")
         ->toContain("'STRUK PEMBAYARAN'")
