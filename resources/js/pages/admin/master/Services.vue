@@ -40,6 +40,7 @@ type Service = {
     id: number;
     name: string;
     category: string;
+    category_group: string;
     price: number;
     variations: Record<string, string[]> | null;
     service_variations: VariationRow[];
@@ -58,6 +59,7 @@ const props = defineProps<{
     brand: CarwashBrand;
     services: Service[];
     categories: string[];
+    categoryGroups: string[];
     icons: ServiceIcon[];
     capabilities: { create: boolean; update: boolean; delete: boolean };
 }>();
@@ -79,6 +81,7 @@ const variationAttributes = ref<VariationAttribute[]>([]);
 const serviceForm = useForm({
     name: '',
     category: '',
+    category_group: '',
     variations: null as Record<string, string[]> | null,
     service_variations: [
         { id: null, variations: null, price: 0, is_active: true },
@@ -107,6 +110,21 @@ watch(
 const categoryOptions = computed(() => [
     ...new Set(serviceList.value.map((service) => service.category)),
 ]);
+
+const categoryGroupOptions = computed(() => [
+    ...new Set([
+        ...props.categoryGroups,
+        ...serviceList.value.map((service) => service.category_group),
+    ]),
+]);
+
+/**
+ * Mirrors ServiceCategoryGroups::defaultFor: a blank group falls under the
+ * category's first word ("Coating Motor" → Coating).
+ */
+function defaultCategoryGroup(category: string): string {
+    return category.trim().split(/\s+/)[0] || 'Lainnya';
+}
 const filteredServices = computed(() => {
     const tokens = query.value.toLowerCase().split(/\s+/).filter(Boolean);
 
@@ -190,6 +208,7 @@ function openCreate(): void {
     serviceForm.defaults({
         name: '',
         category: props.categories[0] ?? '',
+        category_group: '',
         variations: null,
         service_variations: [
             {
@@ -219,6 +238,7 @@ function openEdit(service: Service): void {
     serviceForm.defaults({
         name: service.name,
         category: service.category,
+        category_group: service.category_group,
         variations: cloneVariationConfiguration(service.variations),
         service_variations: service.service_variations.map((variation) => ({
             ...variation,
@@ -377,6 +397,9 @@ function saveDemoService(): void {
         id,
         name: serviceForm.name,
         category: serviceForm.category,
+        category_group:
+            serviceForm.category_group.trim() ||
+            defaultCategoryGroup(serviceForm.category),
         price: Math.min(
             ...serviceForm.service_variations.map(
                 (variation) => variation.price,
@@ -829,6 +852,7 @@ function saveOrder(): void {
                         </div>
                         <div>
                             <p class="text-xs text-slate-500">
+                                {{ service.category_group }} ›
                                 {{ service.category }}
                             </p>
                             <p class="text-sm font-semibold text-slate-800">
@@ -1014,6 +1038,26 @@ function saveOrder(): void {
                             :value="option"
                         /></datalist
                     ><InputError :message="serviceForm.errors.category"
+                /></label>
+                <label class="space-y-1 text-xs font-medium text-slate-600"
+                    >Kelompok kategori<input
+                        v-model="serviceForm.category_group"
+                        list="service-category-groups"
+                        :placeholder="
+                            defaultCategoryGroup(serviceForm.category)
+                        "
+                        class="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm" /><datalist
+                        id="service-category-groups"
+                    >
+                        <option
+                            v-for="option in categoryGroupOptions"
+                            :key="option"
+                            :value="option"
+                        /></datalist
+                    ><span class="block text-[11px] font-normal text-slate-400"
+                        >Tampil pertama di pilihan layanan Order. Kosongkan
+                        untuk memakai kata pertama kategori.</span
+                    ><InputError :message="serviceForm.errors.category_group"
                 /></label>
                 <label class="space-y-1 text-xs font-medium text-slate-600"
                     >Icon<select

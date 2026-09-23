@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Admin\ServiceCategoryGroups;
 use Database\Factories\ServiceFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Collection;
@@ -14,6 +15,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $name
  * @property string $category
+ * @property string $category_group
  * @property array<string, list<string>>|null $variations
  * @property int $stamps
  * @property string $icon
@@ -26,7 +28,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'category', 'variations', 'stamps', 'icon', 'description', 'is_popular', 'is_active', 'sort_order'])]
+#[Fillable(['name', 'category', 'category_group', 'variations', 'stamps', 'icon', 'description', 'is_popular', 'is_active', 'sort_order'])]
 class Service extends Model
 {
     /** @use HasFactory<ServiceFactory> */
@@ -51,6 +53,19 @@ class Service extends Model
     public function pendingVariationPrice(): int
     {
         return $this->pendingVariationPrice;
+    }
+
+    /**
+     * Seeders, factories and older callers only name a category, so the group
+     * falls back to the category's first word rather than staying blank.
+     */
+    protected static function booted(): void
+    {
+        static::saving(function (Service $service): void {
+            if (blank($service->category_group)) {
+                $service->category_group = ServiceCategoryGroups::defaultFor($service->category);
+            }
+        });
     }
 
     /** @return HasMany<ServiceVariation, $this> */

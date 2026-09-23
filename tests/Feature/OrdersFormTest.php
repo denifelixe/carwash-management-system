@@ -3,6 +3,7 @@
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Process;
 
 test('new orders keep account crew separate while accepting a manual handler', function () {
@@ -616,19 +617,101 @@ test('the order form uses the shared variation and quantity cart picker', functi
         ->toContain('Layanan tidak ditemukan.');
 });
 
-test('the cart picker filters the catalog with multi select category tabs above the search', function () {
-    $picker = file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue'));
+/**
+ * Runs the picker's drill-down state from ServiceCartPicker.vue against the
+ * given services, then the given assertions.
+ */
+function runPickerScript(string $services, string $assertions): ProcessResult
+{
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { ref, computed, watch, reactive } = require('vue');
+const source = fs.readFileSync('resources/js/components/admin/ServiceCartPicker.vue', 'utf8');
+const script = source.split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('ServiceCartPicker.ts', script, ts.ScriptTarget.Latest, true);
+const names = ['query', 'activeGroup', 'activeCategory', 'sellableServices', 'groupOptions', 'currentGroup', 'categoriesInGroup', 'currentCategory', 'overviewCards', 'breadcrumb', 'visibleServices', 'catalog'];
+const code = ts.transpile(ast.statements
+    .filter(node => (ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))))
+        || (ts.isFunctionDeclaration(node) && ['overviewCard', 'openCard', 'goBack'].includes(node.name?.text)))
+    .map(node => node.getText(ast))
+    .join('\n'), { target: ts.ScriptTarget.ES2020 });
+const service = (id, name, categoryGroup, category, icon = '', isActive = true) => ({ id, name, categoryGroup, category, icon, description: '', variations: null, isActive, serviceVariations: [{ isActive: true }] });
+const props = reactive({ services: eval(process.argv[1]) });
+const helpers = `
+const labels = () => overviewCards.value?.map(card => card.label) ?? null;
+const ids = () => visibleServices.value.map(item => item.id);
+`;
+eval(code + helpers + process.argv[2]);
+JS;
 
-    expect($picker)
-        ->toContain('const selectedCategories = ref<string[]>([])')
-        ->toContain('function toggleCategory(option: string): void')
-        ->toContain('selectedCategories.value.includes(service.category)')
-        ->toContain('@click="selectedCategories = []"')
-        ->toContain('v-for="option in categoryOptions"')
-        ->toContain('service.serviceVariations.some((variation) => variation.isActive)');
+    return Process::path(base_path())->run(['node', '-e', $script, $services, $assertions]);
+}
 
-    expect(strpos($picker, 'v-if="categoryOptions.length > 1"'))
-        ->toBeLessThan(strpos($picker, 'placeholder="Cari layanan, kategori, atau variasi"'));
+test('the cart picker drills down from group to category to services', function () {
+    $result = runPickerScript(<<<'JS'
+[
+    service(1, 'Regular Wash', 'Cuci', 'Cuci Mobil', '🚗'),
+    service(2, 'Express Wash', 'Cuci', 'Cuci Mobil'),
+    service(3, 'Wash Motor', 'Cuci', 'Cuci Motor', '🏍️'),
+    service(4, 'Coating Kaca', 'Coating', 'Coating Mobil', '✨'),
+    service(5, 'Coating Helm', 'Coating', 'Coating Motor', '✨', false),
+    service(6, 'Parfum', 'Add-on', 'Add-on', '💨'),
+]
+JS, <<<'JS'
+assert.deepEqual(overviewCards.value, [
+    { kind: 'group', label: 'Cuci', count: 3, icon: '🚗' },
+    { kind: 'group', label: 'Coating', count: 1, icon: '✨' },
+    { kind: 'group', label: 'Add-on', count: 1, icon: '💨' },
+]);
+openCard(overviewCards.value[0]);
+assert.deepEqual(labels(), ['Cuci Mobil', 'Cuci Motor']);
+assert.equal(breadcrumb.value, 'Cuci');
+openCard(overviewCards.value[0]);
+assert.equal(labels(), null);
+assert.deepEqual(ids(), [1, 2]);
+assert.equal(breadcrumb.value, 'Cuci › Cuci Mobil');
+query.value = 'express';
+assert.deepEqual(ids(), [2], 'search stays inside the open category');
+query.value = '';
+goBack();
+assert.deepEqual(labels(), ['Cuci Mobil', 'Cuci Motor']);
+goBack();
+assert.deepEqual(labels(), ['Cuci', 'Coating', 'Add-on']);
+openCard(overviewCards.value[1]);
+assert.equal(labels(), null, 'a group of one sellable category opens on its services');
+assert.deepEqual(ids(), [4]);
+assert.equal(breadcrumb.value, 'Coating');
+goBack();
+query.value = 'wash';
+assert.equal(labels(), null, 'typing on the groups searches everything');
+assert.deepEqual(ids(), [1, 2, 3]);
+JS);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('a catalog with a single group starts on its categories, and a single category on its services', function () {
+    $result = runPickerScript(<<<'JS'
+[
+    service(1, 'Regular Wash', 'Cuci', 'Cuci Mobil'),
+    service(2, 'Wash Motor', 'Cuci', 'Cuci Motor'),
+]
+JS, <<<'JS'
+assert.deepEqual(labels(), ['Cuci Mobil', 'Cuci Motor']);
+assert.equal(activeGroup.value, null);
+props.services.pop();
+assert.equal(labels(), null);
+assert.deepEqual(ids(), [1]);
+JS);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+
+    expect(file_get_contents(resource_path('js/components/admin/ServiceCartPicker.vue')))
+        ->toContain('@click="openCard(card)"')
+        ->toContain('@click="goBack"')
+        ->not->toContain('selectedCategories');
 });
 
 test('locked order services show saved line prices and the discounted order total', function () {

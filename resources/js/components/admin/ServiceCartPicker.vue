@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import {
     ChevronDown,
+    ChevronLeft,
+    ChevronRight,
     Minus,
     Plus,
     Search,
@@ -27,8 +29,13 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-/** An empty selection means every category, matching the "Semua" tab. */
-const selectedCategories = ref<string[]>([]);
+/**
+ * The catalog drills down group → category → services (MoM 17 Sep 2026), so
+ * the popup opens on a handful of groups (Cuci, Detailing, Coating, …) instead
+ * of every service. Null means the operator has not picked that level.
+ */
+const activeGroup = ref<string | null>(null);
+const activeCategory = ref<string | null>(null);
 const activeService = ref<CarwashService | null>(null);
 const selectedValues = reactive<Record<string, string>>({});
 const quantity = ref(1);
@@ -52,30 +59,152 @@ const sellableServices = computed(() =>
     ),
 );
 
-const categoryOptions = computed(() => [
-    ...new Set(sellableServices.value.map((service) => service.category)),
+/** Groups in catalog order, the order Master > Layanan arranged them in. */
+const groupOptions = computed(() => [
+    ...new Set(sellableServices.value.map((service) => service.categoryGroup)),
 ]);
 
-/** A catalog reload can retire a category the operator had selected. */
-watch(categoryOptions, (options) => {
-    selectedCategories.value = selectedCategories.value.filter((option) =>
-        options.includes(option),
+/** A catalog with a single group starts inside it. */
+const currentGroup = computed<string | null>(
+    () =>
+        activeGroup.value ??
+        (groupOptions.value.length === 1 ? groupOptions.value[0] : null),
+);
+
+const categoriesInGroup = computed(() =>
+    currentGroup.value === null
+        ? []
+        : [
+              ...new Set(
+                  sellableServices.value
+                      .filter(
+                          (service) =>
+                              service.categoryGroup === currentGroup.value,
+                      )
+                      .map((service) => service.category),
+              ),
+          ],
+);
+
+/** A group holding one category opens straight onto its services. */
+const currentCategory = computed<string | null>(
+    () =>
+        activeCategory.value ??
+        (categoriesInGroup.value.length === 1
+            ? categoriesInGroup.value[0]
+            : null),
+);
+
+/** A catalog reload can retire the group or category the operator had open. */
+watch([groupOptions, categoriesInGroup], ([groups, categories]) => {
+    if (activeGroup.value !== null && !groups.includes(activeGroup.value)) {
+        activeGroup.value = null;
+        activeCategory.value = null;
+    } else if (
+        activeCategory.value !== null &&
+        !categories.includes(activeCategory.value)
+    ) {
+        activeCategory.value = null;
+    }
+});
+
+interface OverviewCard {
+    kind: 'group' | 'category';
+    label: string;
+    count: number;
+    icon: string;
+}
+
+function overviewCard(
+    kind: OverviewCard['kind'],
+    label: string,
+    services: CarwashService[],
+): OverviewCard {
+    return {
+        kind,
+        label,
+        count: services.length,
+        icon: services.find((service) => service.icon)?.icon ?? '🫧',
+    };
+}
+
+/**
+ * The tiles at the current level: groups first, then the chosen group's
+ * categories. Null once services are listed, or while searching.
+ */
+const overviewCards = computed<OverviewCard[] | null>(() => {
+    if (query.value.trim() !== '' || currentCategory.value !== null) {
+        return null;
+    }
+
+    if (currentGroup.value === null) {
+        return groupOptions.value.map((group) =>
+            overviewCard(
+                'group',
+                group,
+                sellableServices.value.filter(
+                    (service) => service.categoryGroup === group,
+                ),
+            ),
+        );
+    }
+
+    return categoriesInGroup.value.map((category) =>
+        overviewCard(
+            'category',
+            category,
+            sellableServices.value.filter(
+                (service) =>
+                    service.categoryGroup === currentGroup.value &&
+                    service.category === category,
+            ),
+        ),
     );
 });
 
-function toggleCategory(option: string): void {
-    selectedCategories.value = selectedCategories.value.includes(option)
-        ? selectedCategories.value.filter((selected) => selected !== option)
-        : [...selectedCategories.value, option];
+/** Where the operator is, e.g. "Coating › Coating Mobil". */
+const breadcrumb = computed(() =>
+    [
+        groupOptions.value.length > 1 ? currentGroup.value : null,
+        categoriesInGroup.value.length > 1 ? currentCategory.value : null,
+    ]
+        .filter((label): label is string => label !== null)
+        .join(' › '),
+);
+
+function openCard(card: OverviewCard): void {
+    if (card.kind === 'group') {
+        activeGroup.value = card.label;
+        activeCategory.value = null;
+    } else {
+        activeCategory.value = card.label;
+    }
+
+    catalog.value?.scrollTo({ top: 0 });
 }
 
+/** One level up: from a category to its group, from a group to all groups. */
+function goBack(): void {
+    if (activeCategory.value !== null && categoriesInGroup.value.length > 1) {
+        activeCategory.value = null;
+    } else {
+        activeGroup.value = null;
+        activeCategory.value = null;
+    }
+
+    catalog.value?.scrollTo({ top: 0 });
+}
+
+/** Searching stays inside whatever group or category is open. */
 const visibleServices = computed(() => {
     const tokens = query.value.toLowerCase().split(/\s+/).filter(Boolean);
 
     return sellableServices.value.filter((service) => {
         if (
-            selectedCategories.value.length &&
-            !selectedCategories.value.includes(service.category)
+            (currentGroup.value !== null &&
+                service.categoryGroup !== currentGroup.value) ||
+            (currentCategory.value !== null &&
+                service.category !== currentCategory.value)
         ) {
             return false;
         }
@@ -126,7 +255,7 @@ watch(catalog, (element) => {
 });
 
 /** Filtering changes the scrollable height without resizing the container. */
-watch(visibleServices, () => {
+watch([visibleServices, overviewCards], () => {
     void nextTick(syncScrollHint);
 });
 
@@ -315,35 +444,22 @@ function removeItem(serviceVariationId: number): void {
                 :class="openPanel === 'services' ? '' : 'hidden sm:block'"
             >
                 <div
-                    v-if="categoryOptions.length > 1"
-                    class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1"
+                    v-if="activeGroup !== null || activeCategory !== null"
+                    class="flex items-center gap-2"
                 >
                     <button
                         type="button"
-                        class="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition"
-                        :class="
-                            selectedCategories.length
-                                ? 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
-                                : 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
-                        "
-                        @click="selectedCategories = []"
+                        class="flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-cyan-300 hover:text-cyan-700"
+                        @click="goBack"
                     >
-                        Semua
+                        <ChevronLeft class="h-3.5 w-3.5" />
+                        Kembali
                     </button>
-                    <button
-                        v-for="option in categoryOptions"
-                        :key="option"
-                        type="button"
-                        class="shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold whitespace-nowrap transition"
-                        :class="
-                            selectedCategories.includes(option)
-                                ? 'bg-cyan-600 text-white shadow-sm shadow-cyan-600/30'
-                                : 'border border-slate-200 bg-white text-slate-600 hover:border-cyan-300 hover:text-cyan-700'
-                        "
-                        @click="toggleCategory(option)"
+                    <span
+                        class="min-w-0 truncate text-sm font-semibold text-slate-800"
                     >
-                        {{ option }}
-                    </button>
+                        {{ breadcrumb }}
+                    </span>
                 </div>
 
                 <div
@@ -358,34 +474,70 @@ function removeItem(serviceVariationId: number): void {
                     />
                 </div>
 
-                <div v-if="visibleServices.length" class="relative">
+                <div
+                    v-if="overviewCards !== null || visibleServices.length"
+                    class="relative"
+                >
                     <div
                         ref="catalog"
                         class="grid max-h-40 [scrollbar-gutter:stable] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-64 sm:grid-cols-2"
                         @scroll="syncScrollHint"
                     >
-                        <button
-                            v-for="service in visibleServices"
-                            :key="service.id"
-                            type="button"
-                            class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-cyan-300 hover:bg-cyan-50/40"
-                            @click="openService(service)"
-                        >
-                            <span class="text-xl">{{ service.icon }}</span>
-                            <span class="min-w-0 flex-1">
-                                <span
-                                    class="block truncate text-sm font-medium text-slate-800"
-                                    >{{ service.name }}</span
-                                >
-                                <span class="block text-xs text-slate-500"
-                                    >{{ priceRange(service) }} · +{{
-                                        service.stamps
-                                    }}
-                                    stempel</span
-                                >
-                            </span>
-                            <Plus class="h-4 w-4 text-cyan-600" />
-                        </button>
+                        <template v-if="overviewCards !== null">
+                            <button
+                                v-for="card in overviewCards"
+                                :key="`${card.kind}-${card.label}`"
+                                type="button"
+                                class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-cyan-300 hover:bg-cyan-50/40"
+                                @click="openCard(card)"
+                            >
+                                <span class="text-xl">{{ card.icon }}</span>
+                                <span class="min-w-0 flex-1">
+                                    <span
+                                        class="block truncate text-sm font-semibold text-slate-800"
+                                        >{{ card.label }}</span
+                                    >
+                                    <span class="block text-xs text-slate-500"
+                                        >{{ card.count }} layanan</span
+                                    >
+                                </span>
+                                <ChevronRight class="h-4 w-4 text-cyan-600" />
+                            </button>
+                        </template>
+                        <template v-else>
+                            <button
+                                v-for="service in visibleServices"
+                                :key="service.id"
+                                type="button"
+                                class="flex items-center gap-3 rounded-xl border border-slate-200 p-3 text-left transition hover:border-cyan-300 hover:bg-cyan-50/40"
+                                @click="openService(service)"
+                            >
+                                <span class="text-xl">{{ service.icon }}</span>
+                                <span class="min-w-0 flex-1">
+                                    <span
+                                        class="block truncate text-sm font-medium text-slate-800"
+                                        >{{ service.name }}</span
+                                    >
+                                    <!-- A search above a category says where each hit lives. -->
+                                    <span
+                                        v-if="currentCategory === null"
+                                        class="block truncate text-[11px] text-cyan-700"
+                                        >{{
+                                            currentGroup === null
+                                                ? `${service.categoryGroup} › ${service.category}`
+                                                : service.category
+                                        }}</span
+                                    >
+                                    <span class="block text-xs text-slate-500"
+                                        >{{ priceRange(service) }} · +{{
+                                            service.stamps
+                                        }}
+                                        stempel</span
+                                    >
+                                </span>
+                                <Plus class="h-4 w-4 text-cyan-600" />
+                            </button>
+                        </template>
                     </div>
 
                     <transition

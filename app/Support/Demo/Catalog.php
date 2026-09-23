@@ -2,6 +2,8 @@
 
 namespace App\Support\Demo;
 
+use App\Support\Admin\ServiceCategoryGroups;
+
 /**
  * Service catalog (BR-03) and reward catalog (BR-04, BR-13).
  */
@@ -10,7 +12,7 @@ class Catalog
     /**
      * Services shared by the POS grid, order builder, and customer catalog.
      *
-     * @return list<array{id: int, name: string, category: string, price: int, variations: array<string, list<string>>|null, serviceVariations: list<array{id: int, variations: array<string, string>|null, price: int, isActive: bool}>, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
+     * @return list<array{id: int, name: string, category: string, categoryGroup: string, price: int, variations: array<string, list<string>>|null, serviceVariations: list<array{id: int, variations: array<string, string>|null, price: int, isActive: bool}>, stamps: int, icon: string, description: string, popular: bool, isActive: bool}>
      */
     public static function services(): array
     {
@@ -48,6 +50,8 @@ class Catalog
         ];
 
         return array_map(function (array $service): array {
+            $service['categoryGroup'] = ServiceCategoryGroups::defaultFor($service['category']);
+
             if (isset($service['serviceVariations'])) {
                 return $service;
             }

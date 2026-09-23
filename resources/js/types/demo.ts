@@ -69,6 +69,8 @@ export interface CarwashService {
     id: number;
     name: string;
     category: string;
+    /** Top level above the category in the order picker (Cuci, Coating, …). */
+    categoryGroup: string;
     price: number;
     variations: Record<string, string[]> | null;
     serviceVariations: CarwashServiceVariation[];

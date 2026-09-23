@@ -272,6 +272,7 @@ class OrderPresenter
             'id' => $service->id,
             'name' => $service->name,
             'category' => $service->category,
+            'categoryGroup' => $service->category_group,
             'variations' => $service->variations,
             'serviceVariations' => $service->serviceVariations->map(fn ($variation): array => [
                 'id' => $variation->id,

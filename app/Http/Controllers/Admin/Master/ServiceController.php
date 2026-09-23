@@ -36,6 +36,7 @@ class ServiceController extends Controller
             ...$adminShell->props($authenticatedAdmin, 'Layanan', 'master_services'),
             'services' => $services->map(fn (Service $service): array => $this->serviceData($service))->all(),
             'categories' => $services->pluck('category')->unique()->sort()->values()->all(),
+            'categoryGroups' => $services->pluck('category_group')->unique()->sort()->values()->all(),
             'icons' => ServiceIcons::options(),
             'capabilities' => [
                 'create' => Gate::allows('admin.master_services.create'),
@@ -103,6 +104,7 @@ class ServiceController extends Controller
             'id' => $service->id,
             'name' => $service->name,
             'category' => $service->category,
+            'category_group' => $service->category_group,
             'variations' => $service->variations,
             'service_variations' => $service->serviceVariations->map(fn ($variation): array => [
                 'id' => $variation->id,

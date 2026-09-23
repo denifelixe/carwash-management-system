@@ -23,6 +23,7 @@ class ServiceController extends AdminController
                 'id' => $service['id'],
                 'name' => $service['name'],
                 'category' => $service['category'],
+                'category_group' => $service['categoryGroup'],
                 'price' => $service['price'],
                 'variations' => $service['variations'],
                 'service_variations' => array_map(fn (array $variation): array => [
@@ -47,6 +48,7 @@ class ServiceController extends AdminController
         return $this->page($request, 'admin/master/Services', [
             'services' => $services,
             'categories' => array_values(array_unique(array_column($services, 'category'))),
+            'categoryGroups' => array_values(array_unique(array_column($services, 'category_group'))),
             'icons' => ServiceIcons::options(),
             'capabilities' => ['create' => true, 'update' => true, 'delete' => true],
         ]);

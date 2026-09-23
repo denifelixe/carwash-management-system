@@ -288,3 +288,50 @@ test('the master page filters services with multi select category chips', functi
         ->not->toContain('Layanan populer"')
         ->not->toContain('Harga rata-rata');
 });
+
+test('a service carries the category group the order picker opens on', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'name' => 'Coating Kaca',
+        'category' => 'Coating Mobil',
+        'category_group' => '  Coating  ',
+    ]))->assertSessionHasNoErrors();
+
+    $service = Service::query()->where('name', 'Coating Kaca')->firstOrFail();
+    expect($service->category_group)->toBe('Coating');
+
+    $this->patch(route('admin.master.services.update', $service), servicePayload([
+        'name' => 'Coating Kaca',
+        'category' => 'Coating Mobil',
+        'category_group' => 'Proteksi',
+        'service_variations' => [[
+            'id' => $service->serviceVariations()->value('id'),
+            'variations' => null,
+            'price' => 55000,
+            'is_active' => true,
+        ]],
+    ]))->assertSessionHasNoErrors();
+
+    expect($service->refresh()->category_group)->toBe('Proteksi');
+
+    $this->get(route('admin.master.services.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('services.0.category_group', 'Proteksi')
+            ->where('categoryGroups', ['Proteksi']));
+
+    $this->get(route('admin.orders.index'))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('services.0.categoryGroup', 'Proteksi'));
+});
+
+test('a service saved without a group falls under its category first word', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')->post(route('admin.master.services.store'), servicePayload([
+        'category' => 'Detailing Motor',
+    ]))->assertSessionHasNoErrors();
+
+    expect(Service::query()->where('name', 'Cuci Kilat')->value('category_group'))->toBe('Detailing')
+        ->and(Service::factory()->create(['category' => 'Add-on'])->category_group)->toBe('Add-on');
+});
