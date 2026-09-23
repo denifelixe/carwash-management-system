@@ -1,5 +1,9 @@
 import { router } from '@inertiajs/vue3';
 import { toast } from 'vue-sonner';
+import {
+    isNotificationSound,
+    playNotificationSound,
+} from '@/lib/notificationSound';
 import type { FlashToast } from '@/types/ui';
 
 export function initializeFlashToast(): void {
@@ -12,5 +16,9 @@ export function initializeFlashToast(): void {
         }
 
         toast[data.type](data.message);
+
+        if (data.sound && isNotificationSound(data.sound)) {
+            playNotificationSound(data.sound);
+        }
     });
 }

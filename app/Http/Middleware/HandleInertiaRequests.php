@@ -30,6 +30,19 @@ class HandleInertiaRequests extends Middleware
     }
 
     /**
+     * Routes whose success also plays a voice clip: the cashier and field staff
+     * act on these at the counter, often without watching the screen. Each
+     * value names a recording in public/notification-sounds/ (without .mp3).
+     *
+     * @var array<string, string>
+     */
+    private const SOUND_ROUTES = [
+        'admin.orders.store' => 'order-telah-berhasil-dibuat',
+        'admin.orders.status.update' => 'status-order-telah-berhasil-diperbarui',
+        'admin.pos.payments.store' => 'pembayaran-berhasil',
+    ];
+
+    /**
      * Controllers report outcomes with redirect()->with('success', ...), which
      * the frontend never reads; it only listens for the Inertia `toast` flash.
      * Turning the fresh session message into that flash on the way out makes
@@ -46,7 +59,11 @@ class HandleInertiaRequests extends Middleware
                 && is_string($message)
                 && ! array_key_exists('toast', Inertia::getFlashed($request))
             ) {
-                Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+                Inertia::flash('toast', [
+                    'type' => 'success',
+                    'message' => $message,
+                    'sound' => self::SOUND_ROUTES[$request->route()?->getName() ?? ''] ?? null,
+                ]);
             }
         }
 

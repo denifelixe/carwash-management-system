@@ -165,7 +165,8 @@ test('an owner can create a member order with database priced services', functio
             ])->all(),
         ])
         ->assertRedirect(route('admin.orders.index'))
-        ->assertSessionHasNoErrors();
+        ->assertSessionHasNoErrors()
+        ->assertInertiaFlash('toast.sound', 'order-telah-berhasil-dibuat');
 
     $order = Order::query()->latest('id')->firstOrFail();
 
