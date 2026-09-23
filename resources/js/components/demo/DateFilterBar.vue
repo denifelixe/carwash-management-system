@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { CalendarDays } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import type { CarwashDateFilter } from '@/types/demo';
 
 const props = withDefaults(
@@ -29,11 +29,67 @@ const displayDate = computed<string>(() => {
 
     return `${day}/${month}/${year}`;
 });
+
+const barElement = ref<HTMLElement | null>(null);
+const isStuck = ref<boolean>(false);
+let pendingFrame: number | undefined;
+
+/** The bar is stuck once its top has reached the header's bottom edge. */
+function updateStuckState(): void {
+    pendingFrame = undefined;
+
+    if (!barElement.value) {
+        return;
+    }
+
+    const headerHeight =
+        parseFloat(
+            getComputedStyle(barElement.value).getPropertyValue(
+                '--admin-header-height',
+            ),
+        ) || 0;
+
+    isStuck.value =
+        window.scrollY > 0 &&
+        barElement.value.getBoundingClientRect().top <= headerHeight + 1;
+}
+
+function scheduleStuckCheck(): void {
+    if (pendingFrame === undefined) {
+        pendingFrame = requestAnimationFrame(updateStuckState);
+    }
+}
+
+onMounted(() => {
+    window.addEventListener('scroll', scheduleStuckCheck, { passive: true });
+    window.addEventListener('resize', scheduleStuckCheck, { passive: true });
+    updateStuckState();
+});
+
+onUnmounted(() => {
+    window.removeEventListener('scroll', scheduleStuckCheck);
+    window.removeEventListener('resize', scheduleStuckCheck);
+
+    if (pendingFrame !== undefined) {
+        cancelAnimationFrame(pendingFrame);
+    }
+});
 </script>
 
 <template>
+    <!--
+        Sticks flush under the admin header (AdminLayout publishes its height as
+        --admin-header-height). Once stuck it bleeds out of <main>'s padding
+        (px-4 sm:px-6 lg:px-8) so it reads as one bar with the header.
+    -->
     <section
-        class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3 shadow-sm"
+        ref="barElement"
+        class="sticky top-[var(--admin-header-height,4.5rem)] z-20 flex flex-wrap items-center justify-between gap-3 border-slate-200/80 py-3"
+        :class="
+            isStuck
+                ? '-mx-4 border border-x-0 border-t-transparent bg-white/85 px-4 shadow-sm backdrop-blur-xl sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8'
+                : 'rounded-2xl border bg-white px-3 shadow-sm'
+        "
     >
         <p class="flex items-center gap-2 px-1 text-sm text-slate-500">
             <CalendarDays class="h-4 w-4 text-slate-400" />

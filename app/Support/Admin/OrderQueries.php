@@ -60,8 +60,10 @@ class OrderQueries
     }
 
     /**
-     * Earlier settlements and orders paid on the selected day or today, so a
-     * completed overdue payment remains available for its receipt after reload.
+     * Earlier orders still running (the cashier's "semua order berjalan"
+     * view lists every one of them) and orders paid on the selected day or
+     * today, so a completed overdue payment remains available for its
+     * receipt after reload.
      *
      * @return Collection<int, Order>
      */
@@ -70,7 +72,7 @@ class OrderQueries
         return self::baseQuery()
             ->whereDate('service_date', '<', $date)
             ->where(fn (Builder $query) => $query
-                ->where('status', 'pelunasan')
+                ->whereIn('status', ['booking', 'menunggu', 'proses', 'pelunasan'])
                 ->orWhereHas('transactions', fn (Builder $transactions) => $transactions
                     ->whereDate('paid_at', $date)
                     ->orWhereDate('paid_at', $today)))

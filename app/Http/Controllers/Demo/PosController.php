@@ -33,7 +33,8 @@ class PosController extends AdminController
             'dailyOrders' => DateFilter::apply(Operations::orders(), $date),
             'previousOrders' => array_values(array_filter(
                 Operations::orders(),
-                fn (array $order): bool => $order['date'] < $date && $order['status'] === 'pelunasan',
+                fn (array $order): bool => $order['date'] < $date
+                    && in_array($order['status'], ['booking', 'menunggu', 'proses', 'pelunasan'], true),
             )),
             'partialPaymentBookings' => Operations::partialPaymentBookingOrders(),
             'filters' => DateFilter::meta($date),

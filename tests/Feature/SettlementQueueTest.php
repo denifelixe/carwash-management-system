@@ -102,7 +102,7 @@ JS;
     expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
-test('the cashier sorts each settlement group by entry time with stable ties and keeps source order intact', function () {
+test('the cashier sorts settlements by entry time and running orders by arrival without mutating the source', function () {
     $script = <<<'JS'
 const fs = require('node:fs');
 const ts = require('typescript');
@@ -116,7 +116,7 @@ const declarations = ast.statements.filter(node => ts.isVariableStatement(node) 
 const code = ts.transpile(declarations.map(node => node.getText(ast)).join('\n'));
 const props = { filters: { date: '2026-09-15', today: '2026-09-15' } };
 const formatDate = value => value;
-const order = (id, settlementEnteredAt, date = '2026-09-15') => ({ id, settlementEnteredAt, date, time: '08.00', status: 'pelunasan', orderNo: `ORD-${id}`, customer: 'Customer', plate: 'B123AA' });
+const order = (id, settlementEnteredAt, date = '2026-09-15', time = '08.00', status = 'pelunasan') => ({ id, settlementEnteredAt, date, time, status, orderNo: `ORD-${id}`, customer: 'Customer', plate: 'B123AA' });
 const orderList = ref([order(1, 3000), order(2, 1000), order(3, 2000), order(5, 4000, '2026-09-13'), order(4, 500, '2026-09-14'), order(6, 2000)]);
 eval(code + `
 assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [2, 3, 6, 1]);
@@ -130,7 +130,16 @@ search.value = 'ord-1';
 assert.deepEqual(visibleOrders.value.map(order => order.id), [1]);
 search.value = '';
 showAllOrders.value = true;
-assert.deepEqual(visibleOrders.value.map(order => order.id), orderList.value.map(order => order.id));
+orderList.value = [
+    order(10, null, '2026-09-15', '11.30', 'menunggu'),
+    order(11, 100, '2026-09-15', '07.45'),
+    order(12, null, '2026-09-15', '—', 'booking'),
+    order(13, null, '2026-09-14', '16.00', 'proses'),
+    order(14, null, '2026-09-15', '09.10', 'selesai'),
+];
+assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [11, 10, 12]);
+assert.deepEqual(settlementGroups.value[1].orders.map(order => order.id), [13]);
+assert.deepEqual(orderList.value.map(order => order.id), [10, 11, 12, 13, 14]);
 `);
 JS;
 

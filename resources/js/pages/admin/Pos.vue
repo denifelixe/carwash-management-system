@@ -282,6 +282,23 @@ const outstandingTotal = computed<number>(() =>
     ),
 );
 
+/** Orders payments by when they were received, oldest first. */
+function compareTransactionsByPaidAt(
+    first: CarwashTransaction,
+    second: CarwashTransaction,
+): number {
+    return (
+        first.date.localeCompare(second.date) ||
+        first.time.localeCompare(second.time) ||
+        first.id.localeCompare(second.id)
+    );
+}
+
+/**
+ * The day's payments in the order they were received. The orders arrive
+ * sorted by service date, so without this the recap listed payments by
+ * order rather than by the clock.
+ */
 const paymentRecapTransactions = computed(() =>
     Array.from(
         new Map(
@@ -295,7 +312,7 @@ const paymentRecapTransactions = computed(() =>
                 )
                 .map((transaction) => [transaction.id, transaction]),
         ).values(),
-    ),
+    ).sort(compareTransactionsByPaidAt),
 );
 
 const paymentRecapPartialTransactions = computed(() =>
@@ -776,6 +793,20 @@ function orderTypeLabel(order: CarwashOrder): string {
         : 'Walk-in customer';
 }
 
+/** Day and time a payment was received. */
+function paidAtLabel(transaction: CarwashTransaction): string {
+    return `${formatDate(transaction.date)} · ${transaction.time}`;
+}
+
+/** Arrival day and time; the time is left off until the car has arrived. */
+function orderArrivalLabel(order: CarwashOrder): string {
+    if (order.time === '—') {
+        return formatDate(order.date);
+    }
+
+    return `${formatDate(order.arrivalDate ?? order.date)} · ${order.time}`;
+}
+
 function bookingDisplayStatus(order: CarwashOrder): string {
     if (order.source !== 'booking') {
         return order.status;
@@ -784,8 +815,15 @@ function bookingDisplayStatus(order: CarwashOrder): string {
     return order.date > props.filters.today ? 'Booking Mendatang' : 'booking';
 }
 
+/**
+ * Settlements queue by when they entered settlement; the running orders view
+ * queues by arrival, oldest first. A booking whose car has not arrived carries
+ * '—' as its time and goes after every clock time of its day.
+ */
 const visibleOrders = computed<CarwashOrder[]>(() => {
     const query = search.value.trim().toLowerCase();
+    const arrivalTime = (order: CarwashOrder): string =>
+        order.time && order.time !== '—' ? order.time : '99.99';
 
     return orderList.value
         .filter((order) => {
@@ -805,15 +843,15 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
             return matchesStatus && matchesDate && matchesQuery;
         })
         .sort((first, second) => {
-            if (showAllOrders.value) {
-                return 0;
-            }
+            const bySettlementEntry = showAllOrders.value
+                ? 0
+                : (first.settlementEnteredAt ?? 0) -
+                  (second.settlementEnteredAt ?? 0);
 
             return (
-                (first.settlementEnteredAt ?? 0) -
-                    (second.settlementEnteredAt ?? 0) ||
+                bySettlementEntry ||
                 first.date.localeCompare(second.date) ||
-                (first.time ?? '').localeCompare(second.time ?? '') ||
+                arrivalTime(first).localeCompare(arrivalTime(second)) ||
                 first.id - second.id
             );
         });
@@ -833,13 +871,7 @@ const settlementGroups = computed(() => {
             title: showAllOrders.value
                 ? 'Order sebelumnya'
                 : 'Pelunasan tertunggak',
-            orders: visibleOrders.value
-                .filter((order) => order.date < date)
-                .sort((first, second) =>
-                    showAllOrders.value
-                        ? first.date.localeCompare(second.date)
-                        : 0,
-                ),
+            orders: visibleOrders.value.filter((order) => order.date < date),
         },
     ].filter((group) => group.orders.length > 0);
 });
@@ -858,9 +890,22 @@ const receiptHeadline = computed<string>(() => {
         : 'Pembayaran sebagian diterima';
 });
 
+/** The payment that settled the order: its latest one. */
+function settlingTransaction(order: CarwashOrder): CarwashTransaction | null {
+    return order.transactions.reduce<CarwashTransaction | null>(
+        (latest, transaction) =>
+            latest === null ||
+            compareTransactionsByPaidAt(transaction, latest) > 0
+                ? transaction
+                : latest,
+        null,
+    );
+}
+
 /**
- * Settled orders for the filtered day, newest first. The cashier only comes
- * here to reprint, so the most recent settlement sits at the top.
+ * Settled orders for the filtered day, newest settlement first. The cashier
+ * only comes here to reprint, so the most recent settlement sits at the top.
+ * Order numbers follow arrival, not payment, so they cannot order this list.
  */
 const visibleCompletedOrders = computed<CarwashOrder[]>(() => {
     const query = completedSearch.value.trim().toLowerCase();
@@ -878,11 +923,20 @@ const visibleCompletedOrders = computed<CarwashOrder[]>(() => {
 
             return isCompleted && matchesQuery;
         })
+        .map((order) => ({ order, settledBy: settlingTransaction(order) }))
         .sort(
             (first, second) =>
-                second.date.localeCompare(first.date) ||
-                second.orderNo.localeCompare(first.orderNo),
-        );
+                (first.settledBy && second.settledBy
+                    ? compareTransactionsByPaidAt(
+                          second.settledBy,
+                          first.settledBy,
+                      )
+                    : Number(second.settledBy !== null) -
+                      Number(first.settledBy !== null)) ||
+                second.order.date.localeCompare(first.order.date) ||
+                second.order.orderNo.localeCompare(first.order.orderNo),
+        )
+        .map(({ order }) => order);
 });
 
 const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
@@ -3006,7 +3060,7 @@ const memberForm = useForm({
                                     </div>
 
                                     <p class="mt-2 text-[11px] text-slate-500">
-                                        {{ formatDate(order.date) }} •
+                                        {{ orderArrivalLabel(order) }} •
                                         {{ orderTypeLabel(order) }}
                                     </p>
                                     <p
@@ -3032,7 +3086,7 @@ const memberForm = useForm({
                                             )"
                                             :key="transaction.id"
                                         >
-                                            {{ formatDate(transaction.date) }} ·
+                                            {{ paidAtLabel(transaction) }} ·
                                             Pembayaran Sebagian/Booking sebesar
                                             {{
                                                 formatCurrency(
@@ -3158,7 +3212,7 @@ const memberForm = useForm({
                             </div>
 
                             <p class="mt-2 text-[11px] text-slate-500">
-                                {{ formatDate(order.date) }} •
+                                {{ orderArrivalLabel(order) }} •
                                 {{ orderTypeLabel(order) }}
                             </p>
                             <p
@@ -3181,8 +3235,8 @@ const memberForm = useForm({
                                     )"
                                     :key="transaction.id"
                                 >
-                                    {{ formatDate(transaction.date) }} ·
-                                    Pembayaran Sebagian/Booking sebesar
+                                    {{ paidAtLabel(transaction) }} · Pembayaran
+                                    Sebagian/Booking sebesar
                                     {{ formatCurrency(transaction.amount) }}.
                                 </li>
                             </ul>
@@ -3275,7 +3329,7 @@ const memberForm = useForm({
                         </div>
 
                         <p class="mt-2 text-[11px] text-slate-500">
-                            {{ formatDate(order.date) }} •
+                            {{ orderArrivalLabel(order) }} •
                             {{ orderTypeLabel(order) }} •
                             {{ order.transactions.length }} pembayaran
                         </p>

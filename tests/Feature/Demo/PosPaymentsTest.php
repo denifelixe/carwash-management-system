@@ -32,7 +32,7 @@ eval(code + `
 assert.equal(showAllOrders.value, false);
 assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0]);
 showAllOrders.value = true;
-assert.deepEqual(visibleOrders.value.map(order => order.id), [0, 1, 2, 3, 6]);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0, 1, 2, 3]);
 assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 5);
 for (const query of ['ord-4', 'ord-5']) {
     search.value = query;

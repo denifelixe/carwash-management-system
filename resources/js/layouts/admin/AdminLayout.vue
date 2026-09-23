@@ -91,7 +91,12 @@ const isNotificationsOpen = ref<boolean>(false);
 const isRefreshing = ref<boolean>(false);
 const notifications = ref<CarwashNotification[]>([]);
 const currentTime = ref<string>('--:--:--');
+const currentDate = ref<string>('');
+const currentShortDate = ref<string>('');
+const headerElement = ref<HTMLElement | null>(null);
+const headerHeight = ref<number>(0);
 let clockTimer: ReturnType<typeof setInterval> | undefined;
+let headerResizeObserver: ResizeObserver | undefined;
 
 const clockFormatter = computed(
     () =>
@@ -104,8 +109,32 @@ const clockFormatter = computed(
         }),
 );
 
+const dateFormatter = computed(
+    () =>
+        new Intl.DateTimeFormat('id-ID', {
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            timeZone: timezone.value.id,
+        }),
+);
+
+const shortDateFormatter = computed(
+    () =>
+        new Intl.DateTimeFormat('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            timeZone: timezone.value.id,
+        }),
+);
+
 function updateClock(): void {
-    currentTime.value = clockFormatter.value.format(new Date());
+    const now = new Date();
+
+    currentTime.value = clockFormatter.value.format(now);
+    currentDate.value = dateFormatter.value.format(now);
+    currentShortDate.value = shortDateFormatter.value.format(now);
 }
 
 onMounted(() => {
@@ -113,12 +142,21 @@ onMounted(() => {
         localStorage.getItem(sidebarStorageKey.value) === 'collapsed';
     updateClock();
     clockTimer = setInterval(updateClock, 1000);
+
+    if (headerElement.value) {
+        headerResizeObserver = new ResizeObserver(([entry]) => {
+            headerHeight.value = entry.borderBoxSize[0].blockSize;
+        });
+        headerResizeObserver.observe(headerElement.value);
+    }
 });
 
 onUnmounted(() => {
     if (clockTimer !== undefined) {
         clearInterval(clockTimer);
     }
+
+    headerResizeObserver?.disconnect();
 });
 
 watch(
@@ -533,8 +571,14 @@ function closeSidebar(module: CarwashAdminModule): void {
         <div
             class="transition-[padding] duration-300"
             :class="isSidebarCollapsed ? 'lg:pl-20' : 'lg:pl-72'"
+            :style="
+                headerHeight > 0
+                    ? { '--admin-header-height': `${headerHeight}px` }
+                    : undefined
+            "
         >
             <header
+                ref="headerElement"
                 class="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-xl"
             >
                 <div
@@ -605,11 +649,27 @@ function closeSidebar(module: CarwashAdminModule): void {
                             class="hidden h-[18px] w-[18px] text-cyan-600 sm:block"
                         />
                         <div class="leading-none">
-                            <time
-                                class="block font-mono text-xs font-semibold tracking-wide text-slate-900 tabular-nums sm:text-sm"
+                            <p
+                                class="flex items-center gap-1.5 text-xs font-semibold text-slate-900 sm:text-sm"
                             >
-                                {{ currentTime }}
-                            </time>
+                                <span class="sm:hidden">{{
+                                    currentShortDate
+                                }}</span>
+                                <span class="hidden sm:inline">{{
+                                    currentDate
+                                }}</span>
+                                <span
+                                    v-if="currentDate"
+                                    class="text-slate-300"
+                                    aria-hidden="true"
+                                    >·</span
+                                >
+                                <time
+                                    class="font-mono tracking-wide tabular-nums"
+                                >
+                                    {{ currentTime }}
+                                </time>
+                            </p>
                             <p
                                 class="mt-1 flex max-w-32 items-center gap-1 text-[10px] font-medium text-slate-500 sm:max-w-48 sm:text-[11px]"
                             >
