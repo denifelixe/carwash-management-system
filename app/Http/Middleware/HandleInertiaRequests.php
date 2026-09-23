@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Admin;
 use App\Support\Admin\TransactionShiftResolver;
 use Illuminate\Http\Request;
+use Inertia\Inertia;
 use Inertia\Middleware;
 
 class HandleInertiaRequests extends Middleware
@@ -26,6 +27,30 @@ class HandleInertiaRequests extends Middleware
     public function version(Request $request): ?string
     {
         return parent::version($request);
+    }
+
+    /**
+     * Controllers report outcomes with redirect()->with('success', ...), which
+     * the frontend never reads; it only listens for the Inertia `toast` flash.
+     * Turning the fresh session message into that flash on the way out makes
+     * every one of those redirects show its notification.
+     */
+    protected function reflash(Request $request): void
+    {
+        if ($request->hasSession()) {
+            $session = $request->session();
+            $message = $session->get('success');
+
+            if (
+                in_array('success', $session->get('_flash.new', []), true)
+                && is_string($message)
+                && ! array_key_exists('toast', Inertia::getFlashed($request))
+            ) {
+                Inertia::flash('toast', ['type' => 'success', 'message' => $message]);
+            }
+        }
+
+        parent::reflash($request);
     }
 
     /**

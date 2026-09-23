@@ -4133,12 +4133,13 @@ const memberForm = useForm({
                             </div>
                         </section>
 
-                        <section class="space-y-3 px-6 py-4">
+                        <section
+                            v-if="
+                                orderCustomer && selectedOrder.stampsEarned > 0
+                            "
+                            class="px-6 py-4"
+                        >
                             <p
-                                v-if="
-                                    orderCustomer &&
-                                    selectedOrder.stampsEarned > 0
-                                "
                                 class="flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700"
                             >
                                 <Sparkles class="h-3.5 w-3.5 shrink-0" />
@@ -4147,44 +4148,49 @@ const memberForm = useForm({
                                 }}
                                 stempel saat order lunas
                             </p>
-                            <div
-                                v-if="mode === 'live' && paymentForm.hasErrors"
-                                class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
-                            >
-                                <p
-                                    v-for="(
-                                        message, field
-                                    ) in paymentForm.errors"
-                                    :key="field"
-                                >
-                                    {{ message }}
-                                </p>
-                            </div>
-                            <p
-                                v-else-if="!capabilities.create"
-                                class="rounded-xl bg-slate-100 px-4 py-3 text-xs text-slate-600"
-                            >
-                                Role Anda tidak memiliki akses untuk menerima
-                                pembayaran.
-                            </p>
-                            <button
-                                type="button"
-                                class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
-                                :disabled="
-                                    !canSubmit ||
-                                    !capabilities.create ||
-                                    paymentForm.processing
-                                "
-                                @click="submitPayment"
-                            >
-                                <CreditCard class="h-4 w-4" />
-                                {{
-                                    paymentForm.processing
-                                        ? 'Memproses…'
-                                        : 'Proses'
-                                }}
-                            </button>
                         </section>
+                    </div>
+                </template>
+
+                <!--
+                    Pinned in the dialog footer so "Proses" stays on screen
+                    however long the payment form scrolls on a phone.
+                -->
+                <template v-if="selectedOrder" #footer>
+                    <div class="flex w-full flex-col gap-2">
+                        <div
+                            v-if="mode === 'live' && paymentForm.hasErrors"
+                            class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
+                        >
+                            <p
+                                v-for="(message, field) in paymentForm.errors"
+                                :key="field"
+                            >
+                                {{ message }}
+                            </p>
+                        </div>
+                        <p
+                            v-else-if="!capabilities.create"
+                            class="rounded-xl bg-slate-100 px-4 py-3 text-xs text-slate-600"
+                        >
+                            Role Anda tidak memiliki akses untuk menerima
+                            pembayaran.
+                        </p>
+                        <button
+                            type="button"
+                            class="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-3 text-sm font-semibold text-white shadow-lg shadow-cyan-500/30 transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300 disabled:shadow-none"
+                            :disabled="
+                                !canSubmit ||
+                                !capabilities.create ||
+                                paymentForm.processing
+                            "
+                            @click="submitPayment"
+                        >
+                            <CreditCard class="h-4 w-4" />
+                            {{
+                                paymentForm.processing ? 'Memproses…' : 'Proses'
+                            }}
+                        </button>
                     </div>
                 </template>
             </ModalDialog>
