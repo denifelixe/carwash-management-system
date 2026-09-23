@@ -348,6 +348,43 @@ body {
 }
 ${toolbarStyles()}
 .toolbar { width: ${PAPER_WIDTH}; }
+.autoclose {
+    align-items: center;
+    color: #475569;
+    display: flex;
+    flex-wrap: wrap;
+    font-family: ui-sans-serif, system-ui, 'Segoe UI', sans-serif;
+    font-size: 11px;
+    gap: 4px 8px;
+    justify-content: space-between;
+    margin: -6px auto 14px;
+    width: ${PAPER_WIDTH};
+}
+.autoclose[hidden] { display: none; }
+.autoclose strong { color: #0f172a; font-variant-numeric: tabular-nums; }
+.autoclose button {
+    background: transparent;
+    border: 0;
+    color: #0e7490;
+    cursor: pointer;
+    font: inherit;
+    font-weight: 600;
+    padding: 0;
+    text-decoration: underline;
+}
+.autoclose-track {
+    background: #e2e8f0;
+    border-radius: 999px;
+    flex: 1 0 100%;
+    height: 4px;
+    overflow: hidden;
+}
+.autoclose-bar {
+    background: #0891b2;
+    height: 100%;
+    transform-origin: left;
+    transition: transform 1s linear;
+}
 .paper {
     background: #ffffff;
     border-radius: 3px;
@@ -458,6 +495,7 @@ ${toolbarStyles()}
         -webkit-print-color-adjust: exact;
     }
     .toolbar, .toast { display: none; }
+    .autoclose { display: none !important; }
     .paper {
         box-shadow: none;
         margin: 0;
@@ -504,6 +542,11 @@ export function renderPosReceiptDocument(
     ${toolbarButton('data-receipt-copy', toolbarIcons.link, 'Salin Link', '', receipt.publicUrl === null)}
     ${toolbarButton('data-receipt-close', toolbarIcons.close, 'Tutup')}
 </div>
+<div class="autoclose" role="timer" aria-live="off" data-receipt-autoclose hidden>
+    <span>Jendela tertutup otomatis dalam <strong data-receipt-autoclose-seconds>${AUTO_CLOSE_SECONDS}</strong> detik</span>
+    <button type="button" data-receipt-autoclose-cancel>Tetap buka</button>
+    <div class="autoclose-track"><div class="autoclose-bar" data-receipt-autoclose-bar></div></div>
+</div>
 ${toastMarkup()}
 <main class="paper">${receiptBody(receipt, brand)}</main>
 </body>
@@ -541,6 +584,84 @@ export function openPosReceiptWindow(
 /** How long the copied state stays on the button. */
 const TOAST_DURATION = 2400;
 
+/** A slip the app opened closes itself after this long (MoM 17 Sep 2026). */
+export const AUTO_CLOSE_SECONDS = 10;
+
+interface AutoCloseCountdown {
+    pause: () => void;
+    restart: () => void;
+}
+
+/**
+ * Counts the slip down to closing itself, but only in a window the app opened
+ * (it has an opener): a customer who follows the link or scans the QR keeps
+ * the page. Printing, downloading and copying pause the count and it starts
+ * over once they finish; "Tetap buka" stops it for good.
+ */
+function startAutoCloseCountdown(receiptWindow: Window): AutoCloseCountdown {
+    const documentRoot = receiptWindow.document;
+    const panel = documentRoot.querySelector<HTMLElement>(
+        '[data-receipt-autoclose]',
+    );
+    const secondsLabel = documentRoot.querySelector(
+        '[data-receipt-autoclose-seconds]',
+    );
+    const bar = documentRoot.querySelector<HTMLElement>(
+        '[data-receipt-autoclose-bar]',
+    );
+
+    if (!receiptWindow.opener || !panel || !secondsLabel || !bar) {
+        return { pause: () => undefined, restart: () => undefined };
+    }
+
+    let timer = 0;
+    let isCancelled = false;
+
+    const render = (remaining: number): void => {
+        secondsLabel.textContent = String(remaining);
+        bar.style.transform = `scaleX(${remaining / AUTO_CLOSE_SECONDS})`;
+    };
+
+    const pause = (): void => {
+        receiptWindow.clearInterval(timer);
+        timer = 0;
+    };
+
+    const restart = (): void => {
+        if (isCancelled) {
+            return;
+        }
+
+        pause();
+
+        let remaining = AUTO_CLOSE_SECONDS;
+
+        render(remaining);
+        timer = receiptWindow.setInterval(() => {
+            remaining -= 1;
+            render(remaining);
+
+            if (remaining <= 0) {
+                pause();
+                receiptWindow.close();
+            }
+        }, 1000);
+    };
+
+    documentRoot
+        .querySelector('[data-receipt-autoclose-cancel]')
+        ?.addEventListener('click', () => {
+            isCancelled = true;
+            pause();
+            panel.hidden = true;
+        });
+
+    panel.hidden = false;
+    restart();
+
+    return { pause, restart };
+}
+
 /**
  * The PDF writer is fetched on the click rather than imported at the top, so
  * the POS bundle never carries jsPDF for a button most sessions do not press.
@@ -566,6 +687,11 @@ export function mountPosReceiptDocument(
     receiptWindow.document.close();
 
     const showToast = documentToaster(receiptWindow, TOAST_DURATION);
+    const countdown = startAutoCloseCountdown(receiptWindow);
+
+    /* The print sheet can stay open for a while; the count restarts after it. */
+    receiptWindow.addEventListener('beforeprint', countdown.pause);
+    receiptWindow.addEventListener('afterprint', countdown.restart);
 
     /*
      * Nothing is staged before printing: what only belongs on paper — the
@@ -585,6 +711,7 @@ export function mountPosReceiptDocument(
         const downloadLabel = downloadButton.querySelector('span');
 
         downloadButton.disabled = true;
+        countdown.pause();
 
         if (downloadLabel !== null) {
             downloadLabel.textContent = 'Membuat…';
@@ -596,6 +723,7 @@ export function mountPosReceiptDocument(
             showToast('PDF gagal dibuat', 'error');
         } finally {
             downloadButton.disabled = false;
+            countdown.restart();
 
             if (downloadLabel !== null) {
                 downloadLabel.textContent = 'Unduh PDF';
@@ -618,7 +746,12 @@ export function mountPosReceiptDocument(
         }
 
         const copyLabel = copyButton.querySelector('span');
+
+        countdown.pause();
+
         const copied = await copyToClipboard(receiptWindow, receipt.publicUrl);
+
+        countdown.restart();
 
         if (!copied) {
             showToast('Link gagal disalin', 'error');
