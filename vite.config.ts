@@ -10,6 +10,9 @@ import { defineConfig } from 'vite';
 process.env.WAYFINDER_GENERATE_ALL_ROUTES = 'true';
 
 export default defineConfig({
+    optimizeDeps: {
+        include: ['@fancyapps/ui'],
+    },
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.ts'],

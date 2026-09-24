@@ -488,11 +488,8 @@ class FinanceController extends Controller
 
         $disk = Storage::disk($cashEntryAttachment->disk);
 
-        /*
-         * An image is served inline so the ledger can show it in place; a
-         * document has nothing to show and is handed over to be opened.
-         */
         return FinancePresenter::isImage($cashEntryAttachment->path)
+            || FinancePresenter::isPdf($cashEntryAttachment->path)
             ? $disk->response($cashEntryAttachment->path, $cashEntryAttachment->original_name)
             : $disk->download($cashEntryAttachment->path, $cashEntryAttachment->original_name);
     }

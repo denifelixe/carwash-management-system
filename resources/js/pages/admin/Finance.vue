@@ -19,6 +19,7 @@ import {
 } from '@lucide/vue';
 import '@fancyapps/ui/dist/fancybox/fancybox.css';
 import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { toast } from 'vue-sonner';
 import {
     destroy as destroyCashEntry,
     destroyTransaction as destroyOrderTransaction,
@@ -1618,6 +1619,7 @@ function saveDemoEntry(transactionShiftId: number | null): void {
                     size: '—',
                     url: null,
                     isImage: attachment.file.type.startsWith('image/'),
+                    isPdf: attachment.file.type === 'application/pdf',
                 })),
             ],
         });
@@ -1676,6 +1678,7 @@ function saveDemoEntry(transactionShiftId: number | null): void {
             size: '—',
             url: null,
             isImage: attachment.file.type.startsWith('image/'),
+            isPdf: attachment.file.type === 'application/pdf',
         })),
     };
 
@@ -1688,43 +1691,64 @@ function saveDemoEntry(transactionShiftId: number | null): void {
     closeEntryForm();
 }
 
-/*
- * Image attachments open in place rather than downloading. Fancybox binds by
- * delegation, so rows that appear later — a new filter, a fresh visit — are
- * picked up without rebinding. Its hash integration stays disabled so closing
- * an attachment cannot navigate Inertia's history or lose the ledger position.
- *
- * Fancybox groups items by the value of data-fancybox, so a shared name would
- * hand the reader a carousel of every attachment on the page. The value is left
- * empty on purpose: each image then opens on its own, and the counter, arrows,
- * slideshow and thumbnail strip all drop away with the group.
- */
-const LIGHTBOX_SELECTOR = '[data-fancybox]';
-const LIGHTBOX_STANDALONE = '';
+/** Each click opens only its attachment and leaves Inertia history untouched. */
 type FancyboxApi = typeof Fancybox;
 
-let attachmentLightbox: FancyboxApi | null = null;
+function attachmentLightboxType(attachment: {
+    url?: string | null;
+    isImage?: boolean;
+    isPdf?: boolean;
+}): 'image' | 'pdf' | null {
+    if (!attachment.url) {
+        return null;
+    }
+
+    return attachment.isImage ? 'image' : attachment.isPdf ? 'pdf' : null;
+}
+
+let attachmentLightbox: ReturnType<FancyboxApi['fromNodes']>;
+let attachmentLightboxLoading = false;
 let financePageUnmounted = false;
 
-/** Fancybox mutates browser globals when imported, so SSR must never load it. */
-async function bindAttachmentLightbox(): Promise<void> {
-    const { Fancybox } = await import('@fancyapps/ui');
+/** Cancel navigation before loading the client-only viewer, including its first click. */
+async function openAttachment(event: MouseEvent): Promise<void> {
+    const triggerEl = event.currentTarget as HTMLElement;
 
-    if (financePageUnmounted) {
+    if (!triggerEl.dataset.type) {
         return;
     }
 
-    attachmentLightbox = Fancybox;
-    Fancybox.bind(LIGHTBOX_SELECTOR, {
-        Hash: false,
-    });
+    event.preventDefault();
+
+    if (attachmentLightboxLoading) {
+        return;
+    }
+
+    attachmentLightboxLoading = true;
+
+    try {
+        const { Fancybox } = await import('@fancyapps/ui');
+
+        if (!financePageUnmounted) {
+            attachmentLightbox = Fancybox.fromNodes([triggerEl], {
+                Hash: false,
+            });
+        }
+    } catch {
+        if (!financePageUnmounted) {
+            toast.error(
+                'Pratinjau lampiran gagal dimuat. Muat ulang halaman lalu coba lagi.',
+            );
+        }
+    } finally {
+        attachmentLightboxLoading = false;
+    }
 }
 
 onMounted(() => {
     activeShift.value =
         new URLSearchParams(window.location.search).get('shift') ??
         allShiftsKey;
-    void bindAttachmentLightbox();
 });
 
 onUnmounted(() => {
@@ -2281,17 +2305,16 @@ function applyDate(date: string): void {
                                         v-for="attachment in entry.attachments"
                                         :key="attachment.id"
                                         :href="attachment.url || undefined"
-                                        :data-fancybox="
-                                            attachment.isImage
-                                                ? LIGHTBOX_STANDALONE
-                                                : null
+                                        :data-type="
+                                            attachmentLightboxType(attachment)
                                         "
                                         :data-caption="
-                                            attachment.isImage
+                                            attachmentLightboxType(attachment)
                                                 ? `${entry.ref} — ${entry.description}`
                                                 : null
                                         "
                                         class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
+                                        @click="openAttachment($event)"
                                     >
                                         <component
                                             :is="
@@ -3389,10 +3412,9 @@ function applyDate(date: string): void {
                     >
                         <a
                             :href="attachment.url || undefined"
-                            :data-fancybox="
-                                attachment.isImage ? LIGHTBOX_STANDALONE : null
-                            "
+                            :data-type="attachmentLightboxType(attachment)"
                             class="flex aspect-[4/3] items-center justify-center bg-slate-50"
+                            @click="openAttachment($event)"
                         >
                             <img
                                 v-if="attachment.isImage && attachment.url"

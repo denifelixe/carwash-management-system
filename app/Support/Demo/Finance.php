@@ -338,7 +338,7 @@ class Finance
         return $summary;
     }
 
-    /** @return array{id: string, name: string, size: string, url: null, isImage: bool} */
+    /** @return array{id: string, name: string, size: string, url: null, isImage: bool, isPdf: bool} */
     private static function attachment(string $id, string $name, string $size): array
     {
         return [
@@ -347,6 +347,7 @@ class Finance
             'size' => $size,
             'url' => null,
             'isImage' => FinancePresenter::isImage($name),
+            'isPdf' => FinancePresenter::isPdf($name),
         ];
     }
 

@@ -10,7 +10,7 @@ const ts = require('typescript');
 const assert = require('node:assert/strict');
 (async () => {
     const { createServer } = await import('vite');
-    const server = await createServer({ configFile: false, server: { middlewareMode: true }, resolve: { alias: { '@': path.resolve('resources/js') } }, ssr: { external: ['jspdf'] } });
+    const server = await createServer({ configFile: false, cacheDir: path.resolve('node_modules/.vite-recap-test'), server: { middlewareMode: true }, resolve: { alias: { '@': path.resolve('resources/js') } }, ssr: { external: ['jspdf'] } });
     try {
         const { renderRecapSheetDocument } = await server.ssrLoadModule('/resources/js/lib/recapSheet.ts');
         const { renderRecapSheetPdf } = await server.ssrLoadModule('/resources/js/lib/recapSheetPdf.ts');

@@ -775,6 +775,7 @@ test('an image attachment is flagged and served inline for the lightbox', functi
         ->assertInertia(
             fn (AssertableInertia $page) => $page
                 ->where('moneyOut.0.attachments.0.isImage', true)
+                ->where('moneyOut.0.attachments.0.isPdf', false)
                 ->where('moneyOut.0.attachments.0.name', 'nota-supplier.jpg'),
         );
 
@@ -785,7 +786,7 @@ test('an image attachment is flagged and served inline for the lightbox', functi
         ->assertHeader('Content-Disposition', 'inline; filename=nota-supplier.jpg');
 });
 
-test('a document attachment is not flagged and is still handed over', function () {
+test('a PDF attachment is flagged and served inline for the lightbox', function () {
     Storage::fake(financeDisk());
     $owner = Admin::factory()->create(['is_owner' => true]);
 
@@ -800,13 +801,15 @@ test('a document attachment is not flagged and is still handed over', function (
     $this->actingAs($owner, 'admin')
         ->get(route('admin.finance.index'))
         ->assertInertia(
-            fn (AssertableInertia $page) => $page->where('moneyOut.0.attachments.0.isImage', false),
+            fn (AssertableInertia $page) => $page
+                ->where('moneyOut.0.attachments.0.isImage', false)
+                ->where('moneyOut.0.attachments.0.isPdf', true),
         );
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.finance.attachment', CashEntryAttachment::query()->sole()))
         ->assertOk()
-        ->assertDownload('struk-token.pdf');
+        ->assertHeader('Content-Disposition', 'inline; filename=struk-token.pdf');
 });
 
 test('a video attachment is refused', function () {

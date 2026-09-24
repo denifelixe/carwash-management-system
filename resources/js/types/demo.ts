@@ -455,8 +455,8 @@ export interface CarwashAttachment {
     size: string;
     /** Demo files have no stored object to serve. */
     url?: string | null;
-    /** Images open in the lightbox; other files are downloaded. */
     isImage?: boolean;
+    isPdf?: boolean;
 }
 
 export interface CarwashCashSummary {

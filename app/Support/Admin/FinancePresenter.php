@@ -110,8 +110,8 @@ class FinancePresenter
                     'name' => $attachment->original_name,
                     'size' => self::fileSize($attachment->size),
                     'url' => route('admin.finance.attachment', $attachment, absolute: false),
-                    /* Images open in the lightbox; other files are downloaded. */
                     'isImage' => self::isImage($attachment->path),
+                    'isPdf' => self::isPdf($attachment->path),
                 ])
                 ->all(),
         ];
@@ -129,6 +129,11 @@ class FinancePresenter
             ['jpg', 'jpeg', 'png'],
             true,
         );
+    }
+
+    public static function isPdf(?string $path): bool
+    {
+        return $path !== null && Str::lower(pathinfo($path, PATHINFO_EXTENSION)) === 'pdf';
     }
 
     /** Attachment sizes are shown the way the upload dialog reported them. */

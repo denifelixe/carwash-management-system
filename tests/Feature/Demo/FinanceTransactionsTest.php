@@ -219,16 +219,65 @@ test('finance attachments are client-only and keep the current ledger position',
     expect($financePage)
         ->not->toContain("import { Fancybox } from '@fancyapps/ui';")
         ->toContain("await import('@fancyapps/ui')")
-        ->toContain('Fancybox.bind(LIGHTBOX_SELECTOR, {')
-        ->toContain('Hash: false,')
-        /*
-         * An empty group value is what keeps each attachment standalone:
-         * naming the group would open every image on the page as a carousel.
-         */
-        ->toContain("const LIGHTBOX_SELECTOR = '[data-fancybox]';")
-        ->toContain("const LIGHTBOX_STANDALONE = '';")
-        ->toContain('attachment.isImage ? LIGHTBOX_STANDALONE : null')
+        ->toContain('Fancybox.fromNodes([triggerEl], {')
+        ->toContain('@click="openAttachment($event)"')
+        ->toContain(':data-type="attachmentLightboxType(attachment)"')
+        ->toContain('attachmentLightboxType(attachment)')
         ->not->toContain('LIGHTBOX_GROUP');
+});
+
+test('finance attachment clicks wait for the viewer without navigating away', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Finance.ts', source, ts.ScriptTarget.Latest, true);
+const statements = ast.statements.filter(node =>
+    (ts.isFunctionDeclaration(node) && node.name?.text === 'openAttachment') ||
+    (ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration =>
+        ['attachmentLightbox', 'attachmentLightboxLoading', 'financePageUnmounted'].includes(declaration.name.getText(ast))
+    ))
+);
+const code = ts.transpileModule(statements.map(node => node.getText(ast)).join('\n')
+    .replace("await import('@fancyapps/ui')", 'await loadFancybox()'), {
+    compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext },
+}).outputText;
+assert.equal((fs.readFileSync('resources/js/pages/admin/Finance.vue', 'utf8').match(/@click="openAttachment\(\$event\)"/g) || []).length, 2);
+
+(async () => {
+    for (const outcome of ['loaded', 'failed', 'unmounted']) {
+        let resolve, reject, loads = 0;
+        const pending = new Promise((yes, no) => { resolve = yes; reject = no; });
+        const opened = [], errors = [];
+        const handler = new Function('loadFancybox', 'toast', code + `
+            return { openAttachment, unmount() { financePageUnmounted = true; } };
+        `)(() => { loads++; return pending; }, { error: message => errors.push(message) });
+        const trigger = { dataset: { type: 'image' }, href: '/finance/attachments/10' };
+        const event = { currentTarget: trigger, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; } };
+        const opening = handler.openAttachment(event);
+        assert.equal(event.defaultPrevented, true, 'navigation must stop before the import resolves');
+        await handler.openAttachment(event);
+        assert.equal(loads, 1, 'repeated clicks must not open duplicate viewers');
+        event.currentTarget = null;
+        assert.equal(opened.length, 0);
+
+        if (outcome === 'failed') reject(new Error('module unavailable'));
+        else {
+            if (outcome === 'unmounted') handler.unmount();
+            resolve({ Fancybox: { fromNodes: (nodes, options) => opened.push({ nodes, options }) } });
+        }
+        await opening;
+        assert.equal(opened.length, outcome === 'loaded' ? 1 : 0);
+        assert.equal(errors.length, outcome === 'failed' ? 1 : 0);
+        if (outcome === 'loaded') assert.deepEqual(opened[0], { nodes: [trigger], options: { Hash: false } });
+    }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
 test('dashboard revenue matches finance money in for the selected day', function () {
