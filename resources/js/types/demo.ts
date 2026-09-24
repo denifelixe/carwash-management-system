@@ -419,6 +419,8 @@ export interface CarwashMoneyEntry {
     /** Database key for a live POS payment that may be corrected in Finance. */
     transactionId?: number | null;
     ref: string;
+    /** Ties the two entries of a Setor Tunai; absent on a plain entry. */
+    transferReference?: string | null;
     date: string;
     time: string;
     category: string;

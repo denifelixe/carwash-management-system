@@ -22,6 +22,13 @@ class FinanceCategories
     ];
 
     /**
+     * Cash taken from the drawer into a non-cash account. Listed on both sides
+     * (its out and in entries share it) but only the Setor Tunai form writes
+     * it, always as a pair, so it is kept off the hand-written entry form.
+     */
+    public const CASH_DEPOSIT = 'Setor Tunai';
+
+    /**
      * @return list<string>
      */
     public static function income(): array
@@ -45,9 +52,9 @@ class FinanceCategories
     public static function recordable(mixed $direction): array
     {
         if ($direction === 'out') {
-            return self::expense();
+            return array_values(array_diff(self::expense(), [self::CASH_DEPOSIT]));
         }
 
-        return array_values(array_diff(self::income(), self::POS_INCOME));
+        return array_values(array_diff(self::income(), [...self::POS_INCOME, self::CASH_DEPOSIT]));
     }
 }

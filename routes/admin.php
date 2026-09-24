@@ -78,6 +78,7 @@ Route::domain((string) config('domains.admin'))
             Route::post('pos/{order}/member', [PosController::class, 'storeMember'])->name('pos.member.store');
             Route::get('finance', [FinanceController::class, 'index'])->name('finance.index');
             Route::post('finance', [FinanceController::class, 'store'])->name('finance.store');
+            Route::post('finance/setor-tunai', [FinanceController::class, 'storeDeposit'])->name('finance.deposits.store');
             Route::patch('finance/transactions/{orderTransaction}', [FinanceController::class, 'updateTransaction'])->name('finance.transactions.update');
             Route::delete('finance/transactions/{orderTransaction}', [FinanceController::class, 'destroyTransaction'])->name('finance.transactions.destroy');
             Route::patch('finance/{cashEntry}', [FinanceController::class, 'update'])->name('finance.update');

@@ -18,6 +18,7 @@ use Illuminate\Support\Carbon;
  * @property int $id
  * @property string $direction
  * @property string $reference
+ * @property string|null $transfer_reference Ties the two entries of a Setor Tunai
  * @property string $category
  * @property string $description
  * @property int $amount
@@ -35,6 +36,7 @@ use Illuminate\Support\Carbon;
 #[Fillable([
     'direction',
     'reference',
+    'transfer_reference',
     'category',
     'description',
     'amount',
@@ -67,6 +69,22 @@ class CashEntry extends Model
     public function deletedBy(): BelongsTo
     {
         return $this->belongsTo(Admin::class, 'deleted_by_admin_id');
+    }
+
+    /**
+     * The other half of a Setor Tunai (the in entry for the out one, and back),
+     * or null for a plain entry.
+     */
+    public function transferPartner(): ?self
+    {
+        if ($this->transfer_reference === null) {
+            return null;
+        }
+
+        return self::query()
+            ->where('transfer_reference', $this->transfer_reference)
+            ->whereKeyNot($this->getKey())
+            ->first();
     }
 
     /** @return HasMany<CashEntryAttachment, $this> */

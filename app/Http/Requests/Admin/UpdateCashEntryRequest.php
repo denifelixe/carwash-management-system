@@ -43,14 +43,19 @@ class UpdateCashEntryRequest extends FormRequest
                 'before_or_equal:today',
             ],
             'entry_time' => [Rule::excludeIf(! $canManageOccurrence), 'required', 'date_format:H:i'],
+            /* Half of a Setor Tunai keeps its category and method; only the shared details change. */
             'category' => [
                 'required',
                 'string',
-                Rule::in(FinanceCategories::recordable($this->entry()->direction)),
+                Rule::in($this->entry()->transfer_reference === null
+                    ? FinanceCategories::recordable($this->entry()->direction)
+                    : [$this->entry()->category]),
             ],
             'description' => ['required', 'string', 'max:255'],
             'amount' => ['required', 'integer', 'min:1', 'max:999999999'],
-            'method' => ['required', Rule::in(OrderQueries::recordableMethods($this->entry()->direction))],
+            'method' => ['required', Rule::in($this->entry()->transfer_reference === null
+                ? OrderQueries::recordableMethods($this->entry()->direction)
+                : [$this->entry()->method])],
             'attachments' => [
                 'nullable',
                 'array',

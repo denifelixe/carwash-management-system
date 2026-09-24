@@ -386,7 +386,8 @@ test('finance overview shows shift tabs stacked summaries and financial channels
         ->toContain('Pemasukan')
         ->toContain('Pengeluaran')
         ->toContain('Profit/Keuntungan Kanal')
-        ->toContain('const financialChannels = props.paymentMethods.map')
+        // Every payment channel, plus the finance-only Setor Tunai.
+        ->toContain('const financialChannels = [...props.paymentMethods, CASH_DEPOSIT].map(')
         ->toContain("label: key === 'E-Money' ? 'Emoney' : key")
         // Cash keeps its own section; the rest share one merged figure.
         ->toContain("const cashChannelKey = 'Tunai';")
@@ -450,7 +451,7 @@ test('an expense only ever names cash or non-cash', function () {
     expect($financePage)
         ->toContain('const activeMethods = computed<string[]>(')
         ->toContain(
-            "activeLedger.value === 'in' ? props.paymentMethods : props.expenseMethods,",
+            "return activeLedger.value === 'in'\n        ? props.paymentMethods\n        : props.expenseMethods;",
         )
         ->toContain('v-for="method in activeMethods"')
         ->toContain('method: activeMethods.value[0],')

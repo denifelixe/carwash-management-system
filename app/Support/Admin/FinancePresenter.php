@@ -86,6 +86,7 @@ class FinancePresenter
         return [
             'id' => $entry->id,
             'ref' => $entry->reference,
+            'transferReference' => $entry->transfer_reference,
             'date' => $entry->entry_date->toDateString(),
             'time' => $occurredAt->format('H.i'),
             'category' => $entry->category,

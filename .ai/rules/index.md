@@ -29,6 +29,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | database/migrations/** | .ai/rules/migrations.md |
 | {app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/Finance*.php,resources/js/pages/admin/Finance.vue}, {app/Http/Controllers/Admin/ReportController.php,app/Support/Admin/ReportQueries.php,resources/js/pages/admin/Reports.vue} | .ai/rules/pages-admin.md |
 | {config/auth.php,app/Support/Auth/**,app/Providers/AppServiceProvider.php} | .ai/rules/providers.md |
+| {app/Actions/Admin/RecordCashDeposit.php,app/Actions/Admin/DeleteCashEntry.php,app/Http/Controllers/Admin/FinanceController.php,app/Http/Requests/Admin/UpdateCashEntryRequest.php,resources/js/pages/admin/Finance.vue} | .ai/rules/requests-admin-js-pages-admin.md |
 | {app/Actions/Admin/RegisterOrderMember.php,app/Models/Member.php,app/Http/Requests/Admin/StoreOrderMemberRequest.php} | .ai/rules/requests-admin.md |
 | resources/js/pages/admin/Orders.vue | .ai/rules/resources-js-pages-admin.md |
 | {app/Support/Admin/ReportQueries.php,app/Support/Admin/DashboardStats.php,resources/js/pages/admin/Reports.vue} | .ai/rules/support-admin-js-pages-admin.md |

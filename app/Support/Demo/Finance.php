@@ -165,7 +165,7 @@ class Finance
      */
     public static function incomeCategories(): array
     {
-        return ['Pembayaran Sisa/Lunas (Order Selesai)', 'Pembayaran Sebagian/Booking Order', 'Penjualan Produk', 'Sewa Tempat', 'Pendapatan Lain'];
+        return ['Pembayaran Sisa/Lunas (Order Selesai)', 'Pembayaran Sebagian/Booking Order', 'Penjualan Produk', 'Sewa Tempat', 'Setor Tunai', 'Pendapatan Lain'];
     }
 
     /**
@@ -173,7 +173,7 @@ class Finance
      */
     public static function expenseCategories(): array
     {
-        return ['Pembelian Bahan', 'Gaji & Upah', 'Operasional', 'Perawatan Alat', 'Marketing', 'Sewa & Pajak', 'Pengeluaran Lain'];
+        return ['Pembelian Bahan', 'Gaji & Upah', 'Operasional', 'Perawatan Alat', 'Marketing', 'Sewa & Pajak', 'Setor Tunai', 'Pengeluaran Lain'];
     }
 
     /**

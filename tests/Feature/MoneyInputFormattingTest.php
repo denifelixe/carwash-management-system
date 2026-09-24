@@ -16,7 +16,7 @@ test('every monetary entry field uses the shared formatted input', function (str
 
     expect(substr_count($page, '<MoneyInput'))->toBe($usageCount);
 })->with([
-    'finance amounts' => ['js/pages/admin/Finance.vue', 3],
+    'finance amounts' => ['js/pages/admin/Finance.vue', 4],
     'cashier payment amounts' => ['js/pages/admin/Pos.vue', 3],
     'service prices' => ['js/pages/admin/master/Services.vue', 1],
 ]);

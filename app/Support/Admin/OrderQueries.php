@@ -31,6 +31,12 @@ class OrderQueries
     public const EXPENSE_METHODS = ['Tunai', 'Non-Tunai'];
 
     /**
+     * The non-cash channel a Setor Tunai lands on. Finance-only: it is never a
+     * way to pay an order, so it stays out of PAYMENT_METHODS and the POS.
+     */
+    public const CASH_DEPOSIT_METHOD = 'Setor Tunai';
+
+    /**
      * The methods a hand-written entry of this direction may name, the way
      * FinanceCategories::recordable answers for its categories.
      *

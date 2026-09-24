@@ -7,6 +7,7 @@ import {
     Coins,
     CreditCard,
     Image as ImageIcon,
+    Landmark,
     Paperclip,
     Pencil,
     Plus,
@@ -23,6 +24,7 @@ import {
     destroyTransaction as destroyOrderTransaction,
     index as indexFinance,
     store as storeCashEntry,
+    storeDeposit as storeCashDeposit,
     update as updateCashEntry,
     updateTransaction as updateOrderTransaction,
 } from '@/actions/App/Http/Controllers/Admin/FinanceController';
@@ -284,19 +286,166 @@ function correctedShiftName(entry: CarwashMoneyEntry): string | null {
           )?.name ?? null);
 }
 
-const activeCategories = computed<string[]>(() =>
-    activeLedger.value === 'in'
-        ? props.incomeCategories
-        : props.expenseCategories,
+/** The category a Setor Tunai pair is filed under (FinanceCategories::CASH_DEPOSIT). */
+const CASH_DEPOSIT = 'Setor Tunai';
+
+/** Half of a Setor Tunai is being edited: category and method stay put. */
+const isEditingTransfer = computed<boolean>(
+    () => (editingEntry.value?.transferReference ?? null) !== null,
 );
+
+const activeCategories = computed<string[]>(() => {
+    if (isEditingTransfer.value) {
+        return [editingEntry.value?.category ?? CASH_DEPOSIT];
+    }
+
+    return (
+        activeLedger.value === 'in'
+            ? props.incomeCategories
+            : props.expenseCategories
+    ).filter((category) => category !== CASH_DEPOSIT);
+});
 
 /**
  * Income still names the channel it arrived on; an expense is only asked
  * whether it left the till, so it picks from Tunai / Non-Tunai instead.
  */
-const activeMethods = computed<string[]>(() =>
-    activeLedger.value === 'in' ? props.paymentMethods : props.expenseMethods,
+const activeMethods = computed<string[]>(() => {
+    if (isEditingTransfer.value) {
+        return [editingEntry.value?.method ?? 'Tunai'];
+    }
+
+    return activeLedger.value === 'in'
+        ? props.paymentMethods
+        : props.expenseMethods;
+});
+
+/*
+ * Setor Tunai (MoM 17 Sep 2026): cash taken from the drawer to a non-cash
+ * account. One form writes two entries — Tunai out, Setor Tunai in — with the
+ * same amount, description, time and proofs.
+ */
+const isDepositOpen = ref<boolean>(false);
+const depositFiles = ref<File[]>([]);
+const depositForm = useForm<{
+    entry_date: string;
+    entry_time: string;
+    description: string;
+    amount: number;
+    attachments: File[];
+    transaction_shift_id: number | null;
+}>({
+    entry_date: props.filters.today,
+    entry_time: outletClock(),
+    description: 'Setor tunai ke rekening',
+    amount: 0,
+    attachments: [],
+    transaction_shift_id: null,
+});
+
+const canSaveDeposit = computed<boolean>(
+    () =>
+        depositForm.amount > 0 &&
+        depositForm.description.trim() !== '' &&
+        depositFiles.value.length > 0 &&
+        depositForm.entry_date !== '' &&
+        depositForm.entry_time !== '',
 );
+
+function openDeposit(): void {
+    depositForm.reset();
+    depositForm.clearErrors();
+    depositForm.entry_date = props.capabilities.edit_cash_entry_backdate
+        ? props.filters.date
+        : props.filters.today;
+    depositForm.entry_time = outletClock();
+    depositFiles.value = [];
+    isDepositOpen.value = true;
+}
+
+function closeDeposit(): void {
+    isDepositOpen.value = false;
+    depositFiles.value = [];
+}
+
+function onDepositFiles(event: Event): void {
+    const input = event.target as HTMLInputElement;
+
+    depositFiles.value = [
+        ...depositFiles.value,
+        ...Array.from(input.files ?? []),
+    ].slice(0, 10);
+    input.value = '';
+}
+
+function removeDepositFile(index: number): void {
+    depositFiles.value = depositFiles.value.filter(
+        (_, fileIndex) => fileIndex !== index,
+    );
+}
+
+function saveDeposit(): void {
+    if (!canSaveDeposit.value || depositForm.processing) {
+        return;
+    }
+
+    if (!props.capabilities.edit_cash_entry_backdate) {
+        depositForm.entry_date = props.filters.today;
+        depositForm.entry_time = outletClock();
+    }
+
+    const shiftId =
+        matchingTransactionShiftsAtClock(
+            props.transactionShift,
+            depositForm.entry_time,
+        )[0]?.id ?? null;
+
+    if (props.mode === 'demo') {
+        saveDemoDeposit();
+
+        return;
+    }
+
+    depositForm.attachments = depositFiles.value;
+    depositForm.transaction_shift_id = shiftId;
+    depositForm.post(storeCashDeposit.url(), {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => closeDeposit(),
+    });
+}
+
+/** The demo console writes the same pair into its in-memory ledger. */
+function saveDemoDeposit(): void {
+    const sequence = incomeList.value.length + expenseList.value.length + 32;
+    const transferReference = `SETOR-DEMO-${sequence}`;
+    const attachments = depositFiles.value.map((file, index) => ({
+        id: `demo-deposit-${sequence}-${index}`,
+        name: file.name,
+        size: '—',
+        url: null,
+        isImage: file.type.startsWith('image/'),
+    }));
+    const pair = (id: number, method: string): CarwashMoneyEntry => ({
+        id,
+        ref: transactionReference(CASH_DEPOSIT, depositForm.entry_date, id),
+        transferReference,
+        date: depositForm.entry_date,
+        time: depositForm.entry_time.replace(':', '.'),
+        category: CASH_DEPOSIT,
+        description: depositForm.description.trim(),
+        amount: depositForm.amount,
+        method,
+        channelBreakdown: [{ label: method, amount: depositForm.amount }],
+        recordedBy: props.persona.name,
+        shift: props.persona.shift || null,
+        attachments: attachments.map((attachment) => ({ ...attachment })),
+    });
+
+    workflow.addMoneyOut(pair(sequence, 'Tunai'));
+    workflow.addMoneyIn(pair(sequence + 1, CASH_DEPOSIT));
+    closeDeposit();
+}
 
 const shiftTabs = computed(() => [
     {
@@ -462,10 +611,13 @@ const balanceCaption = computed<string>(() =>
         : `Akumulasi sampai tanggal ${formatLongDate(props.filters.date)}`,
 );
 
-const financialChannels = props.paymentMethods.map((key) => ({
-    key,
-    label: key === 'E-Money' ? 'Emoney' : key,
-}));
+/* Setor Tunai is a finance-only non-cash channel, never a way to pay an order. */
+const financialChannels = [...props.paymentMethods, CASH_DEPOSIT].map(
+    (key) => ({
+        key,
+        label: key === 'E-Money' ? 'Emoney' : key,
+    }),
+);
 
 function channelTotal(entries: CarwashMoneyEntry[], channel: string): number {
     return entries.reduce(
@@ -1930,18 +2082,35 @@ function applyDate(date: string): void {
                         </button>
                     </div>
 
-                    <button
+                    <!-- Kept together on the right, however many actions there are. -->
+                    <div
                         v-if="capabilities.create"
-                        type="button"
-                        class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
-                        @click="openForm"
+                        class="flex flex-wrap items-center gap-2"
                     >
-                        <Plus class="h-4 w-4" />
-                        Catat
-                        {{
-                            activeLedger === 'in' ? 'Pemasukan' : 'Pengeluaran'
-                        }}
-                    </button>
+                        <button
+                            v-if="capabilities.create"
+                            type="button"
+                            class="flex items-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 px-3 py-2 text-sm font-medium text-white shadow-lg shadow-cyan-500/25 transition hover:from-cyan-600 hover:to-sky-700"
+                            @click="openForm"
+                        >
+                            <Plus class="h-4 w-4" />
+                            Catat
+                            {{
+                                activeLedger === 'in'
+                                    ? 'Pemasukan'
+                                    : 'Pengeluaran'
+                            }}
+                        </button>
+                        <button
+                            v-if="capabilities.create"
+                            type="button"
+                            class="flex items-center gap-2 rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-medium text-cyan-700 transition hover:bg-cyan-50"
+                            @click="openDeposit"
+                        >
+                            <Landmark class="h-4 w-4" />
+                            Setor Tunai
+                        </button>
+                    </div>
                 </div>
 
                 <div class="mt-3">
@@ -3115,7 +3284,8 @@ function applyDate(date: string): void {
                 <select
                     id="fin-cat"
                     v-model="draft.category"
-                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    :disabled="isEditingTransfer"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
                 >
                     <option
                         v-for="category in activeCategories"
@@ -3129,6 +3299,13 @@ function applyDate(date: string): void {
                     class="mt-1.5"
                     :message="entryForm.errors.category"
                 />
+                <p
+                    v-if="isEditingTransfer"
+                    class="mt-1.5 rounded-lg bg-cyan-50 px-2.5 py-1.5 text-[11px] text-cyan-800"
+                >
+                    Bagian dari Setor Tunai: perubahan nominal, deskripsi,
+                    waktu, dan lampiran ikut berlaku ke pasangannya.
+                </p>
             </div>
 
             <div>
@@ -3180,7 +3357,8 @@ function applyDate(date: string): void {
                     <select
                         id="fin-method"
                         v-model="draft.method"
-                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                        :disabled="isEditingTransfer"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
                     >
                         <option
                             v-for="method in activeMethods"
@@ -3434,6 +3612,187 @@ function applyDate(date: string): void {
     </ModalDialog>
 
     <ModalDialog
+        :open="isDepositOpen"
+        title="Setor Tunai"
+        caption="Tunai dari laci disetor ke rekening. Dicatat sebagai uang keluar (Tunai) dan uang masuk (Setor Tunai)."
+        size="md"
+        @close="closeDeposit"
+    >
+        <div class="space-y-4">
+            <div
+                v-if="capabilities.edit_cash_entry_backdate"
+                class="grid grid-cols-2 gap-3"
+            >
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="deposit-date"
+                    >
+                        Tanggal
+                    </label>
+                    <input
+                        id="deposit-date"
+                        v-model="depositForm.entry_date"
+                        type="date"
+                        :max="filters.today"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="depositForm.errors.entry_date"
+                    />
+                </div>
+                <div>
+                    <label
+                        class="text-xs font-medium text-slate-600"
+                        for="deposit-time"
+                    >
+                        Waktu
+                    </label>
+                    <input
+                        id="deposit-time"
+                        v-model="depositForm.entry_time"
+                        type="time"
+                        class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                    />
+                    <InputError
+                        class="mt-1.5"
+                        :message="depositForm.errors.entry_time"
+                    />
+                </div>
+            </div>
+
+            <div>
+                <label
+                    class="text-xs font-medium text-slate-600"
+                    for="deposit-amount"
+                >
+                    Nominal disetor (Rp)
+                </label>
+                <MoneyInput
+                    id="deposit-amount"
+                    v-model="depositForm.amount"
+                    min="0"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm tabular-nums focus:border-cyan-400 focus:outline-none"
+                />
+                <InputError
+                    class="mt-1.5"
+                    :message="depositForm.errors.amount"
+                />
+            </div>
+
+            <div>
+                <label
+                    class="text-xs font-medium text-slate-600"
+                    for="deposit-description"
+                >
+                    Deskripsi
+                </label>
+                <input
+                    id="deposit-description"
+                    v-model="depositForm.description"
+                    type="text"
+                    class="mt-1.5 w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                />
+                <InputError
+                    class="mt-1.5"
+                    :message="depositForm.errors.description"
+                />
+            </div>
+
+            <div>
+                <p class="text-xs font-medium text-slate-600">
+                    Bukti setoran <span class="text-rose-500">*</span>
+                </p>
+                <ul v-if="depositFiles.length > 0" class="mt-1.5 space-y-1.5">
+                    <li
+                        v-for="(file, index) in depositFiles"
+                        :key="`${file.name}-${index}`"
+                        class="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-700"
+                    >
+                        <span class="flex min-w-0 items-center gap-1.5">
+                            <Paperclip class="h-3.5 w-3.5 shrink-0" />
+                            <span class="truncate">{{ file.name }}</span>
+                        </span>
+                        <button
+                            type="button"
+                            class="rounded p-1 text-rose-500 hover:bg-rose-50"
+                            :aria-label="`Hapus ${file.name}`"
+                            @click="removeDepositFile(index)"
+                        >
+                            <Trash2 class="h-3.5 w-3.5" />
+                        </button>
+                    </li>
+                </ul>
+                <label
+                    class="mt-1.5 flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-slate-300 px-3 py-2.5 text-xs text-slate-600 transition hover:border-cyan-300 hover:bg-cyan-50/40"
+                >
+                    <Paperclip class="h-4 w-4" />
+                    Tambah bukti (JPG, PNG, PDF)
+                    <input
+                        type="file"
+                        accept="image/*,.pdf"
+                        multiple
+                        class="hidden"
+                        @change="onDepositFiles"
+                    />
+                </label>
+                <InputError
+                    class="mt-1.5"
+                    :message="
+                        depositForm.errors.attachments ??
+                        Object.entries(depositForm.errors).find(([key]) =>
+                            key.startsWith('attachments.'),
+                        )?.[1]
+                    "
+                />
+            </div>
+
+            <div
+                class="grid grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3 text-xs"
+                data-deposit-preview
+            >
+                <div class="rounded-xl bg-white p-3 ring-1 ring-rose-100">
+                    <p class="text-slate-500">Uang keluar · Tunai</p>
+                    <p class="mt-0.5 font-semibold text-rose-600 tabular-nums">
+                        −{{ formatCurrency(depositForm.amount) }}
+                    </p>
+                </div>
+                <div class="rounded-xl bg-white p-3 ring-1 ring-emerald-100">
+                    <p class="text-slate-500">Uang masuk · Setor Tunai</p>
+                    <p
+                        class="mt-0.5 font-semibold text-emerald-600 tabular-nums"
+                    >
+                        +{{ formatCurrency(depositForm.amount) }}
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <template #footer>
+            <button
+                type="button"
+                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                @click="closeDeposit"
+            >
+                Batal
+            </button>
+            <button
+                type="button"
+                class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                :disabled="!canSaveDeposit || depositForm.processing"
+                @click="saveDeposit"
+            >
+                {{
+                    depositForm.processing
+                        ? 'Menyimpan...'
+                        : 'Simpan setor tunai'
+                }}
+            </button>
+        </template>
+    </ModalDialog>
+
+    <ModalDialog
         :open="deletingEntry !== null"
         :title="
             deletingEntry?.source === 'pos'
@@ -3456,6 +3815,10 @@ function applyDate(date: string): void {
             dari buku kas?
             <span v-if="deletingEntry.source === 'pos'">
                 Tindakan ini dapat mengubah status pembayaran order.
+            </span>
+            <span v-if="deletingEntry.transferReference">
+                Ini bagian dari Setor Tunai, jadi pasangannya (uang keluar Tunai
+                dan uang masuk Setor Tunai) ikut terhapus.
             </span>
         </p>
         <template #footer>

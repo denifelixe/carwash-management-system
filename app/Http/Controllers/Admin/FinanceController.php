@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Admin;
 use App\Actions\Admin\DeleteCashEntry;
 use App\Actions\Admin\DeleteOrderTransaction;
 use App\Actions\Admin\RecalculateDailyBalances;
+use App\Actions\Admin\RecordCashDeposit;
 use App\Actions\Admin\UpdateDailyBalance;
 use App\Actions\Admin\UpdateOrderTransaction;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreCashDepositRequest;
 use App\Http\Requests\Admin\StoreCashEntryRequest;
 use App\Http\Requests\Admin\UpdateCashEntryRequest;
 use App\Http\Requests\Admin\UpdateOrderTransactionRequest;
@@ -19,6 +21,7 @@ use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\CashEntryAttachments;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\FinancePresenter;
 use App\Support\Admin\FinanceQueries;
@@ -37,7 +40,6 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
-use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -220,6 +222,43 @@ class FinanceController extends Controller
             ->with('success', 'Catatan keuangan berhasil disimpan.');
     }
 
+    /**
+     * Setor Tunai: one form, two entries (Tunai out, Setor Tunai in) sharing
+     * every detail. See RecordCashDeposit.
+     */
+    public function storeDeposit(
+        StoreCashDepositRequest $request,
+        TransactionShiftResolver $transactionShiftResolver,
+        RecordCashDeposit $recordCashDeposit,
+    ): RedirectResponse {
+        $data = $request->validated();
+
+        /** @var Admin $admin */
+        $admin = $request->user('admin');
+        $occurredAt = $request->canManageOccurrence()
+            ? CarbonImmutable::createFromFormat('!Y-m-d H:i', $data['entry_date'].' '.$data['entry_time'])
+            : CarbonImmutable::now();
+        $shift = $transactionShiftResolver->resolve(
+            $admin,
+            $request->integer('transaction_shift_id') ?: null,
+            $occurredAt,
+        );
+
+        /** @var list<UploadedFile> $attachments */
+        $attachments = $request->file('attachments', []);
+
+        $recordCashDeposit->handle(
+            ['description' => $data['description'], 'amount' => (int) $data['amount']],
+            $admin,
+            $occurredAt,
+            $shift,
+            $attachments,
+        );
+
+        return to_route('admin.finance.index', ['date' => $occurredAt->toDateString()])
+            ->with('success', 'Setor tunai berhasil dicatat.');
+    }
+
     public function update(
         UpdateCashEntryRequest $request,
         CashEntry $cashEntry,
@@ -244,11 +283,36 @@ class FinanceController extends Controller
             ])
             ->all();
 
+        /*
+         * Half of a Setor Tunai: its partner takes the same amount, description,
+         * time and proofs. A proof removed here is removed there too, matched by
+         * name and size since each entry holds its own copy of the file.
+         */
+        $partner = $cashEntry->transferPartner();
+        $partnerRemovedIds = [];
+
+        if ($partner !== null) {
+            $partnerAttachments = $partner->attachments()->get();
+
+            foreach ($cashEntry->attachments()->whereKey($removedAttachmentIds)->get() as $removed) {
+                $match = $partnerAttachments->first(fn (CashEntryAttachment $candidate): bool => ! in_array($candidate->id, $partnerRemovedIds, true)
+                    && $candidate->original_name === $removed->original_name
+                    && (int) $candidate->size === (int) $removed->size);
+
+                if ($match instanceof CashEntryAttachment) {
+                    $partnerRemovedIds[] = $match->id;
+                    $removedFiles[] = ['disk' => $match->disk, 'path' => $match->path];
+                }
+            }
+        }
+
         try {
             DB::transaction(function () use (
                 $data,
                 $admin,
                 $cashEntry,
+                $partner,
+                $partnerRemovedIds,
                 $attachments,
                 $removedAttachmentIds,
                 $recalculateDailyBalances,
@@ -295,7 +359,22 @@ class FinanceController extends Controller
                     ),
                 ])->save();
 
-                if ($dateChanged) {
+                if ($partner !== null) {
+                    $partnerPreviousDate = $partner->entry_date->toDateString();
+
+                    $partner->fill([
+                        'shift_name' => $cashEntry->shift_name,
+                        'description' => $cashEntry->description,
+                        'amount' => $cashEntry->amount,
+                        'entry_date' => $entryDate,
+                        'occurred_at' => $occurredAt,
+                        'updated_by_admin_id' => $admin->getKey(),
+                        'reference' => FinanceReference::make($partner->category, $entryDate, $partner->id),
+                    ])->save();
+
+                    /* Two entries moved at once: rebuild the balance from the earliest day touched. */
+                    $recalculateDailyBalances->handle(min($previousEntryDate, $partnerPreviousDate, $entryDate));
+                } elseif ($dateChanged) {
                     $recalculationDate = $previousEntryDate < $entryDate
                         ? $previousEntryDate
                         : $entryDate;
@@ -320,6 +399,11 @@ class FinanceController extends Controller
 
                 $cashEntry->attachments()->whereKey($removedAttachmentIds)->delete();
                 $this->storeAttachments($cashEntry, $attachments, $storedFiles);
+
+                if ($partner !== null) {
+                    $partner->attachments()->whereKey($partnerRemovedIds)->delete();
+                    $this->storeAttachments($partner, $attachments, $storedFiles);
+                }
             });
         } catch (Throwable $exception) {
             $this->deleteStoredFiles($storedFiles);
@@ -419,30 +503,12 @@ class FinanceController extends Controller
      */
     private function storeAttachments(CashEntry $entry, array $attachments, array &$storedFiles): void
     {
-        $disk = (string) config('filesystems.default');
-
-        foreach ($attachments as $attachment) {
-            $path = $attachment->store($entry->reference, $disk);
-
-            if ($path === false) {
-                throw new RuntimeException('Lampiran keuangan gagal disimpan.');
-            }
-
-            $storedFiles[] = ['disk' => $disk, 'path' => $path];
-            $entry->attachments()->create([
-                'disk' => $disk,
-                'path' => $path,
-                'original_name' => $attachment->getClientOriginalName(),
-                'size' => $attachment->getSize(),
-            ]);
-        }
+        CashEntryAttachments::store($entry, $attachments, $storedFiles);
     }
 
     /** @param list<array{disk: string, path: string}> $storedFiles */
     private function deleteStoredFiles(array $storedFiles): void
     {
-        foreach ($storedFiles as $storedFile) {
-            Storage::disk($storedFile['disk'])->delete($storedFile['path']);
-        }
+        CashEntryAttachments::delete($storedFiles);
     }
 }
