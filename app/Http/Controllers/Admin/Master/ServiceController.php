@@ -84,9 +84,10 @@ class ServiceController extends Controller
     {
         Gate::authorize('admin.master_services.delete');
 
-        if ($service->serviceVariations()->whereHas('orders')->exists()) {
+        if ($service->serviceVariations()->whereHas('orders')->exists()
+            || $service->serviceVariations()->whereHas('rewards')->exists()) {
             return back()->withErrors([
-                'service' => 'Layanan sudah dipakai pada order sehingga tidak bisa dihapus. Nonaktifkan layanan ini sebagai gantinya.',
+                'service' => 'Layanan sudah dipakai pada order atau reward sehingga tidak bisa dihapus. Nonaktifkan layanan ini sebagai gantinya.',
             ]);
         }
 

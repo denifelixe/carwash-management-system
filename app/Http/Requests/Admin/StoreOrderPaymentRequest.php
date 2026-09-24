@@ -3,9 +3,13 @@
 namespace App\Http\Requests\Admin;
 
 use App\Models\AdminShift;
+use App\Models\Member;
 use App\Models\Order;
+use App\Models\Reward;
+use App\Support\Admin\MemberStamps;
 use App\Support\Admin\OrderQueries;
 use App\Support\Admin\PaymentChannelBreakdown;
+use App\Support\Admin\RewardRedemptionRules;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
@@ -31,7 +35,9 @@ class StoreOrderPaymentRequest extends FormRequest
     {
         return [
             'intent' => ['required', Rule::in(['settlement', 'partial'])],
+            /* The cashier's own discount. A reward's discount is worked out here, never posted. */
             'discount' => ['required', 'integer', 'min:0'],
+            'reward_id' => ['nullable', 'integer', Rule::exists(Reward::class, 'id')],
             'amount' => ['required', 'integer', 'min:0'],
             'channels' => ['present', 'array', 'max:'.count(OrderQueries::PAYMENT_METHODS)],
             'channels.*.method' => ['required', 'distinct', Rule::in(OrderQueries::PAYMENT_METHODS)],
@@ -89,6 +95,25 @@ class StoreOrderPaymentRequest extends FormRequest
                 return;
             }
 
+            $reward = $this->reward();
+            $rewardDiscount = 0;
+
+            if ($reward instanceof Reward) {
+                $order->loadMissing('serviceVariations');
+                $balance = $order->member instanceof Member ? MemberStamps::balance($order->member) : 0;
+                $refusal = RewardRedemptionRules::refusal($reward, $order, $balance);
+
+                if ($refusal !== null) {
+                    $validator->errors()->add('reward_id', $refusal);
+
+                    return;
+                }
+
+                $rewardDiscount = min(RewardRedemptionRules::discountFor($reward, $order), $due);
+            }
+
+            $due -= $rewardDiscount;
+
             if ($discount > $due) {
                 $validator->errors()->add('discount', 'Diskon melebihi sisa tagihan order.');
             }
@@ -97,7 +122,7 @@ class StoreOrderPaymentRequest extends FormRequest
                 $validator->errors()->add('amount', 'Pembayaran melebihi sisa tagihan order.');
             }
 
-            if ($amount === 0 && $discount === 0) {
+            if ($amount === 0 && $discount === 0 && $rewardDiscount === 0) {
                 $validator->errors()->add('amount', 'Masukkan jumlah pembayaran.');
             }
 
@@ -146,14 +171,22 @@ class StoreOrderPaymentRequest extends FormRequest
         return $order;
     }
 
+    public function reward(): ?Reward
+    {
+        $rewardId = $this->integer('reward_id');
+
+        return $rewardId > 0 ? Reward::query()->with('serviceVariations:id,service_id')->find($rewardId) : null;
+    }
+
     /**
-     * @return array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null, note: string|null}
+     * @return array{intent: string, discount: int, reward_id: int|null, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null, note: string|null}
      */
     public function payment(): array
     {
         return [
             'intent' => (string) $this->validated('intent'),
             'discount' => $this->integer('discount'),
+            'reward_id' => $this->integer('reward_id') ?: null,
             'amount' => $this->integer('amount'),
             'channels' => $this->channelInput(),
             'transaction_shift_id' => $this->integer('transaction_shift_id') ?: null,

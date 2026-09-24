@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Demo\Customers;
+use App\Support\Demo\Operations;
 use App\Support\Demo\RoleAccess;
 use Inertia\Testing\AssertableInertia;
 
@@ -11,11 +13,11 @@ dataset('admin modules', [
     'dashboard' => ['demo.admin.dashboard', 'admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'orderSummary']],
     'orders' => ['demo.admin.orders', 'admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
     'pos' => ['demo.admin.pos', 'admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
-    'members' => ['demo.admin.members', 'admin/Customers', ['members', 'stats', 'filters', 'stampTarget', 'capabilities']],
+    'members' => ['demo.admin.members', 'admin/Customers', ['members', 'stats', 'filters', 'capabilities']],
     'finance' => ['demo.admin.finance', 'admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'dailyBalance', 'dailyBalanceHistory', 'orders']],
     'bookings' => ['demo.admin.bookings', 'admin/Bookings', ['bookings', 'today', 'services', 'customers', 'capabilities']],
     'inventory' => ['demo.admin.inventory', 'admin/Inventory', ['items', 'movements', 'stats', 'itemOptions', 'filters', 'categories', 'suppliers', 'movementTypes', 'capabilities']],
-    'rewards' => ['demo.admin.rewards', 'demo/admin/Rewards', ['rewards', 'categories', 'stampTarget']],
+    'rewards' => ['demo.admin.rewards', 'admin/Rewards', ['rewards', 'redemptions', 'stats', 'stampBalances', 'categories', 'serviceOptions', 'filters', 'capabilities']],
     'users' => ['demo.admin.users', 'admin/Users', ['staff', 'roles', 'shifts', 'ownerSummary', 'capabilities', 'allModules']],
     'reports' => ['demo.admin.reports', 'admin/Reports', ['trend', 'filters', 'customerBase', 'bookingSummary', 'inventorySummary', 'shifts', 'capabilities']],
     'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'categories', 'capabilities']],
@@ -143,4 +145,14 @@ test('every recorded expense carries a supporting attachment', function () {
                     ->and($expense['attachments'][0]['name'])->not->toBeEmpty();
             }
         });
+});
+
+test('demo member stamp history excludes unpaid orders and includes fully paid bookings', function () {
+    $orders = Operations::orders();
+    $pendingAndCompleted = Customers::detail(9, $orders, 10);
+    $fullyPaidBooking = Customers::detail(1, $orders, 10);
+
+    expect(collect($pendingAndCompleted['stampHistory'])->pluck('id')->all())->toContain(11)
+        ->not->toContain(9)
+        ->and(collect($fullyPaidBooking['stampHistory'])->pluck('id')->all())->toContain(5);
 });

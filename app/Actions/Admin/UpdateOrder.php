@@ -42,7 +42,33 @@ class UpdateOrder
             $member = null;
             $vehicle = null;
 
-            if ($data['customer_mode'] === 'existing') {
+            /*
+             * Stamps from a settled order are already in the member's wallet,
+             * and a reward has already spent them, so the stored customer is
+             * kept whatever the form posted. Only the handler (and, with no
+             * payment yet, the services) can still change.
+             */
+            if ($order->isCustomerLocked()) {
+                $order->update([
+                    'handled_by_admin_id' => $data['handled_by_admin_id'],
+                    'handled_by' => $data['handled_by'],
+                ]);
+
+                if ($servicesLocked) {
+                    return $order;
+                }
+
+                $member = $order->member;
+                $vehicle = $order->memberVehicle;
+                $data = [
+                    ...$data,
+                    'customer_mode' => $member === null ? 'walk-in' : 'existing',
+                    'customer_name' => $order->customer_name,
+                    'customer_phone' => $order->customer_phone,
+                    'vehicle_name' => $order->vehicle_name,
+                    'vehicle_plate' => $order->vehicle_plate,
+                ];
+            } elseif ($data['customer_mode'] === 'existing') {
                 $member = Member::query()->whereKey((int) $data['member_id'])->firstOrFail();
                 $vehicle = MemberVehicle::query()
                     ->whereBelongsTo($member)
@@ -74,6 +100,13 @@ class UpdateOrder
             ]);
 
             if ($servicesLocked) {
+                /* The services stay, but whether anyone holds their stamps follows the customer. */
+                $order->update([
+                    'stamps_earned' => $member === null ? 0 : (int) $order->serviceVariations()->get()->sum(
+                        fn (ServiceVariation $variation): int => (int) $variation->pivot->getAttribute('stamps') * (int) $variation->pivot->getAttribute('quantity'),
+                    ),
+                ]);
+
                 return $order;
             }
 

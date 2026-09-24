@@ -528,11 +528,12 @@ function removeItem(serviceVariationId: number): void {
                                                 : service.category
                                         }}</span
                                     >
+                                    <span
+                                        class="block text-xs text-slate-500"
+                                        >{{ priceRange(service) }}</span
+                                    >
                                     <span class="block text-xs text-slate-500"
-                                        >{{ priceRange(service) }} · +{{
-                                            service.stamps
-                                        }}
-                                        stempel</span
+                                        >+{{ service.stamps }} stempel</span
                                     >
                                 </span>
                                 <Plus class="h-4 w-4 text-cyan-600" />

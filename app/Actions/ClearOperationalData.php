@@ -18,6 +18,8 @@ class ClearOperationalData
          * the same way the service catalogue does.
          */
         'stock_movements',
+        /* Redemptions are trading history; the reward catalog stays. */
+        'reward_redemptions',
         'daily_balance',
         'cash_entry_attachments',
         'cash_entries',

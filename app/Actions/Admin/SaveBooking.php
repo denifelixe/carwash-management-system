@@ -20,6 +20,8 @@ class SaveBooking
     public function handle(array $data, int $adminId, ?Order $booking = null): Order
     {
         return DB::transaction(function () use ($data, $adminId, $booking): Order {
+            $customerLocked = false;
+
             if ($booking !== null) {
                 $booking = Order::query()->lockForUpdate()->findOrFail($booking->id);
                 OperationalDataWindow::ensureAllows($booking->service_date);
@@ -29,6 +31,20 @@ class SaveBooking
                     422,
                     'Order ini bukan booking.',
                 );
+
+                $customerLocked = $booking->member_id !== null && $booking->isCustomerLocked();
+
+                if ($customerLocked) {
+                    $customerChanged = $data['customer_mode'] !== 'existing'
+                        || (int) ($data['member_id'] ?? 0) !== $booking->member_id
+                        || (int) ($data['member_vehicle_id'] ?? 0) !== $booking->member_vehicle_id;
+
+                    if ($customerChanged) {
+                        throw ValidationException::withMessages([
+                            'customer_mode' => 'Customer tidak dapat diubah setelah booking lunas atau memakai reward.',
+                        ]);
+                    }
+                }
             }
 
             $quantities = collect($data['items'])->mapWithKeys(
@@ -74,10 +90,18 @@ class SaveBooking
                     ->findOrFail((int) $data['member_vehicle_id']);
             }
 
-            $customerName = $member?->name ?? Str::squish($data['customer_name'] ?? '');
-            $customerPhone = $member?->phone ?? ($data['customer_phone'] ?? '');
-            $vehicleName = $vehicle?->name ?? Str::squish($data['vehicle_name'] ?? '');
-            $vehiclePlate = $vehicle?->plate ?? ($data['vehicle_plate'] ?? '');
+            $customerName = $customerLocked
+                ? $booking->customer_name
+                : ($member?->name ?? Str::squish($data['customer_name'] ?? ''));
+            $customerPhone = $customerLocked
+                ? $booking->customer_phone
+                : ($member?->phone ?? ($data['customer_phone'] ?? ''));
+            $vehicleName = $customerLocked
+                ? $booking->vehicle_name
+                : ($vehicle?->name ?? Str::squish($data['vehicle_name'] ?? ''));
+            $vehiclePlate = $customerLocked
+                ? $booking->vehicle_plate
+                : ($vehicle?->plate ?? ($data['vehicle_plate'] ?? ''));
             /*
              * A booking taken for a non-member is still that person's first
              * footprint at the outlet, so it files a lead exactly like a
@@ -112,7 +136,9 @@ class SaveBooking
                 'subtotal' => $subtotal,
                 'total' => $servicesAreLocked ? (int) $booking->total : max(0, $subtotal - $discount),
                 'stamps_earned' => $servicesAreLocked
-                    ? (int) $booking->stamps_earned
+                    ? ($member === null ? 0 : (int) $booking->serviceVariations()->get()->sum(
+                        fn (ServiceVariation $variation): int => (int) $variation->pivot->stamps * (int) $variation->pivot->quantity,
+                    ))
                     : ($member === null ? 0 : (int) $variations->sum(
                         fn (ServiceVariation $variation): int => $variation->service->stamps * $quantities[$variation->id],
                     )),

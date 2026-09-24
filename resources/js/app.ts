@@ -2,7 +2,6 @@ import { createInertiaApp } from '@inertiajs/vue3';
 import AdminLayout from '@/layouts/admin/AdminLayout.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
-import DemoMemberLayout from '@/layouts/demo/MemberLayout.vue';
 import MemberLayout from '@/layouts/member/MemberLayout.vue';
 import { initializeFlashToast } from '@/lib/flashToast';
 
@@ -26,8 +25,7 @@ createInertiaApp({
                 return null;
             case name.startsWith('receipts/'):
                 return null;
-            case name.startsWith('demo/member/'):
-                return DemoMemberLayout;
+            // Demo and live portal pages are the same files; see MemberLayout.
             case name.startsWith('member/'):
                 return MemberLayout;
             case name.startsWith('auth/'):

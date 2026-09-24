@@ -39,7 +39,7 @@ class SaveService
 
             $service->serviceVariations()->whereNotIn('id', $retainedIds)->get()
                 ->each(function (ServiceVariation $variation): void {
-                    if ($variation->orders()->exists()) {
+                    if ($variation->orders()->exists() || $variation->rewards()->exists()) {
                         $variation->update(['is_active' => false]);
 
                         return;

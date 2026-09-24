@@ -566,9 +566,11 @@ const plateOwner = computed<CarwashCustomer | null>(() => {
 const canCreate = computed<boolean>(
     () =>
         (servicesLocked.value || draftLineItems.value.length > 0) &&
-        draft.value.plate.trim() !== '' &&
-        plateOwner.value === null &&
-        hasCustomer.value,
+        // A locked customer is kept as stored, so the draft's is not checked.
+        (customerLocked.value ||
+            (draft.value.plate.trim() !== '' &&
+                plateOwner.value === null &&
+                hasCustomer.value)),
 );
 
 const canSubmitOrder = computed<boolean>(() => {
@@ -720,6 +722,33 @@ function canEditOrder(order: CarwashOrder): boolean {
 
 const servicesLocked = computed<boolean>(
     () => (editingOrder.value?.transactions.length ?? 0) > 0,
+);
+
+/**
+ * Completed or fully paid orders have credited their stamps to a member's
+ * wallet, and rewarded orders have spent them.
+ */
+function isCustomerLocked(order: CarwashOrder): boolean {
+    return (
+        (order.status !== 'batal' &&
+            (order.status === 'selesai' ||
+                (order.total > 0 && order.paidAmount >= order.total))) ||
+        order.reward !== '—'
+    );
+}
+
+const customerLocked = computed<boolean>(() =>
+    editingOrder.value ? isCustomerLocked(editingOrder.value) : false,
+);
+
+const customerLockReason = computed<string>(() =>
+    editingOrder.value &&
+    editingOrder.value.status !== 'batal' &&
+    (editingOrder.value.status === 'selesai' ||
+        (editingOrder.value.total > 0 &&
+            editingOrder.value.paidAmount >= editingOrder.value.total))
+        ? 'Pelanggan terkunci karena order sudah selesai atau lunas dan stempelnya sudah tercatat.'
+        : 'Pelanggan terkunci karena order ini sudah memakai reward.',
 );
 
 /**
@@ -1128,11 +1157,13 @@ function createOrder(): void {
     if (editingOrder.value) {
         const order = editingOrder.value;
 
-        order.customerId = customer?.id ?? null;
-        order.customer = customerName;
-        order.phone = customer?.phone ?? draft.value.customerPhone.trim();
-        order.vehicle = draft.value.vehicle;
-        order.plate = draft.value.plate.toUpperCase();
+        if (!customerLocked.value) {
+            order.customerId = customer?.id ?? null;
+            order.customer = customerName;
+            order.phone = customer?.phone ?? draft.value.customerPhone.trim();
+            order.vehicle = draft.value.vehicle;
+            order.plate = draft.value.plate.toUpperCase();
+        }
 
         if (!servicesLocked.value) {
             order.items = createdServiceItems
@@ -2073,9 +2104,20 @@ function removeDeletionPhoto(index: number): void {
                 v-if="detailOrder.transactions.length > 0"
                 class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-700"
             >
-                Layanan dan jumlahnya terkunci karena order sudah memiliki
-                transaksi. Data pelanggan, kendaraan, dan petugas tetap dapat
-                diedit.
+                <template v-if="isCustomerLocked(detailOrder)">
+                    Layanan, jumlah, dan data pelanggan terkunci karena order
+                    sudah
+                    {{
+                        detailOrder.status === 'selesai'
+                            ? 'selesai'
+                            : 'memakai reward'
+                    }}. Petugas tetap dapat diedit.
+                </template>
+                <template v-else>
+                    Layanan dan jumlahnya terkunci karena order sudah memiliki
+                    transaksi. Data pelanggan, kendaraan, dan petugas tetap
+                    dapat diedit.
+                </template>
             </p>
             <p
                 v-if="detailOrder.status === 'batal'"
@@ -2515,7 +2557,7 @@ function removeDeletionPhoto(index: number): void {
             </div>
 
             <!-- Customer -->
-            <div>
+            <div v-if="!customerLocked">
                 <label
                     for="order-customer"
                     class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
@@ -2825,6 +2867,26 @@ function removeDeletionPhoto(index: number): void {
                         member baru.
                     </p>
                 </div>
+            </div>
+            <div
+                v-else
+                class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+            >
+                <p
+                    class="text-[11px] font-medium tracking-wider text-slate-400 uppercase"
+                >
+                    Customer
+                </p>
+                <p class="mt-2 text-sm font-semibold text-slate-900">
+                    {{ editingOrder?.customer }}
+                </p>
+                <p class="text-xs text-slate-500">
+                    {{ formatPlate(editingOrder?.plate ?? '') }} ·
+                    {{ editingOrder?.vehicle }}
+                </p>
+                <p class="mt-3 text-[11px] text-amber-700">
+                    {{ customerLockReason }}
+                </p>
             </div>
 
             <!--

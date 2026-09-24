@@ -110,12 +110,59 @@ export interface CarwashReward {
     name: string;
     description: string;
     requiredStamps: number;
-    applicableServiceIds: number[];
+    applicableVariations: Array<{
+        serviceVariationId: number;
+        quantity: number;
+        discountPercent: number;
+    }>;
     icon: string;
     category: string;
     status: string;
     stock: number;
     redeemed: number;
+}
+
+/** A reward traded for stamps at the till (BR-04). */
+export interface CarwashRewardRedemption {
+    id: number;
+    date: string;
+    time: string;
+    member: string;
+    memberId: string;
+    order: string;
+    reward: string;
+    stamps: number;
+    discount: number;
+    by: string;
+}
+
+export interface CarwashRewardStats {
+    total: number;
+    active: number;
+    redeemed: number;
+    /** Wallet balances not yet redeemed, summed over every member. */
+    circulatingStamps: number;
+    /** Active members, the base for the eligibility hint. */
+    members: number;
+}
+
+export interface CarwashRewardServiceOption {
+    id: number;
+    name: string;
+    category: string;
+    categoryGroup: string;
+    icon: string;
+    isActive: boolean;
+    variations: Array<{
+        id: number;
+        label: string;
+        price: number;
+        isActive: boolean;
+    }>;
+}
+
+export interface CarwashRewardFilters {
+    redemptionPage: number;
 }
 
 export interface CarwashCustomer {
@@ -129,6 +176,9 @@ export interface CarwashCustomer {
     vehicles: CarwashVehicle[];
     stamps: number;
     lifetimeStamps: number;
+    /** Live only: stamps traded for rewards, and how many rewards. */
+    redeemedStamps?: number;
+    rewardsClaimed?: number;
     visits: number;
     spend: number;
     joinedAt: string;
@@ -231,13 +281,15 @@ export interface CarwashMember {
     spend: number;
     joinedAt: string;
     initials: string;
-    referralCode: string;
+    /** The live portal has no referral programme yet, so it sends null. */
+    referralCode: string | null;
     rewardsClaimed: number;
     vehicles: CarwashVehicle[];
 }
 
 export interface CarwashStampEntry {
-    id: number;
+    /** Live ledgers merge orders and redemptions, so ids are prefixed strings. */
+    id: number | string;
     title: string;
     detail: string;
     stamps: number;
@@ -382,6 +434,7 @@ export interface CarwashBooking {
     id: number;
     code: string;
     customerId: number | null;
+    memberVehicleId?: number | null;
     customer: string;
     phone: string;
     vehicle: string;
@@ -800,6 +853,7 @@ export interface CarwashAdminDashboardProps extends CarwashAdminShellProps {
 
 /** Props shared by every customer portal page via `MemberController::page()`. */
 export interface CarwashMemberShellProps {
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     member: CarwashMember;
     notifications: CarwashNotification[];

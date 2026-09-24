@@ -117,7 +117,8 @@ test('admin modules are prefilled from the demo navigation', function () {
     /* The demo navigation, plus the modules that only exist live. */
     expect($modules)->toHaveCount(16);
     expect($modules->last()->key)->toBe('master_receipt');
-    expect($modules->firstWhere('key', 'leads')->sort_order)->toBe(7);
+    expect($modules->firstWhere('key', 'rewards')->sort_order)->toBe(7);
+    expect($modules->firstWhere('key', 'leads')->sort_order)->toBe(8);
 
     /* Leads has no demo counterpart, so it is not part of this comparison. */
     $shared = $modules->reject(fn (object $module): bool => $module->key === 'leads')->values();

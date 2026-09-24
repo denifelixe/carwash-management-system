@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Form, Head, Link } from '@inertiajs/vue3';
 import {
     Car,
     CircleCheck,
     Copy,
+    LogOut,
     Mail,
     Phone,
     Sparkles,
@@ -17,6 +18,7 @@ import {
 } from '@/composables/useCarwashFormat';
 import { formatPlate } from '@/lib/vehiclePlate';
 import { home } from '@/routes/demo';
+import { logout } from '@/routes/member';
 import type {
     CarwashBrand,
     CarwashMember,
@@ -25,6 +27,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     member: CarwashMember;
     washHistory: CarwashWashEntry[];
@@ -34,6 +37,10 @@ const props = defineProps<{
 const isCodeCopied = ref<boolean>(false);
 
 function copyReferralCode(): void {
+    if (!props.member.referralCode) {
+        return;
+    }
+
     navigator.clipboard?.writeText(props.member.referralCode);
     isCodeCopied.value = true;
     window.setTimeout(() => {
@@ -63,7 +70,10 @@ function copyReferralCode(): void {
                     <Phone class="h-3 w-3" />
                     {{ member.phone }}
                 </p>
-                <p class="flex items-center gap-1 text-xs text-slate-500">
+                <p
+                    v-if="member.email"
+                    class="flex items-center gap-1 text-xs text-slate-500"
+                >
                     <Mail class="h-3 w-3" />
                     {{ member.email }}
                 </p>
@@ -165,6 +175,7 @@ function copyReferralCode(): void {
 
         <!-- Referral -->
         <section
+            v-if="member.referralCode"
             class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 p-5 text-white"
         >
             <div
@@ -211,7 +222,17 @@ function copyReferralCode(): void {
                 <Phone class="h-4 w-4" />
                 Hubungi Customer Service
             </a>
+            <Form v-if="mode === 'live'" v-bind="logout.form()">
+                <button
+                    type="submit"
+                    class="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+                >
+                    <LogOut class="h-4 w-4" />
+                    Keluar
+                </button>
+            </Form>
             <Link
+                v-else
                 :href="home.url()"
                 class="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white py-3.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
             >
@@ -220,8 +241,10 @@ function copyReferralCode(): void {
         </section>
 
         <p class="text-center text-[11px] text-slate-400">
-            {{ washHistory.length }} kunjungan tercatat •
-            {{ vouchers.length }} voucher
+            {{ washHistory.length }} kunjungan tercatat
+            <template v-if="vouchers.length > 0">
+                • {{ vouchers.length }} voucher
+            </template>
         </p>
     </div>
 </template>

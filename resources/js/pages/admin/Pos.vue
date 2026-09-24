@@ -1022,11 +1022,22 @@ const dueAmount = computed<number>(() => {
     return Math.max(order.total - order.paidAmount, 0);
 });
 
+const hasPreviousPayment = computed<boolean>(() => {
+    const order = selectedOrder.value;
+
+    return order !== null && order.transactions.length > 0;
+});
+
 const redeemableRewards = computed<CarwashReward[]>(() => {
     const customer = orderCustomer.value;
     const order = selectedOrder.value;
 
-    if (!customer || !order || order.reward !== '—') {
+    if (
+        !customer ||
+        !order ||
+        order.reward !== '—' ||
+        hasPreviousPayment.value
+    ) {
         return [];
     }
 
@@ -1035,9 +1046,15 @@ const redeemableRewards = computed<CarwashReward[]>(() => {
             reward.status === 'aktif' &&
             reward.stock > 0 &&
             reward.requiredStamps <= customer.stamps &&
-            reward.applicableServiceIds.some((serviceId) =>
-                order.serviceIds.includes(serviceId),
-            ),
+            // A reward without variations is merchandise.
+            (reward.applicableVariations.length === 0 ||
+                reward.applicableVariations.some((variation) =>
+                    order.serviceItems.some(
+                        (item) =>
+                            item.serviceVariationId ===
+                            variation.serviceVariationId,
+                    ),
+                )),
     );
 });
 
@@ -1048,26 +1065,61 @@ const selectedReward = computed<CarwashReward | null>(
         ) ?? null,
 );
 
+const rewardDiscountDetail = computed(() => {
+    if (!selectedReward.value || !selectedOrder.value) {
+        return null;
+    }
+
+    const candidates = selectedReward.value.applicableVariations
+        .map((variation) => {
+            const item = selectedOrder.value?.serviceItems.find(
+                (candidate) =>
+                    candidate.serviceVariationId ===
+                    variation.serviceVariationId,
+            );
+
+            if (!item) {
+                return null;
+            }
+
+            const quantity = Math.min(item.quantity, variation.quantity);
+
+            return {
+                id: variation.serviceVariationId,
+                name: item.serviceName,
+                variationLabel: item.variations
+                    ? Object.entries(item.variations)
+                          .map(([attribute, value]) => `${attribute}: ${value}`)
+                          .join(', ')
+                    : '',
+                quantity,
+                unitPrice: item.unitPrice,
+                discountPercent: variation.discountPercent,
+                discount: Math.round(
+                    (item.unitPrice * quantity * variation.discountPercent) /
+                        100,
+                ),
+            };
+        })
+        .filter((candidate) => candidate !== null)
+        .sort((first, second) =>
+            second.discount !== first.discount
+                ? second.discount - first.discount
+                : first.id - second.id,
+        );
+
+    const winner = candidates[0];
+
+    return winner
+        ? {
+              ...winner,
+              appliedDiscount: Math.min(winner.discount, dueAmount.value),
+          }
+        : null;
+});
+
 const rewardDiscount = computed<number>(() => {
-    if (!selectedReward.value || orderServices.value.length === 0) {
-        return 0;
-    }
-
-    const applicableServicePrices = orderServices.value
-        .filter((service) =>
-            selectedReward.value?.applicableServiceIds.includes(
-                service.serviceId,
-            ),
-        )
-        .map((service) => service.price);
-
-    if (applicableServicePrices.length === 0) {
-        return 0;
-    }
-
-    const cheapestApplicableService = Math.min(...applicableServicePrices);
-
-    return Math.min(cheapestApplicableService, dueAmount.value);
+    return rewardDiscountDetail.value?.appliedDiscount ?? 0;
 });
 
 const maximumCashierDiscount = computed<number>(() =>
@@ -1589,6 +1641,15 @@ function completePayment(
     snapshot: PaymentSnapshot,
     transactionShiftId: number | null,
 ): void {
+    if (snapshot.reward && order.transactions.length > 0) {
+        paymentForm.setError(
+            'reward_id',
+            'Reward hanya dapat ditukar pada pembayaran pertama order.',
+        );
+
+        return;
+    }
+
     if (props.mode === 'live') {
         submitLivePayment(order, snapshot, transactionShiftId);
 
@@ -1616,7 +1677,9 @@ function submitLivePayment(
     transactionShiftId: number | null,
 ): void {
     paymentForm.intent = snapshot.intent;
-    paymentForm.discount = snapshot.discount;
+    // The server works the reward's discount out itself; only the cashier's is posted.
+    paymentForm.discount = snapshot.cashierDiscount;
+    paymentForm.reward_id = snapshot.reward?.id ?? null;
     paymentForm.amount = snapshot.amount;
     paymentForm.channels = snapshot.breakdown.map((payment) => ({
         method: payment.method,
@@ -1733,6 +1796,10 @@ function applyDemoPayment(
                   (shift) => shift.id === transactionShiftId,
               )?.name ?? null)
             : props.persona.shift || null;
+    const stampsAlreadyEarned =
+        order.status !== 'batal' &&
+        (order.status === 'selesai' ||
+            (order.total > 0 && order.paidAmount >= order.total));
 
     order.total -= discount;
     order.discount += discount;
@@ -1811,6 +1878,15 @@ function applyDemoPayment(
 
     order.paymentStatus = isFullyPaid ? 'lunas' : 'sebagian';
 
+    if (
+        customer &&
+        !stampsAlreadyEarned &&
+        (completesOrder || (order.total > 0 && isFullyPaid))
+    ) {
+        customer.stamps += order.stampsEarned;
+        customer.lifetimeStamps += order.stampsEarned;
+    }
+
     if (completesOrder) {
         order.status = 'selesai';
 
@@ -1819,8 +1895,6 @@ function applyDemoPayment(
         }
 
         if (customer) {
-            customer.stamps += order.stampsEarned;
-            customer.lifetimeStamps += order.stampsEarned;
             customer.visits += 1;
             customer.spend += order.total;
             customer.lastVisit = 'Baru saja';
@@ -2002,6 +2076,7 @@ function applyDate(date: string): void {
 const paymentForm = useForm({
     intent: 'settlement' as 'settlement' | 'partial',
     discount: 0,
+    reward_id: null as number | null,
     amount: 0,
     channels: [] as PosPaymentBreakdown[],
     transaction_shift_id: null as number | null,
@@ -3712,7 +3787,8 @@ const memberForm = useForm({
                         <details
                             v-if="
                                 redeemableRewards.length > 0 ||
-                                selectedOrder.reward !== '—'
+                                selectedOrder.reward !== '—' ||
+                                (orderCustomer && hasPreviousPayment)
                             "
                             class="group"
                         >
@@ -3731,9 +3807,12 @@ const memberForm = useForm({
                                         {{
                                             selectedOrder.reward !== '—'
                                                 ? selectedOrder.reward
-                                                : 'Saldo ' +
-                                                  (orderCustomer?.stamps ?? 0) +
-                                                  ' stempel'
+                                                : hasPreviousPayment
+                                                  ? 'Hanya pada pembayaran pertama'
+                                                  : 'Saldo ' +
+                                                    (orderCustomer?.stamps ??
+                                                        0) +
+                                                    ' stempel'
                                         }}
                                     </span>
                                 </span>
@@ -3798,6 +3877,84 @@ const memberForm = useForm({
                                 {{ selectedOrder.reward }} sudah diterapkan pada
                                 order ini.
                             </p>
+                            <p
+                                v-else-if="hasPreviousPayment"
+                                class="mx-6 mb-4 rounded-xl bg-slate-50 px-4 py-3 text-xs text-slate-600 ring-1 ring-slate-200"
+                            >
+                                Reward hanya dapat ditukar pada pembayaran
+                                pertama order. Jika perlu memilih reward, hapus
+                                semua transaksi pembayaran order terlebih
+                                dahulu.
+                            </p>
+                            <div
+                                v-if="
+                                    selectedReward &&
+                                    selectedOrder.reward === '—'
+                                "
+                                class="mx-6 mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3"
+                            >
+                                <p
+                                    class="text-xs font-semibold text-emerald-900"
+                                >
+                                    Rincian potongan reward
+                                </p>
+                                <template v-if="rewardDiscountDetail">
+                                    <div
+                                        class="mt-2 flex items-start justify-between gap-3 text-xs"
+                                    >
+                                        <div class="min-w-0">
+                                            <p
+                                                class="font-medium text-slate-800"
+                                            >
+                                                {{ rewardDiscountDetail.name
+                                                }}<span
+                                                    v-if="
+                                                        rewardDiscountDetail.variationLabel
+                                                    "
+                                                >
+                                                    ({{
+                                                        rewardDiscountDetail.variationLabel
+                                                    }})</span
+                                                >
+                                            </p>
+                                            <p class="mt-0.5 text-slate-600">
+                                                {{
+                                                    rewardDiscountDetail.quantity
+                                                }}
+                                                ×
+                                                {{
+                                                    formatCurrency(
+                                                        rewardDiscountDetail.unitPrice,
+                                                    )
+                                                }}
+                                                ×
+                                                {{
+                                                    rewardDiscountDetail.discountPercent
+                                                }}%
+                                            </p>
+                                        </div>
+                                        <span
+                                            class="shrink-0 font-semibold text-emerald-700 tabular-nums"
+                                        >
+                                            −{{
+                                                formatCurrency(rewardDiscount)
+                                            }}
+                                        </span>
+                                    </div>
+                                    <p
+                                        v-if="
+                                            rewardDiscountDetail.discount >
+                                            rewardDiscount
+                                        "
+                                        class="mt-2 text-[11px] text-emerald-800"
+                                    >
+                                        Potongan dibatasi sisa tagihan.
+                                    </p>
+                                </template>
+                                <p v-else class="mt-1 text-xs text-slate-600">
+                                    Reward merchandise tanpa potongan layanan.
+                                </p>
+                            </div>
                         </details>
 
                         <details class="group">

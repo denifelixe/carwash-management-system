@@ -7,6 +7,7 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
 use App\Models\Service;
+use App\Support\Admin\MemberStamps;
 use Inertia\Testing\AssertableInertia;
 
 test('guests cannot open the live booking module', function () {
@@ -427,6 +428,111 @@ test('paid booking details can be edited while preserving services and payments'
         ->and($booking->serviceVariations()->sole()->pivot->getRawOriginal())->toBe($originalServices)
         ->and($transaction->refresh()->getRawOriginal())->toBe($originalTransaction);
 })->with(['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal'])->with([-1, 0, 3]);
+
+test('a fully paid booking cannot transfer credited stamps to another member', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $firstMember = Member::factory()->create();
+    $firstVehicle = MemberVehicle::factory()->for($firstMember)->create();
+    $secondMember = Member::factory()->create();
+    $secondVehicle = MemberVehicle::factory()->for($secondMember)->create();
+    $service = Service::factory()->create(['price' => 45000, 'stamps' => 2]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->for($firstMember)->create([
+        'member_vehicle_id' => $firstVehicle->id,
+        'customer_name' => $firstMember->name,
+        'customer_phone' => $firstMember->phone,
+        'vehicle_name' => $firstVehicle->name,
+        'vehicle_plate' => $firstVehicle->plate,
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->addDay()->toDateString(),
+        'total' => 45000,
+        'paid_amount' => 45000,
+        'stamps_earned' => 2,
+    ]);
+    $booking->serviceVariations()->attach($variation, [
+        'service_name' => $service->name,
+        'unit_price' => 45000,
+        'quantity' => 1,
+        'total_price' => 45000,
+        'stamps' => 2,
+    ]);
+    OrderTransaction::factory()->for($booking)->create(['amount' => 45000]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.bookings.index'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('bookings.0.customerId', $firstMember->id)
+            ->where('bookings.0.memberVehicleId', $firstVehicle->id));
+
+    $payload = [
+        'customer_mode' => 'existing',
+        'member_id' => $secondMember->id,
+        'member_vehicle_id' => $secondVehicle->id,
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        'service_date' => now()->addDay()->toDateString(),
+    ];
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), $payload)
+        ->assertSessionHasErrors('customer_mode');
+
+    expect($booking->refresh()->member_id)->toBe($firstMember->id)
+        ->and(MemberStamps::balance($firstMember))->toBe(2)
+        ->and(MemberStamps::balance($secondMember))->toBe(0);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), [
+            ...$payload,
+            'member_id' => $firstMember->id,
+            'member_vehicle_id' => $firstVehicle->id,
+            'service_date' => now()->addDays(2)->toDateString(),
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($booking->refresh()->service_date->toDateString())->toBe(now()->addDays(2)->toDateString());
+});
+
+test('changing the member on a partially paid booking refreshes its pending stamps', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $vehicle = MemberVehicle::factory()->for($member)->create();
+    $service = Service::factory()->create(['price' => 45000, 'stamps' => 2]);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $booking = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'booking',
+        'service_date' => now()->addDay()->toDateString(),
+        'total' => 45000,
+        'paid_amount' => 20000,
+    ]);
+    $booking->serviceVariations()->attach($variation, [
+        'service_name' => $service->name,
+        'unit_price' => 45000,
+        'quantity' => 1,
+        'total_price' => 45000,
+        'stamps' => 2,
+    ]);
+    OrderTransaction::factory()->for($booking)->create(['amount' => 20000]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.bookings.update', $booking), [
+            'customer_mode' => 'existing',
+            'member_id' => $member->id,
+            'member_vehicle_id' => $vehicle->id,
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+            'service_date' => now()->addDay()->toDateString(),
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($booking->refresh()->stamps_earned)->toBe(2)
+        ->and(MemberStamps::balance($member))->toBe(0);
+
+    $booking->update(['paid_amount' => 45000]);
+
+    expect(MemberStamps::balance($member))->toBe(2);
+});
 
 test('a booking older than H-30 cannot be edited or deleted', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);

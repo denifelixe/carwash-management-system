@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\MemberAuthenticatedSessionController;
+use App\Http\Controllers\Member\PortalController;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
@@ -26,7 +27,12 @@ Route::domain((string) config('domains.member'))
 
         Route::middleware('auth:member')->group(function (): void {
             Route::post('logout', [MemberAuthenticatedSessionController::class, 'destroy'])->name('logout');
-            Route::inertia('dashboard', 'member/Dashboard')->name('dashboard');
+            /* Information and loyalty only, so every portal page is a read-only GET. */
+            Route::get('dashboard', [PortalController::class, 'dashboard'])->name('dashboard');
+            Route::get('stempel', [PortalController::class, 'stamps'])->name('stamps');
+            Route::get('layanan', [PortalController::class, 'services'])->name('services');
+            Route::get('reward', [PortalController::class, 'rewards'])->name('rewards');
+            Route::get('profil', [PortalController::class, 'profile'])->name('profile');
         });
 
         /* Any other path on the member domain answers the same way. */

@@ -11,10 +11,13 @@ use App\Models\Admin;
 use App\Models\AdminShift;
 use App\Models\Member;
 use App\Models\Order;
+use App\Models\Reward;
 use App\Models\Service;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
+use App\Support\Admin\RewardPresenter;
+use App\Support\Admin\RewardQueries;
 use App\Support\Demo\DateFilter;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
@@ -64,8 +67,9 @@ class PosController extends Controller
             'services' => $services->map(fn (Service $service): array => OrderPresenter::service($service))->all(),
             'customers' => OrderQueries::customers()
                 ->map(fn (Member $member): array => OrderPresenter::customer($member))->all(),
-            /* Loyalty rewards are not part of the live catalog yet. */
-            'rewards' => [],
+            'rewards' => RewardQueries::activeCatalog()
+                ->map(fn (Reward $reward): array => RewardPresenter::reward($reward))
+                ->all(),
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
             'capabilities' => [
                 'create' => Gate::allows('admin.pos.create'),

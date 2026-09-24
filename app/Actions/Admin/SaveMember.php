@@ -12,12 +12,12 @@ class SaveMember
     public function __construct(private MarkLeadConverted $markLeadConverted) {}
 
     /**
-     * @param  array{name: string, phone: string, email: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}  $data
+     * @param  array{name: string, phone: string, email: string|null, password?: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}  $data
      */
     public function create(array $data): Member
     {
         return DB::transaction(function () use ($data): Member {
-            $member = Member::query()->create(Arr::only($data, ['name', 'phone', 'email']));
+            $member = Member::query()->create(self::attributes($data));
             $this->syncVehicles($member, $data['vehicles']);
             $this->markLeadConverted->handle($member, array_column($data['vehicles'], 'plate'));
 
@@ -26,17 +26,35 @@ class SaveMember
     }
 
     /**
-     * @param  array{name: string, phone: string, email: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}  $data
+     * @param  array{name: string, phone: string, email: string|null, password?: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}  $data
      */
     public function update(Member $member, array $data): Member
     {
         return DB::transaction(function () use ($member, $data): Member {
-            $member->update(Arr::only($data, ['name', 'phone', 'email']));
+            $member->update(self::attributes($data));
             $this->syncVehicles($member, $data['vehicles']);
             $this->markLeadConverted->handle($member, array_column($data['vehicles'], 'plate'));
 
             return $member->load('vehicles');
         });
+    }
+
+    /**
+     * The member's own columns. A password is only written when one was typed,
+     * so saving the form without it keeps the current portal login.
+     *
+     * @param  array{name: string, phone: string, email: string|null, password?: string|null}  $data
+     * @return array<string, string|null>
+     */
+    private static function attributes(array $data): array
+    {
+        $attributes = Arr::only($data, ['name', 'phone', 'email']);
+
+        if (($data['password'] ?? null) !== null) {
+            $attributes['password'] = $data['password'];
+        }
+
+        return $attributes;
     }
 
     /**

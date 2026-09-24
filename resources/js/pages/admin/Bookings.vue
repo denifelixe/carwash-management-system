@@ -321,6 +321,17 @@ const editingBooking = computed<CarwashBooking | null>(
             (booking) => booking.id === editingBookingId.value,
         ) ?? null,
 );
+const customerLocked = computed<boolean>(() => {
+    const booking = editingBooking.value;
+
+    return (
+        booking !== null &&
+        booking.customerId !== null &&
+        booking.orderStatus !== 'batal' &&
+        (booking.orderStatus === 'selesai' ||
+            (booking.estimate > 0 && booking.paidAmount >= booking.estimate))
+    );
+});
 
 const canEditDraftServices = computed<boolean>(
     () => editingBooking.value?.canEditServices !== false,
@@ -375,6 +386,10 @@ const draftTotal = computed<number>(() =>
 );
 
 const hasCustomer = computed<boolean>(() => {
+    if (customerLocked.value) {
+        return true;
+    }
+
     if (customerMode.value === 'existing') {
         return draft.value.customerId !== null;
     }
@@ -609,9 +624,15 @@ function saveBooking(): void {
 
     if (props.mode === 'live') {
         const payload = {
-            customer_mode: customerMode.value,
-            member_id: draft.value.customerId,
-            member_vehicle_id: selectedCustomerOption.value?.vehicle.id ?? null,
+            customer_mode: customerLocked.value
+                ? 'existing'
+                : customerMode.value,
+            member_id: customerLocked.value
+                ? editingBooking.value?.customerId
+                : draft.value.customerId,
+            member_vehicle_id: customerLocked.value
+                ? editingBooking.value?.memberVehicleId
+                : (selectedCustomerOption.value?.vehicle.id ?? null),
             customer_name: draft.value.walkInName,
             customer_phone: draft.value.customerPhone,
             vehicle_name: draft.value.vehicle,
@@ -659,11 +680,21 @@ function saveBooking(): void {
         },
     );
     const bookingFields = {
-        customerId: customer?.id ?? null,
-        customer: customer?.name ?? draft.value.walkInName,
-        phone: (customer?.phone ?? draft.value.customerPhone.trim()) || '—',
-        vehicle: draft.value.vehicle || '—',
-        plate: draft.value.plate.toUpperCase(),
+        customerId: customerLocked.value
+            ? (editingBooking.value?.customerId ?? null)
+            : (customer?.id ?? null),
+        customer: customerLocked.value
+            ? (editingBooking.value?.customer ?? '')
+            : (customer?.name ?? draft.value.walkInName),
+        phone: customerLocked.value
+            ? (editingBooking.value?.phone ?? '—')
+            : (customer?.phone ?? draft.value.customerPhone.trim()) || '—',
+        vehicle: customerLocked.value
+            ? (editingBooking.value?.vehicle ?? '—')
+            : draft.value.vehicle || '—',
+        plate: customerLocked.value
+            ? (editingBooking.value?.plate ?? '')
+            : draft.value.plate.toUpperCase(),
         service: serviceItems.map((item) => item.label).join(', '),
         serviceIds: [...new Set(serviceItems.map((item) => item.serviceId))],
         serviceItems,
@@ -1180,247 +1211,281 @@ function saveBooking(): void {
                 </label>
 
                 <div
-                    class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
-                    role="tablist"
+                    v-if="customerLocked && editingBooking"
+                    class="mt-2 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3"
                 >
-                    <button
-                        v-for="tab in customerTabs"
-                        :key="tab.key"
-                        type="button"
-                        role="tab"
-                        :aria-selected="customerMode === tab.key"
-                        class="rounded-lg px-2 py-2 text-xs leading-tight transition focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
-                        :class="
-                            customerMode === tab.key
-                                ? 'bg-cyan-600 font-semibold text-white shadow-sm shadow-cyan-600/30'
-                                : 'font-medium text-slate-500 hover:bg-white/70 hover:text-slate-700'
-                        "
-                        @click="selectCustomerMode(tab.key)"
-                    >
-                        {{ tab.label }}
-                    </button>
+                    <p class="text-sm font-semibold text-slate-900">
+                        {{ editingBooking.customer }}
+                    </p>
+                    <p class="mt-1 text-xs text-slate-600">
+                        {{ formatPlate(editingBooking.plate) }} ·
+                        {{ editingBooking.vehicle }}
+                    </p>
+                    <p class="mt-2 text-xs text-slate-500">
+                        Customer terkunci karena booking sudah selesai atau
+                        lunas dan stempelnya tercatat.
+                    </p>
                 </div>
 
-                <div
-                    v-if="
-                        customerMode === 'existing' && !selectedCustomerOption
-                    "
-                    class="relative mt-3"
-                >
-                    <!--
+                <div v-else>
+                    <div
+                        class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+                        role="tablist"
+                    >
+                        <button
+                            v-for="tab in customerTabs"
+                            :key="tab.key"
+                            type="button"
+                            role="tab"
+                            :aria-selected="customerMode === tab.key"
+                            class="rounded-lg px-2 py-2 text-xs leading-tight transition focus-visible:ring-2 focus-visible:ring-cyan-400 focus-visible:outline-none"
+                            :class="
+                                customerMode === tab.key
+                                    ? 'bg-cyan-600 font-semibold text-white shadow-sm shadow-cyan-600/30'
+                                    : 'font-medium text-slate-500 hover:bg-white/70 hover:text-slate-700'
+                            "
+                            @click="selectCustomerMode(tab.key)"
+                        >
+                            {{ tab.label }}
+                        </button>
+                    </div>
+
+                    <div
+                        v-if="
+                            customerMode === 'existing' &&
+                            !selectedCustomerOption
+                        "
+                        class="relative mt-3"
+                    >
+                        <!--
                         `.multiselect--active` gets `z-index: 50`, so the icon
                         must sit above that or the focused input's white
                         background paints over it.
                     -->
-                    <Search
-                        class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
-                    />
-                    <Multiselect
-                        id="booking-customer"
-                        v-model="selectedCustomerOption"
-                        class="customer-search"
-                        :options="visibleCustomerOptions"
-                        :internal-search="false"
-                        :allow-empty="false"
-                        :show-labels="false"
-                        :max-height="260"
-                        track-by="key"
-                        label="label"
-                        placeholder="Cari plat nomor, nama, atau telepon"
-                        @search-change="updateCustomerQuery"
-                        @select="pickCustomer"
-                    >
-                        <template #singleLabel="{ option }">
-                            <span class="block truncate text-sm text-slate-700">
+                        <Search
+                            class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
+                        />
+                        <Multiselect
+                            id="booking-customer"
+                            v-model="selectedCustomerOption"
+                            class="customer-search"
+                            :options="visibleCustomerOptions"
+                            :internal-search="false"
+                            :allow-empty="false"
+                            :show-labels="false"
+                            :max-height="260"
+                            track-by="key"
+                            label="label"
+                            placeholder="Cari plat nomor, nama, atau telepon"
+                            @search-change="updateCustomerQuery"
+                            @select="pickCustomer"
+                        >
+                            <template #singleLabel="{ option }">
                                 <span
-                                    class="font-bold tracking-wide text-slate-950"
+                                    class="block truncate text-sm text-slate-700"
                                 >
-                                    {{ formatPlate(option.vehicle.plate) }}
-                                </span>
-                                · {{ option.vehicle.name }} —
-                                {{ option.customer.name }}
-                            </span>
-                        </template>
-                        <template #option="{ option }">
-                            <div
-                                class="flex items-center justify-between gap-3 px-3 py-2.5"
-                            >
-                                <div class="min-w-0 shrink-0">
-                                    <p
-                                        class="text-base font-bold tracking-wide text-slate-950"
+                                    <span
+                                        class="font-bold tracking-wide text-slate-950"
                                     >
                                         {{ formatPlate(option.vehicle.plate) }}
-                                    </p>
-                                    <p
-                                        class="truncate text-xs font-medium text-slate-600"
-                                    >
-                                        {{ option.vehicle.name }}
-                                    </p>
-                                </div>
-                                <div class="min-w-0 text-right">
-                                    <p
-                                        class="truncate text-sm font-medium text-slate-800"
-                                    >
-                                        {{ option.customer.name }}
-                                    </p>
-                                    <p class="truncate text-xs text-slate-500">
-                                        {{ option.customer.phone }}
-                                    </p>
-                                </div>
-                            </div>
-                        </template>
-                        <template #noResult>
-                            <p class="px-3 py-3 text-sm text-slate-500">
-                                Tidak ada customer yang cocok — pakai tab
-                                <span class="font-medium text-slate-700">
-                                    Member baru
+                                    </span>
+                                    · {{ option.vehicle.name }} —
+                                    {{ option.customer.name }}
                                 </span>
-                                atau
-                                <span class="font-medium text-slate-700">
-                                    Non member
-                                </span>
-                                .
-                            </p>
-                        </template>
-                    </Multiselect>
-                </div>
-
-                <div
-                    v-else-if="
-                        customerMode === 'existing' && selectedCustomerOption
-                    "
-                    class="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4"
-                >
-                    <div class="flex items-start gap-3">
-                        <div
-                            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-sm font-semibold text-white"
-                        >
-                            {{ selectedCustomerOption.customer.initials }}
-                        </div>
-                        <div class="min-w-0 flex-1">
-                            <div
-                                class="flex flex-wrap items-start justify-between gap-2"
-                            >
-                                <div class="min-w-0">
-                                    <p
-                                        class="truncate text-sm font-semibold text-slate-900"
-                                    >
-                                        {{
-                                            selectedCustomerOption.customer.name
-                                        }}
-                                    </p>
-                                    <p class="text-xs text-slate-500">
-                                        {{
-                                            selectedCustomerOption.customer
-                                                .phone
-                                        }}
-                                        ·
-                                        {{
-                                            selectedCustomerOption.customer
-                                                .memberId
-                                        }}
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    class="shrink-0 rounded-lg border border-cyan-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-cyan-700 transition hover:border-cyan-300 hover:bg-cyan-100"
-                                    @click="clearCustomer"
+                            </template>
+                            <template #option="{ option }">
+                                <div
+                                    class="flex items-center justify-between gap-3 px-3 py-2.5"
                                 >
-                                    Ganti
-                                </button>
-                            </div>
-                            <div
-                                class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-cyan-200/70 pt-3"
-                            >
-                                <span
-                                    class="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm"
-                                >
-                                    {{
-                                        formatPlate(
-                                            selectedCustomerOption.vehicle
-                                                .plate,
-                                        )
-                                    }}
-                                </span>
-                                <span class="text-xs text-slate-600">
-                                    {{ selectedCustomerOption.vehicle.name }}
-                                </span>
-                                <span class="text-[11px] text-slate-400">
-                                    {{ selectedCustomerOption.vehicle.type }}
-                                </span>
-                            </div>
-                        </div>
+                                    <div class="min-w-0 shrink-0">
+                                        <p
+                                            class="text-base font-bold tracking-wide text-slate-950"
+                                        >
+                                            {{
+                                                formatPlate(
+                                                    option.vehicle.plate,
+                                                )
+                                            }}
+                                        </p>
+                                        <p
+                                            class="truncate text-xs font-medium text-slate-600"
+                                        >
+                                            {{ option.vehicle.name }}
+                                        </p>
+                                    </div>
+                                    <div class="min-w-0 text-right">
+                                        <p
+                                            class="truncate text-sm font-medium text-slate-800"
+                                        >
+                                            {{ option.customer.name }}
+                                        </p>
+                                        <p
+                                            class="truncate text-xs text-slate-500"
+                                        >
+                                            {{ option.customer.phone }}
+                                        </p>
+                                    </div>
+                                </div>
+                            </template>
+                            <template #noResult>
+                                <p class="px-3 py-3 text-sm text-slate-500">
+                                    Tidak ada customer yang cocok — pakai tab
+                                    <span class="font-medium text-slate-700">
+                                        Member baru
+                                    </span>
+                                    atau
+                                    <span class="font-medium text-slate-700">
+                                        Non member
+                                    </span>
+                                    .
+                                </p>
+                            </template>
+                        </Multiselect>
                     </div>
-                </div>
 
-                <div v-else class="mt-3 space-y-3">
-                    <div class="grid gap-3">
-                        <div class="space-y-1.5">
-                            <label
-                                for="booking-vehicle-plate"
-                                class="block text-xs font-medium text-slate-600"
+                    <div
+                        v-else-if="
+                            customerMode === 'existing' &&
+                            selectedCustomerOption
+                        "
+                        class="mt-3 rounded-2xl border border-cyan-200 bg-cyan-50/60 p-4"
+                    >
+                        <div class="flex items-start gap-3">
+                            <div
+                                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-sm font-semibold text-white"
                             >
-                                Plat Nomor
-                            </label>
-                            <PlateInput
-                                id="booking-vehicle-plate"
-                                v-model="draft.plate"
-                                v-model:special="draft.isSpecialPlate"
-                            />
-                        </div>
-                        <div class="space-y-1.5">
-                            <label
-                                for="booking-vehicle-type"
-                                class="block text-xs font-medium text-slate-600"
-                            >
-                                Tipe Mobil
-                            </label>
-                            <input
-                                id="booking-vehicle-type"
-                                v-model="draft.vehicle"
-                                type="text"
-                                placeholder="Merk / tipe mobil"
-                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                            />
+                                {{ selectedCustomerOption.customer.initials }}
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div
+                                    class="flex flex-wrap items-start justify-between gap-2"
+                                >
+                                    <div class="min-w-0">
+                                        <p
+                                            class="truncate text-sm font-semibold text-slate-900"
+                                        >
+                                            {{
+                                                selectedCustomerOption.customer
+                                                    .name
+                                            }}
+                                        </p>
+                                        <p class="text-xs text-slate-500">
+                                            {{
+                                                selectedCustomerOption.customer
+                                                    .phone
+                                            }}
+                                            ·
+                                            {{
+                                                selectedCustomerOption.customer
+                                                    .memberId
+                                            }}
+                                        </p>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        class="shrink-0 rounded-lg border border-cyan-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-cyan-700 transition hover:border-cyan-300 hover:bg-cyan-100"
+                                        @click="clearCustomer"
+                                    >
+                                        Ganti
+                                    </button>
+                                </div>
+                                <div
+                                    class="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-cyan-200/70 pt-3"
+                                >
+                                    <span
+                                        class="rounded-lg bg-white px-2.5 py-1 text-xs font-semibold text-slate-800 shadow-sm"
+                                    >
+                                        {{
+                                            formatPlate(
+                                                selectedCustomerOption.vehicle
+                                                    .plate,
+                                            )
+                                        }}
+                                    </span>
+                                    <span class="text-xs text-slate-600">
+                                        {{
+                                            selectedCustomerOption.vehicle.name
+                                        }}
+                                    </span>
+                                    <span class="text-[11px] text-slate-400">
+                                        {{
+                                            selectedCustomerOption.vehicle.type
+                                        }}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="grid gap-2 sm:grid-cols-2">
-                        <div class="space-y-1.5">
-                            <label
-                                for="booking-customer-name"
-                                class="block text-xs font-medium text-slate-600"
-                            >
-                                Nama
-                            </label>
-                            <input
-                                id="booking-customer-name"
-                                v-model="draft.walkInName"
-                                type="text"
-                                placeholder="Nama pelanggan"
-                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                            />
+
+                    <div v-else class="mt-3 space-y-3">
+                        <div class="grid gap-3">
+                            <div class="space-y-1.5">
+                                <label
+                                    for="booking-vehicle-plate"
+                                    class="block text-xs font-medium text-slate-600"
+                                >
+                                    Plat Nomor
+                                </label>
+                                <PlateInput
+                                    id="booking-vehicle-plate"
+                                    v-model="draft.plate"
+                                    v-model:special="draft.isSpecialPlate"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    for="booking-vehicle-type"
+                                    class="block text-xs font-medium text-slate-600"
+                                >
+                                    Tipe Mobil
+                                </label>
+                                <input
+                                    id="booking-vehicle-type"
+                                    v-model="draft.vehicle"
+                                    type="text"
+                                    placeholder="Merk / tipe mobil"
+                                    class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                />
+                            </div>
                         </div>
-                        <div class="space-y-1.5">
-                            <label
-                                for="booking-customer-phone"
-                                class="block text-xs font-medium text-slate-600"
-                            >
-                                Nomor Telpon
-                            </label>
-                            <input
-                                id="booking-customer-phone"
-                                v-model="draft.customerPhone"
-                                type="tel"
-                                inputmode="tel"
-                                placeholder="Nomor telepon"
-                                class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
-                            />
+                        <div class="grid gap-2 sm:grid-cols-2">
+                            <div class="space-y-1.5">
+                                <label
+                                    for="booking-customer-name"
+                                    class="block text-xs font-medium text-slate-600"
+                                >
+                                    Nama
+                                </label>
+                                <input
+                                    id="booking-customer-name"
+                                    v-model="draft.walkInName"
+                                    type="text"
+                                    placeholder="Nama pelanggan"
+                                    class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                />
+                            </div>
+                            <div class="space-y-1.5">
+                                <label
+                                    for="booking-customer-phone"
+                                    class="block text-xs font-medium text-slate-600"
+                                >
+                                    Nomor Telpon
+                                </label>
+                                <input
+                                    id="booking-customer-phone"
+                                    v-model="draft.customerPhone"
+                                    type="tel"
+                                    inputmode="tel"
+                                    placeholder="Nomor telepon"
+                                    class="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-cyan-400 focus:outline-none"
+                                />
+                            </div>
                         </div>
+                        <p class="text-[11px] text-slate-400">
+                            Data ini hanya dicatat pada booking dan tidak
+                            membuat member baru.
+                        </p>
                     </div>
-                    <p class="text-[11px] text-slate-400">
-                        Data ini hanya dicatat pada booking dan tidak membuat
-                        member baru.
-                    </p>
                 </div>
             </div>
 

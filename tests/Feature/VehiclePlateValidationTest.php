@@ -36,7 +36,7 @@ test('every plate submission validates ordinary plates and accepts explicit spec
     $owner = Admin::factory()->create(['is_owner' => true]);
     $record = match ($modelType) {
         'order' => Order::factory()->create(['member_id' => null, 'source' => 'booking', 'status' => 'booking']),
-        'member' => Member::factory()->create(),
+        'member' => Member::factory()->create(['email' => null, 'password' => null]),
         'lead' => Lead::factory()->create(),
         default => null,
     };

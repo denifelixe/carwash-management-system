@@ -206,13 +206,10 @@ class OrderQueries
      */
     public static function withMemberAggregates(Builder $query): Builder
     {
-        return $query
+        return MemberStamps::withBalances($query)
             ->with(['vehicles' => fn ($vehicleQuery) => $vehicleQuery->orderByDesc('is_primary')->orderBy('id')])
             ->withCount('orders')
             ->withSum('orders', 'total')
-            ->withSum([
-                'orders as stamps_earned_total' => fn ($orderQuery) => $orderQuery->where('status', '!=', 'batal'),
-            ], 'stamps_earned')
             ->withMax([
                 'orders as last_order_date' => fn ($orderQuery) => $orderQuery->where('status', '!=', 'batal'),
             ], 'service_date');

@@ -10,7 +10,10 @@ use Illuminate\Support\Facades\DB;
 
 class DeleteOrder
 {
-    public function __construct(private RecalculateDailyBalances $recalculateDailyBalances) {}
+    public function __construct(
+        private RecalculateDailyBalances $recalculateDailyBalances,
+        private VoidRewardRedemption $voidRewardRedemption,
+    ) {}
 
     public function handle(Order $order, Admin $admin): string
     {
@@ -29,6 +32,7 @@ class DeleteOrder
                 $transaction->update(['deleted_by_admin_id' => $admin->getKey()]);
                 $transaction->delete();
             });
+            $this->voidRewardRedemption->handle($order);
             $order->update(['deleted_by_admin_id' => $admin->getKey()]);
             $order->delete();
 

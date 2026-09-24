@@ -9,12 +9,14 @@ use App\Http\Requests\Admin\UpdateMemberRequest;
 use App\Http\Requests\Admin\UpdateMemberStatusRequest;
 use App\Models\Admin;
 use App\Models\Member;
+use App\Models\Reward;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\MemberQueries;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\Paginated;
+use App\Support\Admin\RewardPresenter;
+use App\Support\Admin\RewardQueries;
 use App\Support\Auth\AccountSessions;
-use App\Support\Demo\Brand;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
@@ -30,7 +32,6 @@ class MemberController extends Controller
         /** @var Admin $admin */
         $admin = $request->user('admin');
         $filters = MemberQueries::filters($request);
-        $stampTarget = (int) Brand::identity()['stampTarget'];
 
         return Inertia::render('admin/Customers', [
             ...$adminShell->props($admin, 'Member', 'members'),
@@ -38,14 +39,15 @@ class MemberController extends Controller
                 MemberQueries::page($filters),
                 fn (Member $member): array => OrderPresenter::customer($member),
             ),
-            'stats' => fn (): array => MemberQueries::stats($stampTarget),
+            'stats' => fn (): array => MemberQueries::stats(),
             'memberDetail' => fn (): ?array => MemberQueries::detail($request->integer('member') ?: null),
             'filters' => $filters,
             'statusFilters' => MemberQueries::STATUS_FILTERS,
             'accountFilters' => MemberQueries::ACCOUNT_FILTERS,
             'vehicleTypes' => MemberQueries::VEHICLE_TYPES,
-            'stampTarget' => $stampTarget,
-            'rewards' => [],
+            'rewards' => fn (): array => RewardQueries::activeCatalog()
+                ->map(fn (Reward $reward): array => RewardPresenter::reward($reward))
+                ->all(),
             'capabilities' => [
                 'create' => Gate::allows('admin.members.create'),
                 'update' => Gate::allows('admin.members.update'),
@@ -64,6 +66,11 @@ class MemberController extends Controller
     public function update(UpdateMemberRequest $request, Member $member, SaveMember $saveMember): RedirectResponse
     {
         $saveMember->update($member, $request->member());
+
+        /* A reset password signs the member out everywhere they were logged in. */
+        if ($member->wasChanged('password')) {
+            AccountSessions::revoke($member);
+        }
 
         return back()->with('success', 'Data member berhasil diperbarui.');
     }

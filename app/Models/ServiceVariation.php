@@ -39,6 +39,13 @@ class ServiceVariation extends Model
             ->withPivot(['service_name', 'variations', 'unit_price', 'quantity', 'total_price', 'stamps']);
     }
 
+    /** @return BelongsToMany<Reward, $this> */
+    public function rewards(): BelongsToMany
+    {
+        return $this->belongsToMany(Reward::class, 'reward_service_variation')
+            ->withPivot(['quantity', 'discount_percent']);
+    }
+
     /** @return array<string, string> */
     protected function casts(): array
     {

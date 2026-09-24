@@ -121,6 +121,7 @@ AS
 SELECT
     source_order,
     CASE
+        WHEN name = 'Regular Wash (Large)' THEN 'Regular Wash'
         WHEN name REGEXP ' - (Small|Medium|Large|Extra Large)$'
             THEN REGEXP_REPLACE(name, ' - (Small|Medium|Large|Extra Large)$', '')
         ELSE name
@@ -137,6 +138,8 @@ SELECT
     is_popular,
     is_active,
     CASE
+        WHEN name = 'Regular Wash' THEN 'Standard'
+        WHEN name = 'Regular Wash (Large)' THEN 'Large'
         WHEN name REGEXP ' - Extra Large$' THEN 'Extra Large'
         WHEN name REGEXP ' - Large$' THEN 'Large'
         WHEN name REGEXP ' - Medium$' THEN 'Medium'
@@ -144,6 +147,8 @@ SELECT
         ELSE NULL
     END AS size_value,
     CASE
+        WHEN name = 'Regular Wash' THEN 1
+        WHEN name = 'Regular Wash (Large)' THEN 3
         WHEN name REGEXP ' - Small$' THEN 1
         WHEN name REGEXP ' - Medium$' THEN 2
         WHEN name REGEXP ' - Large$' THEN 3
@@ -158,6 +163,8 @@ SELECT
     logical_name,
     MAX(CASE WHEN size_rank IN (0, 1) THEN category END),
     CASE
+        WHEN logical_name = 'Regular Wash'
+            THEN JSON_OBJECT('Ukuran', JSON_ARRAY('Standard', 'Large'))
         WHEN MAX(size_rank) > 0
             THEN JSON_OBJECT('Ukuran', JSON_ARRAY('Small', 'Medium', 'Large', 'Extra Large'))
         ELSE NULL

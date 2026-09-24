@@ -4,12 +4,9 @@ namespace App\Support\Admin;
 
 use App\Models\Member;
 use App\Models\Order;
-use App\Support\Demo\DateFilter;
 use App\Support\VehiclePlate;
-use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Str;
 
 class MemberQueries
 {
@@ -74,22 +71,13 @@ class MemberQueries
     /**
      * @return array{total: int, active: int, withAccount: int, circulatingStamps: int}
      */
-    public static function stats(int $stampTarget): array
+    public static function stats(): array
     {
-        $stampTotals = Order::query()
-            ->whereNotNull('member_id')
-            ->where('status', '!=', 'batal')
-            ->groupBy('member_id')
-            ->selectRaw('member_id, SUM(stamps_earned) as stamps')
-            ->pluck('stamps');
-
         return [
             'total' => Member::query()->count(),
             'active' => Member::query()->where('is_active', true)->count(),
             'withAccount' => Member::query()->whereNotNull('password')->count(),
-            'circulatingStamps' => $stampTotals->sum(
-                fn (mixed $stamps): int => $stampTarget > 0 ? (int) $stamps % $stampTarget : (int) $stamps,
-            ),
+            'circulatingStamps' => MemberStamps::circulating(),
         ];
     }
 
@@ -125,29 +113,7 @@ class MemberQueries
         return [
             'customer' => OrderPresenter::customer($member),
             'orders' => $orders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
-            'stampHistory' => self::stampHistory($orders),
+            'stampHistory' => MemberStamps::history($member),
         ];
-    }
-
-    /**
-     * @param  Collection<int, Order>  $orders
-     * @return list<array<string, mixed>>
-     */
-    private static function stampHistory(Collection $orders): array
-    {
-        return $orders
-            ->where('status', '!=', 'batal')
-            ->where('stamps_earned', '>', 0)
-            ->values()
-            ->map(fn (Order $order): array => [
-                'id' => $order->id,
-                'title' => $order->serviceVariations->pluck('pivot.service_name')->join(', '),
-                'detail' => $order->vehicle_plate,
-                'stamps' => (int) $order->stamps_earned,
-                'type' => 'earn',
-                'date' => DateFilter::format($order->service_date->toDateString()),
-                'icon' => Str::contains($order->vehicle_name, ['Motor', 'NMax', 'Vario']) ? '🛵' : '✨',
-            ])
-            ->all();
     }
 }

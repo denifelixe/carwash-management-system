@@ -7,6 +7,7 @@ use App\Models\Lead;
 use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
+use App\Models\RewardRedemption;
 use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia;
 
@@ -78,7 +79,6 @@ test('an owner sees the live paginated member module and sidebar wiring', functi
                 ->where('filters.status', 'Semua')
                 ->where('filters.account', 'Semua')
                 ->where('accountFilters', ['Punya akun portal', 'Tidak punya akun portal'])
-                ->where('stampTarget', 10)
                 ->where('modules.5.key', 'members')
                 ->where('modules.5.label', 'Member')
                 ->where('modules.5.active', true)
@@ -87,11 +87,11 @@ test('an owner sees the live paginated member module and sidebar wiring', functi
         );
 });
 
-test('member stamps and detail are derived from non-cancelled orders', function () {
+test('member stamps and detail come from the stamp wallet', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $member = Member::factory()->create(['password' => null, 'email' => null]);
     MemberVehicle::factory()->for($member)->create(['plate' => 'B1234CDE']);
-    Order::factory()->for($member)->create([
+    $completedOrder = Order::factory()->for($member)->create([
         'status' => 'selesai',
         'stamps_earned' => 12,
         'service_date' => '2026-08-29',
@@ -101,27 +101,60 @@ test('member stamps and detail are derived from non-cancelled orders', function 
         'stamps_earned' => 9,
         'service_date' => '2026-08-30',
     ]);
+    /* Not settled yet, so its stamps are not in the wallet. */
+    Order::factory()->for($member)->create([
+        'status' => 'pelunasan',
+        'stamps_earned' => 5,
+        'service_date' => '2026-08-30',
+    ]);
+    RewardRedemption::factory()->create([
+        'member_id' => $member->id,
+        'order_id' => $completedOrder->id,
+        'stamps' => 4,
+    ]);
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.members.index', ['member' => $member->id]))
         ->assertOk()
         ->assertInertia(
             fn (AssertableInertia $page) => $page
-                ->where('members.data.0.stamps', 2)
+                ->where('members.data.0.stamps', 8)
                 ->where('members.data.0.lifetimeStamps', 12)
+                ->where('members.data.0.redeemedStamps', 4)
+                ->where('members.data.0.rewardsClaimed', 1)
                 ->where('members.data.0.hasAccount', false)
                 ->where('members.data.0.email', '')
                 ->where('memberDetail.customer.id', $member->id)
-                ->has('memberDetail.orders', 2)
-                ->has('memberDetail.stampHistory', 1)
-                ->where('memberDetail.stampHistory.0.type', 'earn')
-                ->where('stats.circulatingStamps', 2),
+                ->has('memberDetail.orders', 3)
+                ->has('memberDetail.stampHistory', 2)
+                ->where('memberDetail.stampHistory.0.type', 'redeem')
+                ->where('memberDetail.stampHistory.0.stamps', -4)
+                ->where('memberDetail.stampHistory.1.type', 'earn')
+                ->where('stats.circulatingStamps', 8),
         );
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.members.index', ['member' => 999999]))
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page->where('memberDetail', null));
+});
+
+test('member detail credits a fully paid open order but not an unpaid order', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    Order::factory()->for($member)->create(['status' => 'menunggu', 'stamps_earned' => 2]);
+    Order::factory()->for($member)->create(['status' => 'pelunasan', 'paid_amount' => 45000, 'stamps_earned' => 3]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.members.index', ['member' => $member->id]))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('memberDetail.customer.stamps', 3)
+            ->where('memberDetail.customer.lifetimeStamps', 3)
+            ->where('memberDetail.orders.0.paymentStatus', 'lunas')
+            ->where('memberDetail.orders.0.stampsEarned', 3)
+            ->where('memberDetail.orders.1.stampsEarned', 2)
+            ->has('memberDetail.stampHistory', 1)
+            ->where('memberDetail.stampHistory.0.stamps', 3));
 });
 
 test('members can be searched by name phone and normalized plate and filtered by status', function () {

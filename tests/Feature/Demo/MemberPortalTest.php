@@ -11,11 +11,11 @@ use Inertia\Testing\AssertableInertia;
  * page must render read-only data and no mutating route may exist (BR-01…04).
  */
 dataset('member pages', [
-    'dashboard' => ['demo.member.dashboard', 'demo/member/Dashboard', ['stampHistory', 'rewards', 'promos']],
-    'stamps' => ['demo.member.stamps', 'demo/member/Stamps', ['stampHistory', 'washHistory', 'rewards']],
-    'services' => ['demo.member.services', 'demo/member/Services', ['services', 'categories']],
-    'rewards' => ['demo.member.rewards', 'demo/member/Rewards', ['rewards', 'categories', 'vouchers']],
-    'profile' => ['demo.member.profile', 'demo/member/Profile', ['washHistory', 'vouchers']],
+    'dashboard' => ['demo.member.dashboard', 'member/Dashboard', ['stampHistory', 'rewards', 'promos']],
+    'stamps' => ['demo.member.stamps', 'member/Stamps', ['stampHistory', 'washHistory', 'rewards']],
+    'services' => ['demo.member.services', 'member/Services', ['services', 'categories']],
+    'rewards' => ['demo.member.rewards', 'member/Rewards', ['rewards', 'categories', 'vouchers']],
+    'profile' => ['demo.member.profile', 'member/Profile', ['washHistory', 'vouchers']],
 ]);
 
 test('each portal page renders with the member and its own props', function (string $routeName, string $component, array $props) {
@@ -23,6 +23,7 @@ test('each portal page renders with the member and its own props', function (str
         ->assertOk()
         ->assertInertia(function (AssertableInertia $page) use ($component, $props) {
             $page->component($component)
+                ->where('mode', 'demo')
                 ->has('brand')
                 ->has('member')
                 ->has('notifications');

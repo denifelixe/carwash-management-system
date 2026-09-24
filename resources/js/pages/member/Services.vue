@@ -8,6 +8,7 @@ import { formatCurrency } from '@/composables/useCarwashFormat';
 import type { CarwashBrand, CarwashMember, CarwashService } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     member: CarwashMember;
     services: CarwashService[];

@@ -93,6 +93,7 @@ test('the customer module is named member throughout the console', function () {
         ->toContain('toggleAccountFilter')
         ->toContain('allFiltersSelected')
         ->toContain("detailCustomer.email || 'Tidak ada email'")
+        ->toContain('<Ticket class="size-4 text-amber-500" />')
         ->not->toContain(':caption="brand.stampReward"')
         ->not->toContain('title="Daftarkan customer"')
         ->not->toContain('Simpan customer');
@@ -106,8 +107,8 @@ test('the sidebar modules follow the operational menu order', function () {
         'bookings',
         'finance',
         'members',
-        'inventory',
         'rewards',
+        'inventory',
         'reports',
         'users',
         'master_app_settings',

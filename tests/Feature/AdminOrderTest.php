@@ -9,6 +9,7 @@ use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\OrderTransaction;
+use App\Models\RewardRedemption;
 use App\Models\Service;
 use App\Models\ServiceVariation;
 use App\Support\Admin\OrderQueries;
@@ -248,9 +249,10 @@ test('an admin with update access can edit an unpaid unfinished order', function
         ->and($order->serviceVariations()->firstOrFail()->pivot->quantity)->toBe(2);
 });
 
-test('an order without transactions can be edited regardless of its status', function (array $attributes) {
+test('an order without transactions keeps its customer once completed or fully paid', function (array $attributes) {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $order = Order::factory()->create($attributes);
+    $originalName = $order->customer_name;
     $service = Service::factory()->create(['price' => 75000]);
     $variation = $service->serviceVariations()->firstOrFail();
 
@@ -266,7 +268,8 @@ test('an order without transactions can be edited regardless of its status', fun
         ->assertRedirect()
         ->assertSessionHasNoErrors();
 
-    expect($order->refresh()->customer_name)->toBe('Tidak Berubah');
+    expect($order->refresh()->customer_name)->toBe($originalName)
+        ->and($order->subtotal)->toBe(150000);
 })->with([
     'lunas' => [['status' => 'proses', 'total' => 45000, 'paid_amount' => 45000]],
     'selesai' => [['status' => 'selesai', 'total' => 45000, 'paid_amount' => 0]],
@@ -852,13 +855,15 @@ test('transaction orders allow metadata edits while preserving financial snapsho
         'items' => [['service_variation_id' => $variation->id, 'quantity' => 2]],
         'total' => 1, 'paid_amount' => 0, 'discount' => 90000,
     ];
+    /* Completed and fully paid orders keep the customer whose wallet earned stamps. */
+    $customer = $status === 'selesai' || $paidAmount >= 90000
+        ? $order->only(['customer_name', 'customer_phone', 'vehicle_name', 'vehicle_plate'])
+        : ['customer_name' => 'Pelanggan Baru', 'customer_phone' => '081234567899', 'vehicle_name' => 'Honda Jazz', 'vehicle_plate' => 'B9876XYZ'];
     $this->actingAs($owner, 'admin')->patch(route('admin.orders.update', $order), $payload)
         ->assertRedirect()->assertSessionHasNoErrors();
 
-    expect($order->refresh())
-        ->customer_name->toBe('Pelanggan Baru')->customer_phone->toBe('081234567899')
-        ->vehicle_name->toBe('Honda Jazz')->vehicle_plate->toBe('B9876XYZ')
-        ->handled_by->toBe('Petugas Baru')
+    expect($order->refresh()->only(array_keys($customer)))->toBe($customer)
+        ->and($order)->handled_by->toBe('Petugas Baru')
         ->and($order->only(array_keys($financials)))->toBe($financials)
         ->and($order->serviceVariations()->firstOrFail()->pivot->getAttributes())->toBe($pivot)
         ->and($transaction->refresh()->getAttributes())->toBe($transactionAttributes)
@@ -867,7 +872,7 @@ test('transaction orders allow metadata edits while preserving financial snapsho
     $payload['items'][0]['quantity'] = 3;
     $payload['customer_name'] = 'Tidak Boleh Tersimpan';
     $this->patch(route('admin.orders.update', $order), $payload)->assertSessionHasErrors('items');
-    expect($order->refresh()->customer_name)->toBe('Pelanggan Baru');
+    expect($order->refresh()->customer_name)->toBe($customer['customer_name']);
 
     $this->patch(route('admin.orders.handler.update', $order), ['handled_by' => 'Petugas Lain'])
         ->assertSessionHasNoErrors();
@@ -982,4 +987,85 @@ JS;
     $result = Process::path(base_path())->run(['node', '-e', $script]);
 
     expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('a settled or rewarded order keeps its customer while the handler can still change', function (string $status, bool $hasReward) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $vehicle = MemberVehicle::factory()->for($member)->create(['plate' => 'B8120DS']);
+    $order = Order::factory()->create([
+        'status' => $status,
+        'member_id' => $member->id,
+        'member_vehicle_id' => $vehicle->id,
+        'customer_name' => $member->name,
+        'vehicle_plate' => 'B8120DS',
+        'total' => 45000,
+        'paid_amount' => 45000,
+        'stamps_earned' => 1,
+    ]);
+    $variation = Service::factory()->create()->serviceVariations()->firstOrFail();
+    $order->serviceVariations()->attach($variation, [
+        'service_name' => 'Cuci', 'unit_price' => 45000, 'quantity' => 1, 'total_price' => 45000, 'stamps' => 1,
+    ]);
+    OrderTransaction::factory()->create(['order_id' => $order->id, 'amount' => 45000]);
+
+    if ($hasReward) {
+        RewardRedemption::factory()->create(['member_id' => $member->id, 'order_id' => $order->id]);
+    }
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Orang Lain',
+            'customer_phone' => '081299990000',
+            'vehicle_name' => 'Honda Jazz',
+            'vehicle_plate' => 'B 9999 ZZ',
+            'handled_by' => 'Petugas Baru',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->member_id->toBe($member->id)
+        ->member_vehicle_id->toBe($vehicle->id)
+        ->customer_name->toBe($member->name)
+        ->vehicle_plate->toBe('B8120DS')
+        ->stamps_earned->toBe(1)
+        ->handled_by->toBe('Petugas Baru');
+})->with([
+    'selesai' => ['selesai', false],
+    'fully paid before completion' => ['pelunasan', false],
+    'reward applied on a partial payment' => ['pelunasan', true],
+]);
+
+test('moving a paid but open order to a walk-in drops its stamps', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $order = Order::factory()->create([
+        'status' => 'pelunasan',
+        'member_id' => $member->id,
+        'total' => 90000,
+        'paid_amount' => 45000,
+        'stamps_earned' => 2,
+    ]);
+    $variation = Service::factory()->create()->serviceVariations()->firstOrFail();
+    $order->serviceVariations()->attach($variation, [
+        'service_name' => 'Cuci', 'unit_price' => 90000, 'quantity' => 1, 'total_price' => 90000, 'stamps' => 2,
+    ]);
+    OrderTransaction::factory()->create(['order_id' => $order->id, 'amount' => 45000]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.orders.update', $order), [
+            'customer_mode' => 'walk-in',
+            'customer_name' => 'Pelanggan Lain',
+            'customer_phone' => '081299990000',
+            'vehicle_name' => 'Honda Jazz',
+            'vehicle_plate' => 'B 9999 ZZ',
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ])
+        ->assertSessionHasNoErrors();
+
+    expect($order->refresh())
+        ->member_id->toBeNull()
+        ->stamps_earned->toBe(0);
 });

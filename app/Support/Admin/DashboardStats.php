@@ -30,6 +30,8 @@ class DashboardStats
         $activeMembers = Member::query()->where('is_active', true)->count();
         $totalMembers = Member::query()->count();
         $isToday = $date === CarbonImmutable::now()->toDateString();
+        $redeemed = RewardQueries::redeemedOnDate($date);
+        $previousRedeemed = RewardQueries::redeemedOnDate($previousDate);
 
         return [
             [
@@ -56,11 +58,9 @@ class DashboardStats
             ],
             [
                 'label' => 'Stempel Ditukar',
-                'value' => '0',
-                /* Loyalty has no live source yet: the reward module is demo-only. */
-                'caption' => 'Menunggu modul reward',
-                'delta' => 0.0,
-                'trend' => 'flat',
+                'value' => self::number($redeemed['stamps']),
+                'caption' => self::number($redeemed['rewards']).' reward diklaim',
+                ...self::comparison($redeemed['stamps'], $previousRedeemed['stamps']),
                 'icon' => 'gift',
             ],
         ];

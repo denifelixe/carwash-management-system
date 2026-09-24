@@ -36,7 +36,10 @@ class UpdateMemberRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30', Rule::unique(Member::class, 'phone')->ignore($memberId)],
-            'email' => ['nullable', 'email', 'max:255', Rule::unique(Member::class, 'email')->ignore($memberId)],
+            /* A member who can already sign in keeps an email, since it is their login. */
+            'email' => ['nullable', Rule::requiredIf(fn (): bool => $this->filled('password') || $member->password !== null), 'email', 'max:255', Rule::unique(Member::class, 'email')->ignore($memberId)],
+            /* Portal credentials: optional, and left blank on an edit to keep the current one. */
+            'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
             'vehicles' => ['required', 'array', 'min:1', 'max:10'],
             'vehicles.*.id' => ['nullable', 'integer', Rule::exists(MemberVehicle::class, 'id')->where('member_id', $memberId)],
             'vehicles.*.name' => ['required', 'string', 'max:255'],
@@ -69,6 +72,9 @@ class UpdateMemberRequest extends FormRequest
             'phone.unique' => 'Nomor HP ini sudah dipakai member lain.',
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah dipakai member lain.',
+            'email.required' => 'Email wajib diisi agar member bisa login ke portal.',
+            'password.min' => 'Password minimal 8 karakter.',
+            'password.confirmed' => 'Konfirmasi password tidak sama.',
             'vehicles.required' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.min' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.*.id.exists' => 'Kendaraan tidak terdaftar pada member ini.',
@@ -81,11 +87,11 @@ class UpdateMemberRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, phone: string, email: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}
+     * @return array{name: string, phone: string, email: string|null, password: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>}
      */
     public function member(): array
     {
-        /** @var array{name: string, phone: string, email: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>} $data */
+        /** @var array{name: string, phone: string, email: string|null, password: string|null, vehicles: list<array{id?: int|null, name: string, plate: string, type: string}>} $data */
         $data = $this->validated();
 
         return $data;
@@ -106,6 +112,7 @@ class UpdateMemberRequest extends FormRequest
             'name' => Str::squish((string) $this->input('name', '')),
             'phone' => trim((string) $this->input('phone', '')),
             'email' => $email === '' ? null : $email,
+            'password' => (string) $this->input('password', '') === '' ? null : (string) $this->input('password'),
             'vehicles' => $vehicles,
         ]);
     }

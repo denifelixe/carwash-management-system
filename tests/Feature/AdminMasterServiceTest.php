@@ -4,6 +4,7 @@ use App\Models\Admin;
 use App\Models\AdminModule;
 use App\Models\AdminRole;
 use App\Models\Order;
+use App\Models\Reward;
 use App\Models\Service;
 use App\Models\ServiceVariation;
 use Illuminate\Support\Facades\Schema;
@@ -207,6 +208,28 @@ test('a service can only be deleted before any variation is ordered', function (
         ->delete(route('admin.master.services.destroy', $used))->assertSessionHasErrors('service');
 
     expect($unused->fresh())->toBeNull()->and($used->fresh())->not->toBeNull();
+});
+
+test('a variation selected by a reward is retired instead of deleted', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['variations' => ['Ukuran' => ['Small', 'Large']]]);
+    $small = $service->serviceVariations()->firstOrFail();
+    $small->update(['variations' => ['Ukuran' => 'Small']]);
+    $large = ServiceVariation::factory()->for($service)->create(['variations' => ['Ukuran' => 'Large']]);
+    Reward::factory()->create()->serviceVariations()->attach($large, ['quantity' => 1, 'discount_percent' => 100]);
+
+    $this->actingAs($owner, 'admin')->patch(route('admin.master.services.update', $service), servicePayload([
+        'name' => $service->name,
+        'variations' => ['Ukuran' => ['Small']],
+        'service_variations' => [[
+            'id' => $small->id, 'variations' => ['Ukuran' => 'Small'], 'price' => 60000, 'is_active' => true,
+        ]],
+    ]))->assertSessionHasNoErrors();
+
+    expect($large->refresh()->is_active)->toBeFalse();
+
+    $this->actingAs($owner, 'admin')->from(route('admin.master.services.index'))
+        ->delete(route('admin.master.services.destroy', $service))->assertSessionHasErrors('service');
 });
 
 test('master service permissions protect read and write operations', function () {

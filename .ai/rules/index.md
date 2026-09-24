@@ -5,14 +5,17 @@ Before planning or editing, find the row whose globs match the file's path and r
 | Applies to | Rule file |
 | --- | --- |
 | {app/Http/Controllers/Admin/OrderController.php,app/Actions/Admin/DeleteOrderTransaction.php,resources/js/pages/admin/Orders.vue} | .ai/rules/actions-admin-js-pages-admin.md |
+| {app/Support/Admin/MemberStamps.php,app/Support/Admin/RewardRedemptionRules.php,app/Actions/Admin/RecordOrderPayment.php,app/Http/Requests/Admin/StoreOrderPaymentRequest.php,app/Actions/Admin/DeleteOrder.php,resources/js/pages/admin/Pos.vue} | .ai/rules/admin-actions-admin-js-pages-admin.md |
 | {resources/js/components/admin/PlateInput.vue,resources/js/lib/vehiclePlate.ts} | .ai/rules/admin-js-lib.md |
 | {app/Actions/Admin/RecordOrderPayment.php,app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/TransactionShiftResolver.php,resources/js/pages/admin/{Pos,Finance,Users}.vue} | .ai/rules/admin-js-pages-admin.md |
 | {app/Http/Controllers/Admin/Master/ReceiptController.php,app/Http/Controllers/Admin/Master/AppSettingController.php,app/Actions/Admin/UpdateReceiptSettings.php,app/Actions/Admin/UpdateAppBranding.php,resources/js/pages/admin/master/Receipt.vue,resources/js/pages/admin/master/AppSettings.vue} | .ai/rules/admin-master.md |
+| {app/Http/Controllers/Admin/RewardController.php,app/Http/Controllers/Demo/RewardController.php,app/Support/Admin/RewardQueries.php,app/Support/Admin/RewardPresenter.php,resources/js/pages/admin/Rewards.vue} | .ai/rules/admin-support-admin-js-pages-admin.md |
 | {app/Http/Controllers/Admin/DashboardController.php,app/Support/Admin/DashboardStats.php} | .ai/rules/admin-support-admin.md |
 | {app/Http/Controllers/Admin/**,app/Http/Controllers/Demo/**,resources/js/pages/admin/**} | .ai/rules/admin.md |
 | app/Support/Admin/** | .ai/rules/app-support-admin.md |
 | resources/js/components/admin/ServiceCartPicker.vue | .ai/rules/components-admin.md |
 | resources/js/components/demo/{ModalDialog,SlideOver}.vue | .ai/rules/components-demo.md |
+| {app/Http/Controllers/Member/**,app/Http/Controllers/Demo/MemberController.php,app/Support/Member/**,resources/js/pages/member/**,resources/js/layouts/member/**,resources/js/composables/useMemberPortalRoutes.ts} | .ai/rules/composables.md |
 | {app/Models/Lead.php,app/Actions/Admin/CaptureOrderLead.php,app/Actions/Admin/MarkLeadConverted.php,app/Support/Admin/LeadQueries.php,app/Http/Controllers/Admin/LeadController.php} | .ai/rules/controllers-admin.md |
 | {app/Support/Admin/OrderLogCsv.php,app/Http/Controllers/Admin/ReportController.php,app/Http/Controllers/Demo/ReportController.php} | .ai/rules/controllers-demo.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}, {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-js-pages-admin.md |
@@ -27,6 +30,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | resources/js/pages/admin/master/** | .ai/rules/master.md |
 | {routes/member.php,app/Http/Middleware/EnsureMemberPortalIsAvailable.php,bootstrap/app.php} | .ai/rules/middleware.md |
 | database/migrations/** | .ai/rules/migrations.md |
+| {app/Actions/Admin/UpdateOrder.php,app/Http/Requests/Admin/UpdateOrderRequest.php,app/Models/Order.php,resources/js/pages/admin/Orders.vue} | .ai/rules/models-js-pages-admin.md |
 | {app/Http/Controllers/Admin/FinanceController.php,app/Support/Admin/Finance*.php,resources/js/pages/admin/Finance.vue}, {app/Http/Controllers/Admin/ReportController.php,app/Support/Admin/ReportQueries.php,resources/js/pages/admin/Reports.vue} | .ai/rules/pages-admin.md |
 | {config/auth.php,app/Support/Auth/**,app/Providers/AppServiceProvider.php} | .ai/rules/providers.md |
 | {app/Actions/Admin/RecordCashDeposit.php,app/Actions/Admin/DeleteCashEntry.php,app/Http/Controllers/Admin/FinanceController.php,app/Http/Requests/Admin/UpdateCashEntryRequest.php,resources/js/pages/admin/Finance.vue} | .ai/rules/requests-admin-js-pages-admin.md |

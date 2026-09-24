@@ -32,7 +32,9 @@ class StoreMemberRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30', Rule::unique(Member::class, 'phone')],
-            'email' => ['nullable', 'email', 'max:255', Rule::unique(Member::class, 'email')],
+            'email' => ['nullable', 'required_with:password', 'email', 'max:255', Rule::unique(Member::class, 'email')],
+            /* Portal credentials: optional, and left blank on an edit to keep the current one. */
+            'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
             'vehicles' => ['required', 'array', 'min:1', 'max:10'],
             'vehicles.*.name' => ['required', 'string', 'max:255'],
             'vehicles.*.is_special_plate' => ['sometimes', 'boolean'],
@@ -56,6 +58,9 @@ class StoreMemberRequest extends FormRequest
             'phone.unique' => 'Nomor HP ini sudah dipakai member lain.',
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah dipakai member lain.',
+            'email.required_with' => 'Email wajib diisi agar member bisa login ke portal.',
+            'password.min' => 'Password minimal 8 karakter.',
+            'password.confirmed' => 'Konfirmasi password tidak sama.',
             'vehicles.required' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.min' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.*.name.required' => 'Nama kendaraan wajib diisi.',
@@ -67,11 +72,11 @@ class StoreMemberRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, phone: string, email: string|null, vehicles: list<array{name: string, plate: string, type: string}>}
+     * @return array{name: string, phone: string, email: string|null, password: string|null, vehicles: list<array{name: string, plate: string, type: string}>}
      */
     public function member(): array
     {
-        /** @var array{name: string, phone: string, email: string|null, vehicles: list<array{name: string, plate: string, type: string}>} $data */
+        /** @var array{name: string, phone: string, email: string|null, password: string|null, vehicles: list<array{name: string, plate: string, type: string}>} $data */
         $data = $this->validated();
 
         return $data;
@@ -92,6 +97,7 @@ class StoreMemberRequest extends FormRequest
             'name' => Str::squish((string) $this->input('name', '')),
             'phone' => trim((string) $this->input('phone', '')),
             'email' => $email === '' ? null : $email,
+            'password' => (string) $this->input('password', '') === '' ? null : (string) $this->input('password'),
             'vehicles' => $vehicles,
         ]);
     }

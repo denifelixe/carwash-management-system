@@ -13,7 +13,6 @@ use App\Models\OrderCancellationPhoto;
 use App\Models\OrderTransaction;
 use App\Models\Service;
 use App\Support\AppSettings;
-use App\Support\Demo\Brand;
 use App\Support\Demo\DateFilter;
 use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
@@ -40,6 +39,7 @@ class OrderPresenter
             'id' => $booking->id,
             'code' => $booking->number,
             'customerId' => $booking->member_id,
+            'memberVehicleId' => $booking->member_vehicle_id,
             'customer' => $booking->customer_name,
             'phone' => $booking->customer_phone !== '' ? $booking->customer_phone : '—',
             'vehicle' => $booking->vehicle_name,
@@ -338,8 +338,6 @@ class OrderPresenter
             'isPrimary' => $vehicle->is_primary,
         ]);
         $primaryVehicle = $vehicles->first();
-        $stampTarget = (int) Brand::identity()['stampTarget'];
-        $lifetimeStamps = (int) $member->getAttribute('stamps_earned_total');
         $lastOrderDate = $member->getAttribute('last_order_date');
 
         return [
@@ -351,8 +349,11 @@ class OrderPresenter
             'vehicle' => $primaryVehicle['name'] ?? '—',
             'plate' => $primaryVehicle['plate'] ?? '—',
             'vehicles' => $vehicles->all(),
-            'stamps' => $stampTarget > 0 ? $lifetimeStamps % $stampTarget : $lifetimeStamps,
-            'lifetimeStamps' => $lifetimeStamps,
+            /* The wallet balance; see MemberStamps. */
+            'stamps' => MemberStamps::balance($member),
+            'lifetimeStamps' => MemberStamps::earned($member),
+            'redeemedStamps' => MemberStamps::redeemed($member),
+            'rewardsClaimed' => MemberStamps::rewardsClaimed($member),
             'visits' => (int) $member->orders_count,
             'spend' => (int) $member->getAttribute('orders_sum_total'),
             'joinedAt' => $member->created_at?->format('M Y') ?? '',

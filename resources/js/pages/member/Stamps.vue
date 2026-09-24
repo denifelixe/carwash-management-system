@@ -14,6 +14,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     member: CarwashMember;
     stampHistory: CarwashStampEntry[];
@@ -259,7 +260,10 @@ function activityToneClass(type: string): string {
                 <div
                     class="mt-3 flex items-center justify-between border-t border-slate-100 pt-3"
                 >
-                    <div class="flex items-center gap-1">
+                    <div
+                        v-if="visit.rating > 0"
+                        class="flex items-center gap-1"
+                    >
                         <Star
                             v-for="index in 5"
                             :key="index"
@@ -271,13 +275,14 @@ function activityToneClass(type: string): string {
                             "
                         />
                     </div>
-                    <div class="text-right">
+                    <div class="ml-auto text-right">
                         <p
                             class="text-sm font-semibold text-slate-900 tabular-nums"
                         >
                             {{ formatCurrency(visit.total) }}
                         </p>
                         <p
+                            v-if="visit.stamps > 0"
                             class="flex items-center justify-end gap-1 text-[11px] font-medium text-emerald-600"
                         >
                             <Sparkles class="h-3 w-3" />

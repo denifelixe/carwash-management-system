@@ -505,12 +505,12 @@ class ReportQueries
             $groups[$group]['total'] += (int) $line->total_price;
         }
 
-        /* Groups in catalog order (Master > Layanan), best sellers first inside each. */
+        /* Groups in catalog order (Master > Layanan), services alphabetically inside each. */
         uasort($groups, fn (array $first, array $second): int => [$first['order'], $first['group']] <=> [$second['order'], $second['group']]);
 
         $groups = array_values(array_map(function (array $group): array {
             $items = array_values($group['items']);
-            usort($items, fn (array $first, array $second): int => [$second['total'], $first['name']] <=> [$first['total'], $second['name']]);
+            usort($items, fn (array $first, array $second): int => strcasecmp($first['name'], $second['name']) ?: strcmp($first['name'], $second['name']));
 
             return ['group' => $group['group'], 'items' => $items, 'quantity' => $group['quantity'], 'total' => $group['total']];
         }, $groups));

@@ -11,6 +11,7 @@ import type {
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     member: CarwashMember;
     rewards: CarwashReward[];

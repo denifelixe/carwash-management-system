@@ -6,9 +6,7 @@ paths:
 # Support Admin Js Pages Admin
 
 ## Figures no module owns yet are served as zero with the page saying why
-Nothing records a stamp redemption yet, so the live report holds customerActivity.stampsRedeemed / rewardsClaimed at 0 — the same precedent the dashboard sets for 'Stempel Ditukar'. Never synthesise these.
-
-The page must carry the explanation, not just the zero: the stamp-redemption bar prints a note when stamps were issued but none redeemed, so a flat 0% does not read as a bug. When the Rewards module ships, the figures replace the constants and that notice comes out.
+The Rewards module has shipped: redemptions live in reward_redemptions, and the dashboard's 'Stempel Ditukar' reads RewardQueries::redeemedOnDate(). The live report still has no loyalty card; if one is added, read it from RewardQueries/MemberStamps rather than synthesising figures.
 
 Prop parity is why the zeroed props exist at all: .ai/rules/admin.md requires both the live and demo controller to hand admin/Reports the same prop set, so the live side cannot simply drop them.
 

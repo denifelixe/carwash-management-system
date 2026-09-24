@@ -10,7 +10,8 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Customer web application (BR-01 … BR-04).
+ * Customer web application (BR-01 … BR-04), sharing its pages with the live
+ * portal (App\Http\Controllers\Member\PortalController).
  *
  * Read-only by design: the portal informs and tracks loyalty, while booking,
  * payment, and redemption stay on the admin side.
@@ -33,7 +34,7 @@ class MemberController extends Controller
 
     public function dashboard(): Response
     {
-        return $this->page('demo/member/Dashboard', [
+        return $this->page('member/Dashboard', [
             'stampHistory' => Customers::stampHistory(),
             'washHistory' => Customers::washHistory(),
             'rewards' => Catalog::rewards(),
@@ -43,7 +44,7 @@ class MemberController extends Controller
 
     public function stamps(): Response
     {
-        return $this->page('demo/member/Stamps', [
+        return $this->page('member/Stamps', [
             'stampHistory' => Customers::stampHistory(),
             'washHistory' => Customers::washHistory(),
             'rewards' => Catalog::rewards(),
@@ -52,7 +53,7 @@ class MemberController extends Controller
 
     public function services(): Response
     {
-        return $this->page('demo/member/Services', [
+        return $this->page('member/Services', [
             'services' => Catalog::services(),
             'categories' => Catalog::serviceCategories(),
         ]);
@@ -60,7 +61,7 @@ class MemberController extends Controller
 
     public function rewards(): Response
     {
-        return $this->page('demo/member/Rewards', [
+        return $this->page('member/Rewards', [
             'rewards' => Catalog::rewards(),
             'categories' => Catalog::rewardCategories(),
             'vouchers' => Customers::vouchers(),
@@ -69,7 +70,7 @@ class MemberController extends Controller
 
     public function profile(): Response
     {
-        return $this->page('demo/member/Profile', [
+        return $this->page('member/Profile', [
             'washHistory' => Customers::washHistory(),
             'vouchers' => Customers::vouchers(),
         ]);
@@ -81,6 +82,7 @@ class MemberController extends Controller
     private function page(string $component, array $props = []): Response
     {
         return Inertia::render($component, array_merge([
+            'mode' => 'demo',
             'brand' => Brand::identity(),
             'member' => Customers::member(),
             'notifications' => Brand::memberNotifications(),

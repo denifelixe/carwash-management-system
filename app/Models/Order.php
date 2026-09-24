@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Carbon;
 
@@ -123,6 +124,34 @@ class Order extends Model
     public function deletions(): HasMany
     {
         return $this->hasMany(OrderDeletion::class)->orderByDesc('deleted_at')->orderByDesc('id');
+    }
+
+    /**
+     * The reward the member traded stamps for on this order, if any.
+     *
+     * @return HasOne<RewardRedemption, $this>
+     */
+    public function rewardRedemption(): HasOne
+    {
+        return $this->hasOne(RewardRedemption::class);
+    }
+
+    /**
+     * Whether this order's stamps are eligible for the member's wallet.
+     */
+    public function hasEarnedStamps(): bool
+    {
+        return $this->status !== 'batal'
+            && ($this->status === 'selesai' || ($this->total > 0 && $this->paid_amount >= $this->total));
+    }
+
+    /**
+     * A credited or rewarded order keeps its customer, so the wallet cannot
+     * be moved to someone else.
+     */
+    public function isCustomerLocked(): bool
+    {
+        return $this->hasEarnedStamps() || $this->rewardRedemption()->exists();
     }
 
     /** @return HasMany<OrderTransaction, $this> */

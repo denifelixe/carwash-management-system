@@ -2,13 +2,13 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Car,
-    Gift,
     Mail,
     Phone,
     Pencil,
     Plus,
     Power,
     Sparkles,
+    Ticket,
     Trash2,
     UserPlus,
     Users,
@@ -26,7 +26,6 @@ import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
-import StampProgress from '@/components/demo/StampProgress.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import {
@@ -61,7 +60,6 @@ const props = defineProps<{
     accountFilters: string[];
     vehicleTypes: string[];
     rewards: CarwashReward[];
-    stampTarget: number;
     capabilities: { create: boolean; update: boolean };
 }>();
 
@@ -95,8 +93,35 @@ const draft = ref({
     name: '',
     phone: '',
     email: '',
+    password: '',
+    passwordConfirmation: '',
     vehicles: [emptyVehicle(true)],
 });
+
+/** Portal access (email + password) the admin hands the member, if any. */
+const passwordError = computed<string | null>(() => {
+    const { email, password, passwordConfirmation } = draft.value;
+
+    if (password === '' && passwordConfirmation === '') {
+        return null;
+    }
+
+    if (email.trim() === '') {
+        return 'Isi email agar member bisa login ke portal.';
+    }
+
+    if (password.length < 8) {
+        return 'Password minimal 8 karakter.';
+    }
+
+    return password === passwordConfirmation
+        ? null
+        : 'Konfirmasi password tidak sama.';
+});
+
+const editingCustomer = computed<CarwashCustomer | null>(() =>
+    editingCustomerId.value === null ? null : detailCustomer.value,
+);
 
 const detailCustomer = computed<CarwashCustomer | null>(() => {
     if (props.mode === 'demo') {
@@ -140,6 +165,7 @@ const canCreate = computed<boolean>(
     () =>
         draft.value.name.trim() !== '' &&
         draft.value.phone.trim() !== '' &&
+        passwordError.value === null &&
         draft.value.vehicles.length > 0 &&
         draft.value.vehicles.every(
             (vehicle) =>
@@ -151,6 +177,8 @@ const memberForm = useForm({
     name: '',
     phone: '',
     email: '' as string | null,
+    password: '' as string | null,
+    password_confirmation: '' as string | null,
     vehicles: [] as Array<{
         id?: number;
         name: string;
@@ -270,6 +298,8 @@ function openCreateForm(): void {
         name: '',
         phone: '',
         email: '',
+        password: '',
+        passwordConfirmation: '',
         vehicles: [emptyVehicle(true)],
     };
     memberForm.clearErrors();
@@ -286,6 +316,8 @@ function openEditForm(): void {
         name: detailCustomer.value.name,
         phone: detailCustomer.value.phone,
         email: detailCustomer.value.email,
+        password: '',
+        passwordConfirmation: '',
         vehicles: detailCustomer.value.vehicles.map((vehicle) => ({
             ...vehicle,
             isSpecialPlate: isSpecialPlate(vehicle.plate),
@@ -318,6 +350,8 @@ function saveLiveMember(): void {
     memberForm.name = draft.value.name;
     memberForm.phone = draft.value.phone;
     memberForm.email = draft.value.email || null;
+    memberForm.password = draft.value.password || null;
+    memberForm.password_confirmation = draft.value.passwordConfirmation || null;
     memberForm.vehicles = draft.value.vehicles.map((vehicle) => ({
         ...(vehicle.id ? { id: vehicle.id } : {}),
         name: vehicle.name,
@@ -358,6 +392,7 @@ function saveDemoMember(): void {
                 plate: vehicles[0].plate,
                 vehicles,
                 initials: initialsOf(draft.value.name),
+                hasAccount: current.hasAccount || draft.value.password !== '',
             };
         }
 
@@ -400,13 +435,15 @@ function createCustomer(): void {
         lastVisit: 'Belum pernah',
         initials: initialsOf(draft.value.name),
         status: 'aktif',
-        hasAccount: false,
+        hasAccount: draft.value.password !== '',
     });
 
     draft.value = {
         name: '',
         phone: '',
         email: '',
+        password: '',
+        passwordConfirmation: '',
         vehicles: [emptyVehicle(true)],
     };
     isCreateOpen.value = false;
@@ -453,7 +490,7 @@ function stampToneClass(type: string): string {
     <Head :title="`${brand.name} — Member`" />
 
     <div class="space-y-4">
-        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
                 label="Total member"
                 :value="String(stats.total)"
@@ -473,11 +510,6 @@ function stampToneClass(type: string): string {
                 caption="belum ditukar reward"
                 :icon="Sparkles"
                 tone="amber"
-            />
-            <StatCard
-                label="Target kartu"
-                :value="`${stampTarget} stempel`"
-                :icon="Gift"
             />
         </section>
 
@@ -641,25 +673,11 @@ function stampToneClass(type: string): string {
                             </td>
                             <td class="px-5 py-3.5">
                                 <p
-                                    class="font-medium text-slate-900 tabular-nums"
+                                    class="inline-flex items-center gap-1.5 font-medium text-slate-900 tabular-nums"
                                 >
+                                    <Ticket class="size-4 text-amber-500" />
                                     {{ customer.stamps }}
-                                    <span
-                                        class="text-[11px] font-normal text-slate-400"
-                                    >
-                                        / {{ stampTarget }}
-                                    </span>
                                 </p>
-                                <div
-                                    class="mt-1 h-1.5 w-24 overflow-hidden rounded-full bg-slate-100"
-                                >
-                                    <div
-                                        class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-sky-500"
-                                        :style="{
-                                            width: `${Math.min((customer.stamps / stampTarget) * 100, 100)}%`,
-                                        }"
-                                    ></div>
-                                </div>
                             </td>
                             <td class="px-5 py-3.5">
                                 <p class="text-slate-700 tabular-nums">
@@ -737,9 +755,6 @@ function stampToneClass(type: string): string {
                         <p class="text-xs text-slate-400">Stempel saat ini</p>
                         <p class="text-3xl font-bold tabular-nums">
                             {{ detailCustomer.stamps }}
-                            <span class="text-base font-medium text-slate-400">
-                                / {{ stampTarget }}
-                            </span>
                         </p>
                     </div>
                     <div class="flex flex-col items-end gap-1.5">
@@ -764,13 +779,6 @@ function stampToneClass(type: string): string {
                             "
                         />
                     </div>
-                </div>
-                <div class="mt-3">
-                    <StampProgress
-                        :stamps="detailCustomer.stamps"
-                        :target="stampTarget"
-                        compact
-                    />
                 </div>
             </div>
 
@@ -857,29 +865,6 @@ function stampToneClass(type: string): string {
                         </li>
                     </ul>
                 </div>
-            </div>
-
-            <div v-if="capabilities.update" class="grid grid-cols-2 gap-2">
-                <button
-                    type="button"
-                    class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                    @click="openEditForm"
-                >
-                    <Pencil class="h-3.5 w-3.5" />
-                    Ubah data
-                </button>
-                <button
-                    type="button"
-                    class="flex items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                    @click="toggleStatus(detailCustomer)"
-                >
-                    <Power class="h-3.5 w-3.5" />
-                    {{
-                        detailCustomer.status === 'aktif'
-                            ? 'Nonaktifkan'
-                            : 'Aktifkan'
-                    }}
-                </button>
             </div>
 
             <!-- Unlocked rewards -->
@@ -994,7 +979,14 @@ function stampToneClass(type: string): string {
                             <div class="mt-1.5 flex items-center gap-2">
                                 <StatusPill :status="order.status" />
                                 <span
-                                    v-if="order.stampsEarned > 0"
+                                    v-if="
+                                        order.stampsEarned > 0 &&
+                                        order.status !== 'batal' &&
+                                        (order.status === 'selesai' ||
+                                            (order.total > 0 &&
+                                                order.paidAmount >=
+                                                    order.total))
+                                    "
                                     class="text-[11px] font-medium text-emerald-600"
                                 >
                                     +{{ order.stampsEarned }} stempel
@@ -1016,6 +1008,28 @@ function stampToneClass(type: string): string {
             <div class="h-16 rounded-xl bg-slate-100"></div>
             <div class="h-48 rounded-xl bg-slate-100"></div>
         </div>
+        <template v-if="detailCustomer && capabilities.update" #footer>
+            <button
+                type="button"
+                class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                @click="openEditForm"
+            >
+                <Pencil class="h-3.5 w-3.5" />
+                Ubah data
+            </button>
+            <button
+                type="button"
+                class="flex flex-1 items-center justify-center gap-2 rounded-xl border border-slate-200 px-3 py-2.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
+                @click="toggleStatus(detailCustomer)"
+            >
+                <Power class="h-3.5 w-3.5" />
+                {{
+                    detailCustomer.status === 'aktif'
+                        ? 'Nonaktifkan'
+                        : 'Aktifkan'
+                }}
+            </button>
+        </template>
     </SlideOver>
 
     <!-- Register customer -->
@@ -1077,6 +1091,62 @@ function stampToneClass(type: string): string {
                         class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
                     />
                 </div>
+            </div>
+            <div
+                class="space-y-2.5 rounded-xl border border-slate-200 bg-slate-50/60 p-3"
+            >
+                <div>
+                    <p class="text-xs font-medium text-slate-600">
+                        Akses portal member
+                    </p>
+                    <p class="text-[11px] text-slate-400">
+                        {{
+                            editingCustomer?.hasAccount
+                                ? 'Member sudah bisa login. Isi password baru hanya untuk reset.'
+                                : 'Isi email dan password agar member bisa login ke aplikasi member.'
+                        }}
+                    </p>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label
+                            class="text-xs font-medium text-slate-600"
+                            for="cust-password"
+                        >
+                            {{
+                                editingCustomer?.hasAccount
+                                    ? 'Password baru'
+                                    : 'Password'
+                            }}
+                        </label>
+                        <input
+                            id="cust-password"
+                            v-model="draft.password"
+                            type="password"
+                            autocomplete="new-password"
+                            placeholder="Minimal 8 karakter"
+                            class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
+                        />
+                    </div>
+                    <div>
+                        <label
+                            class="text-xs font-medium text-slate-600"
+                            for="cust-password-confirmation"
+                        >
+                            Ulangi password
+                        </label>
+                        <input
+                            id="cust-password-confirmation"
+                            v-model="draft.passwordConfirmation"
+                            type="password"
+                            autocomplete="new-password"
+                            class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
+                        />
+                    </div>
+                </div>
+                <p v-if="passwordError" class="text-[11px] text-rose-600">
+                    {{ passwordError }}
+                </p>
             </div>
             <div class="space-y-2.5">
                 <div class="flex items-center justify-between gap-3">
@@ -1179,8 +1249,7 @@ function stampToneClass(type: string): string {
             <p
                 class="rounded-xl bg-cyan-50 px-3 py-2.5 text-[11px] text-cyan-800 ring-1 ring-cyan-100"
             >
-                Member baru dimulai dengan 0 stempel. Kumpulkan
-                {{ stampTarget }} stempel untuk {{ brand.stampReward }}.
+                Member baru dimulai dengan 0 stempel.
             </p>
             <p
                 v-if="Object.keys(memberForm.errors).length > 0"

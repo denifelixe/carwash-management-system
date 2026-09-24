@@ -44,6 +44,16 @@ class Member extends Authenticatable
     }
 
     /**
+     * The debit side of the stamp wallet; see App\Support\Admin\MemberStamps.
+     *
+     * @return HasMany<RewardRedemption, $this>
+     */
+    public function rewardRedemptions(): HasMany
+    {
+        return $this->hasMany(RewardRedemption::class);
+    }
+
+    /**
      * Get the attributes that should be cast.
      *
      * @return array<string, string>

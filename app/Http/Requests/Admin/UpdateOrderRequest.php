@@ -2,11 +2,16 @@
 
 namespace App\Http\Requests\Admin;
 
+use App\Models\Order;
 use App\Models\ServiceVariation;
+use Illuminate\Support\Arr;
 use Illuminate\Validation\Rule;
 
 class UpdateOrderRequest extends StoreOrderRequest
 {
+    /** @var list<string> */
+    private const CUSTOMER_FIELDS = ['customer_mode', 'member_id', 'member_vehicle_id', 'customer_name', 'customer_phone', 'vehicle_name', 'is_special_plate', 'vehicle_plate'];
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -22,8 +27,17 @@ class UpdateOrderRequest extends StoreOrderRequest
      */
     public function rules(): array
     {
+        /** @var Order $order */
+        $order = $this->route('order');
+        $rules = parent::rules();
+
+        /* UpdateOrder keeps the stored customer on a locked order, so the one posted is not checked. */
+        if ($order->isCustomerLocked()) {
+            $rules = Arr::except($rules, self::CUSTOMER_FIELDS);
+        }
+
         return [
-            ...parent::rules(),
+            ...$rules,
             'items.*.service_variation_id' => [
                 'required',
                 'integer',

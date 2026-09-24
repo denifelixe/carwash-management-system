@@ -30,7 +30,6 @@ class CustomerController extends AdminController
             'accountFilters' => MemberQueries::ACCOUNT_FILTERS,
             'vehicleTypes' => MemberQueries::VEHICLE_TYPES,
             'rewards' => Catalog::rewards(),
-            'stampTarget' => $stampTarget,
             'capabilities' => ['create' => true, 'update' => true],
         ]);
     }

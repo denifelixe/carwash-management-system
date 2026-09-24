@@ -464,7 +464,7 @@ class Reports
         }
 
         $groups = array_values(array_map(static function (array $group): array {
-            usort($group['items'], static fn (array $first, array $second): int => $second['total'] <=> $first['total']);
+            usort($group['items'], static fn (array $first, array $second): int => strcasecmp($first['name'], $second['name']) ?: strcmp($first['name'], $second['name']));
 
             return $group;
         }, $groups));

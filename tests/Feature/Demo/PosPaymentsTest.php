@@ -826,20 +826,24 @@ test('the cashier receives the reward catalog for redemption', function () {
         );
 });
 
-test('cashier rewards are limited to services already in the order', function () {
-    $serviceIds = array_column(Catalog::services(), 'id');
+test('cashier rewards are limited to variations already in the order', function () {
+    $variationIds = collect(Catalog::services())->flatMap(
+        fn (array $service): array => array_column($service['serviceVariations'], 'id'),
+    )->all();
 
     foreach (Catalog::rewards() as $reward) {
-        expect($reward)->toHaveKey('applicableServiceIds');
+        expect($reward)->toHaveKey('applicableVariations');
 
-        foreach ($reward['applicableServiceIds'] as $applicableServiceId) {
-            expect($serviceIds)->toContain($applicableServiceId);
+        foreach ($reward['applicableVariations'] as $selection) {
+            expect($variationIds)->toContain($selection['serviceVariationId']);
         }
     }
 
     $waxOrderRewards = array_filter(
         Catalog::rewards(),
-        fn (array $reward): bool => array_intersect([2], $reward['applicableServiceIds']) !== [],
+        fn (array $reward): bool => collect($reward['applicableVariations'])->contains(
+            fn (array $selection): bool => $selection['serviceVariationId'] === 2,
+        ),
     );
 
     expect($waxOrderRewards)->toBeEmpty();
@@ -849,8 +853,8 @@ test('cashier rewards are limited to services already in the order', function ()
     );
 
     expect($posPage)
-        ->toContain('reward.applicableServiceIds.some')
-        ->toContain('order.serviceIds.includes(serviceId)')
+        ->toContain('reward.applicableVariations.some')
+        ->toContain('order.serviceItems.some')
         ->toContain('redeemableRewards.length > 0')
         ->not->toContain('Belum ada reward yang sesuai dengan item order');
 });

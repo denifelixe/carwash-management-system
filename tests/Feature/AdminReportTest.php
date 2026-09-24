@@ -839,7 +839,7 @@ function settledOrderWith(string $paidAt, array $lines, string $status = 'selesa
 
 test('services sold are listed per category group with subtotals and a grand total', function (): void {
     $regular = Service::factory()->create(['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'category_group' => 'Cuci', 'price' => 60000, 'sort_order' => 1]);
-    $motor = Service::factory()->create(['name' => 'Wash Motor', 'category' => 'Cuci Motor', 'category_group' => 'Cuci', 'price' => 25000, 'sort_order' => 2]);
+    $motor = Service::factory()->create(['name' => 'Express Wash', 'category' => 'Cuci Motor', 'category_group' => 'Cuci', 'price' => 25000, 'sort_order' => 2]);
     $coating = Service::factory()->create(['name' => 'Coating Kaca', 'category' => 'Coating Mobil', 'category_group' => 'Coating', 'price' => 250000, 'sort_order' => 3]);
 
     settledOrderWith('2026-08-28 10:00:00', [[$regular, 2], [$coating, 1, ['Ukuran' => 'Large']]]);
@@ -856,8 +856,8 @@ test('services sold are listed per category group with subtotals and a grand tot
         [
             'group' => 'Cuci',
             'items' => [
+                ['name' => 'Express Wash', 'category' => 'Cuci Motor', 'quantity' => 3, 'total' => 75000],
                 ['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'quantity' => 3, 'total' => 180000],
-                ['name' => 'Wash Motor', 'category' => 'Cuci Motor', 'quantity' => 3, 'total' => 75000],
             ],
             'quantity' => 6,
             'total' => 255000,
@@ -877,7 +877,9 @@ test('services sold are listed per category group with subtotals and a grand tot
 
 test('the per-service report downloads as a spreadsheet with group and grand totals', function (): void {
     $regular = Service::factory()->create(['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'category_group' => 'Cuci', 'price' => 60000]);
+    $express = Service::factory()->create(['name' => 'Express Wash', 'category' => 'Cuci Mobil', 'category_group' => 'Cuci', 'price' => 25000]);
     settledOrderWith('2026-08-29 10:00:00', [[$regular, 2]]);
+    settledOrderWith('2026-08-29 11:00:00', [[$express, 1]]);
 
     $csv = $this->actingAs(Admin::factory()->create(['is_owner' => true]), 'admin')
         ->get(route('admin.reports.item-sales.export', ['from' => '2026-08-29', 'to' => '2026-08-30']))
@@ -890,9 +892,10 @@ test('the per-service report downloads as a spreadsheet with group and grand tot
 
     expect($rows)->toBe([
         ['Grup Kategori', 'Layanan', 'Kategori', 'Qty', 'Total Harga'],
+        ['Cuci', 'Express Wash', 'Cuci Mobil', '1', '25000'],
         ['Cuci', 'Regular Wash', 'Cuci Mobil', '2', '120000'],
-        ['Total Cuci', '', '', '2', '120000'],
-        ['TOTAL', '', '', '2', '120000'],
+        ['Total Cuci', '', '', '3', '145000'],
+        ['TOTAL', '', '', '3', '145000'],
     ]);
 });
 
@@ -902,6 +905,13 @@ test('the demo report serves the per-service list in the same shape', function (
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('itemSales.groups.0.group', 'Cuci')
+            ->where('itemSales.groups.0.items', fn ($items): bool => collect($items)->pluck('name')->all() === [
+                'Cuci Mobil + Wax',
+                'Cuci Mobil Reguler',
+                'Cuci Motor + Semir',
+                'Cuci Motor Reguler',
+                'Snow Wash Premium',
+            ])
             ->where('itemSales.total', fn (int $total): bool => $total > 0));
 
     $this->withSession([RoleAccess::SESSION_KEY => 'owner'])

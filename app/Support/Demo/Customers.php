@@ -103,7 +103,8 @@ class Customers
             'customer' => $member,
             'orders' => $memberOrders->all(),
             'stampHistory' => $memberOrders
-                ->where('status', '!=', 'batal')
+                ->filter(fn (array $order): bool => $order['status'] !== 'batal'
+                    && ($order['status'] === 'selesai' || ($order['total'] > 0 && $order['paidAmount'] >= $order['total'])))
                 ->where('stampsEarned', '>', 0)
                 ->map(fn (array $order): array => [
                     'id' => $order['id'],
