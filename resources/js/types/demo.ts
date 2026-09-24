@@ -294,6 +294,8 @@ export interface CarwashTransaction {
     shift?: string | null;
     /** Guest-accessible, signed verification link for a live receipt. */
     receiptUrl?: string | null;
+    /** The cashier's line printed on this payment's slip. */
+    note?: string | null;
 }
 
 export interface CarwashWorkShift {

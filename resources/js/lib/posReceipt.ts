@@ -105,6 +105,8 @@ export interface PosReceipt {
     paymentBreakdown: PosPaymentBreakdown[];
     /** Redeemed by the cashier, shown here so the customer sees it on the slip. */
     reward: string;
+    /** The cashier's own line for this payment, printed under LUNAS. */
+    note?: string;
     /** Signed guest URL used to view and verify a live receipt. */
     publicUrl: string | null;
     /** Server-generated QR data URL for the signed verification link. */
@@ -303,6 +305,7 @@ ${historyBlock(receipt)}
 ${outstandingBlock(receipt)}
 <footer class="footer">
     <p class="status">${receipt.isSettled ? 'LUNAS' : 'BELUM LUNAS'}</p>
+    ${receipt.note ? `<p class="transaction-note">${escapeHtml(receipt.note)}</p>` : ''}
     <p>Terima kasih atas kunjungan Anda.</p>
     ${brand.receipt.additionalNote === '' ? '' : `<p class="additional-note">${escapeHtml(brand.receipt.additionalNote)}</p>`}
     ${brand.receipt.footerNote === '' ? '' : `<p class="fineprint">${escapeHtml(brand.receipt.footerNote)}</p>`}
@@ -477,6 +480,7 @@ ${toolbarStyles()}
     letter-spacing: 0.18em;
     margin-bottom: 4px;
 }
+.transaction-note { font-style: italic; margin-bottom: 4px; overflow-wrap: anywhere; white-space: pre-wrap; }
 .additional-note { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 6px; }
 .fineprint { color: #64748b; font-size: 10px; margin-top: 6px; }
 .verification { border-top: 1px dashed #94a3b8; break-inside: avoid; display: none; margin-top: 8px; page-break-inside: avoid; padding-top: 8px; }

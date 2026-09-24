@@ -25,7 +25,7 @@ class RecordOrderPayment
     ) {}
 
     /**
-     * @param  array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null}  $payment
+     * @param  array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null, note?: string|null}  $payment
      */
     public function handle(Order $order, Admin $cashier, array $payment): OrderTransaction
     {
@@ -75,6 +75,7 @@ class RecordOrderPayment
                 'shift_name' => $shift?->name,
                 'amount' => $amount,
                 'channel_breakdown' => $channels,
+                'note' => $payment['note'] ?? null,
                 /* The outlet's own clock, which is what the column holds. */
                 'paid_at' => $paidAt,
             ]);

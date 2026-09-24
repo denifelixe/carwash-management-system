@@ -9,6 +9,7 @@ use App\Support\Admin\PaymentChannelBreakdown;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class StoreOrderPaymentRequest extends FormRequest
@@ -37,6 +38,8 @@ class StoreOrderPaymentRequest extends FormRequest
             'channels.*.amount' => ['required', 'integer', 'min:1'],
             'channels.*.provider' => ['nullable', 'string', 'max:60'],
             'channels.*.reference' => ['nullable', 'string', 'max:60'],
+            /* Printed on this payment's slip under LUNAS. */
+            'note' => ['nullable', 'string', 'max:255'],
             'transaction_shift_id' => [
                 'nullable',
                 'integer',
@@ -144,7 +147,7 @@ class StoreOrderPaymentRequest extends FormRequest
     }
 
     /**
-     * @return array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null}
+     * @return array{intent: string, discount: int, amount: int, channels: list<array{method: string, amount: int, provider: string, reference: string}>, transaction_shift_id: int|null, note: string|null}
      */
     public function payment(): array
     {
@@ -154,6 +157,7 @@ class StoreOrderPaymentRequest extends FormRequest
             'amount' => $this->integer('amount'),
             'channels' => $this->channelInput(),
             'transaction_shift_id' => $this->integer('transaction_shift_id') ?: null,
+            'note' => Str::squish((string) $this->validated('note')) ?: null,
         ];
     }
 }

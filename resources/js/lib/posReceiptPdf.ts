@@ -312,6 +312,11 @@ function footerBlock(
         'center',
         { size: HEADING_SIZE, bold: true },
     );
+
+    if (receipt.note) {
+        slip.paragraph(receipt.note, 'center');
+    }
+
     slip.gap(0.8);
     slip.paragraph('Terima kasih atas kunjungan Anda.', 'center');
 

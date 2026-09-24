@@ -106,6 +106,8 @@ interface PaymentSnapshot {
     lines: PosReceiptLine[];
     history: PosReceiptHistoryEntry[];
     breakdown: PosPaymentBreakdown[];
+    /** Printed under LUNAS on this payment's slip; empty for none. */
+    note: string;
 }
 
 /** What the cashier types into the "jadikan member" panel. */
@@ -199,6 +201,8 @@ const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
 const selectedRewardId = ref<number | null>(null);
 const discountAmount = ref<number>(0);
+/** The cashier's own line for this payment, printed under LUNAS on its slip. */
+const paymentNote = ref<string>('');
 const paymentTotalInput = ref<number>(0);
 const isPaymentTotalEdited = ref<boolean>(false);
 let nextPaymentChannelRowId = 1;
@@ -1191,6 +1195,7 @@ watch(amountAfterDiscount, (nextAmount, previousAmount) => {
 
 function resetPaymentInputs(): void {
     selectedRewardId.value = null;
+    paymentNote.value = '';
     discountAmount.value = 0;
     paymentTotalInput.value = 0;
     isPaymentTotalEdited.value = false;
@@ -1531,6 +1536,7 @@ function paymentSnapshot(order: CarwashOrder): PaymentSnapshot {
             amount: entry.amount,
         })),
         breakdown: paymentBreakdown.value.map((payment) => ({ ...payment })),
+        note: paymentNote.value.trim(),
     };
 }
 
@@ -1619,6 +1625,7 @@ function submitLivePayment(
         reference: payment.reference,
     }));
     paymentForm.transaction_shift_id = transactionShiftId;
+    paymentForm.note = snapshot.note;
 
     paymentForm.submit(storePosPayment(order.id), {
         preserveScroll: true,
@@ -1688,6 +1695,7 @@ function settledReceipt(
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         reward: order.reward,
+        note: transaction?.note ?? snapshot.note,
         publicUrl: transaction?.receiptUrl ?? null,
         verificationQr: '',
     };
@@ -1773,6 +1781,7 @@ function applyDemoPayment(
         changeAmount: snapshot.change,
         recordedBy: props.persona.name,
         shift: transactionShiftName,
+        note: snapshot.note || null,
     };
 
     order.transactions.push(transaction);
@@ -1849,6 +1858,7 @@ function applyDemoPayment(
         payment: order.payment,
         paymentBreakdown: snapshot.breakdown,
         reward: order.reward,
+        note: snapshot.note,
         publicUrl: null,
         verificationQr: '',
     };
@@ -1955,6 +1965,7 @@ function transactionReceipt(
                 reference: channel.reference ?? '',
             })) ?? [],
         reward: order.reward,
+        note: settlement?.note ?? '',
         publicUrl: settlement?.receiptUrl ?? null,
         verificationQr: '',
     };
@@ -1994,6 +2005,7 @@ const paymentForm = useForm({
     amount: 0,
     channels: [] as PosPaymentBreakdown[],
     transaction_shift_id: null as number | null,
+    note: '',
 });
 const pendingPayment = ref<PendingPayment | null>(null);
 const overlappingTransactionShifts = ref<CarwashTransactionShiftOption[]>([]);
@@ -4131,6 +4143,29 @@ const memberForm = useForm({
                                     </p>
                                 </div>
                             </div>
+                        </section>
+
+                        <section class="px-6 py-4">
+                            <label
+                                for="payment-note"
+                                class="text-sm font-semibold text-slate-900"
+                            >
+                                Catatan struk
+                                <span class="font-normal text-slate-400"
+                                    >(opsional)</span
+                                >
+                            </label>
+                            <p class="text-[11px] text-slate-500">
+                                Dicetak di struk di bawah tulisan LUNAS.
+                            </p>
+                            <textarea
+                                id="payment-note"
+                                v-model="paymentNote"
+                                rows="2"
+                                maxlength="255"
+                                placeholder="Mis. Garansi coating 6 bulan"
+                                class="mt-2 w-full resize-none rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100 focus:outline-none"
+                            ></textarea>
                         </section>
 
                         <section

@@ -21,12 +21,13 @@ use Illuminate\Support\Carbon;
  * @property string|null $shift_name
  * @property int $amount
  * @property list<array{label: string, amount: int, reference?: string}> $channel_breakdown Tendered amounts before cash change
+ * @property string|null $note The cashier's line for this payment's slip
  * @property Carbon $paid_at
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property Carbon|null $deleted_at
  */
-#[Fillable(['order_id', 'recorded_by_admin_id', 'updated_by_admin_id', 'deleted_by_admin_id', 'reference', 'type', 'shift_name', 'amount', 'channel_breakdown', 'paid_at'])]
+#[Fillable(['order_id', 'recorded_by_admin_id', 'updated_by_admin_id', 'deleted_by_admin_id', 'reference', 'type', 'shift_name', 'amount', 'channel_breakdown', 'note', 'paid_at'])]
 class OrderTransaction extends Model
 {
     /** @use HasFactory<OrderTransactionFactory> */

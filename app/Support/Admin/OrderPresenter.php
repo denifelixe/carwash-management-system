@@ -166,6 +166,7 @@ class OrderPresenter
             'changeAmount' => PaymentChannelBreakdown::change($tenderBreakdown, (int) $transaction->amount),
             'recordedBy' => $recordedBy instanceof Admin ? $recordedBy->name : null,
             'shift' => $transaction->shift_name,
+            'note' => $transaction->note,
             'receiptUrl' => URL::signedRoute('receipts.show', $transaction),
         ];
     }
@@ -240,6 +241,7 @@ class OrderPresenter
                 'reference' => $channel['reference'] ?? '',
             ])->all(),
             'reward' => $order->reward_name ?? '—',
+            'note' => $transaction->note ?? '',
             'publicUrl' => $receiptUrl,
             'verificationQr' => 'data:image/svg+xml;base64,'.base64_encode($qrCode->writeString($receiptUrl)),
         ];
