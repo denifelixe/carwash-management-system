@@ -35,8 +35,23 @@ test('login popup persists across visits until acknowledged', function (string $
     'one scheduled shift' => ['09:00:00', 'schedule', false, 'Shift Pagi'],
     'outside schedule' => ['04:00:00', 'schedule', false, 'Tanpa Shift'],
     'fixed shift' => ['04:00:00', 'fixed', true, 'Shift Pagi'],
-    'fixed without assignment' => ['09:00:00', 'fixed', false, 'Tanpa Shift'],
 ]);
+
+test('an admin without shifts never sees the login shift popup', function () {
+    $this->travelTo('2026-09-08 09:00:00');
+    $admin = Admin::factory()->create(['is_owner' => true, 'shift_mode' => 'fixed', 'shift_id' => null]);
+
+    $this->post(route('admin.login.store'), ['email' => $admin->email, 'password' => 'password']);
+
+    foreach (['admin.dashboard', 'admin.profile.edit'] as $route) {
+        $this->get(route($route))->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('loginShift.pending', false)
+            ->where('loginShift.label', 'Tanpa Shift'));
+    }
+
+    /* Nothing to confirm, and their transactions carry no shift. */
+    expect(app(TransactionShiftResolver::class)->resolve($admin, null, now()))->toBeNull();
+});
 
 test('overlapping login choice is validated and locked for POS and Finance across midnight', function () {
     AdminShift::query()->update(['is_active' => false]);

@@ -77,8 +77,14 @@ class TransactionShiftResolver
             $matches = new Collection($admin->workShift ? [$admin->workShift] : []);
         }
 
+        /*
+         * An admin set to "Tanpa shift" (fixed mode, no assigned shift) has
+         * nothing to confirm, so the login popup never opens for them.
+         */
+        $usesShifts = $scheduled || $matches->isNotEmpty();
+
         return [
-            'pending' => ! Session::get('transaction_shift.confirmed', false),
+            'pending' => $usesShifts && ! Session::get('transaction_shift.confirmed', false),
             'requires_selection' => $scheduled && $matches->count() > 1,
             'label' => $this->label($admin, $matches),
             'shifts' => array_values($matches->map(fn (AdminShift $shift): array => [
