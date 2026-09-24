@@ -767,55 +767,75 @@ function saveBooking(): void {
                 </span>
             </div>
 
-            <ul v-if="board.bookings.length > 0" class="mt-4 space-y-2.5">
+            <!--
+                Compact cards (MoM 17 Sep 2026): plate and vehicle share the
+                title line, customer and phone the next, service with code and
+                day the last. One card per row on every screen.
+            -->
+            <ul v-if="board.bookings.length > 0" class="mt-4 space-y-2">
                 <li
                     v-for="booking in board.bookings"
                     :key="booking.id"
-                    class="flex flex-wrap items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3.5 transition hover:border-cyan-200 hover:bg-white"
+                    class="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5 transition hover:border-cyan-200 hover:bg-white"
                 >
-                    <div class="min-w-0 flex-1">
-                        <p
-                            class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"
-                        >
-                            {{ formatPlate(booking.plate) }}
+                    <div class="flex items-start justify-between gap-2">
+                        <p class="flex min-w-0 items-baseline gap-2">
+                            <span
+                                class="text-lg font-bold tracking-wide whitespace-nowrap text-slate-900"
+                            >
+                                {{ formatPlate(booking.plate) }}
+                            </span>
+                            <span
+                                class="truncate text-sm font-semibold text-slate-600"
+                            >
+                                {{ booking.vehicle }}
+                            </span>
                         </p>
-                        <p class="mt-0.5 text-xl font-semibold text-slate-700">
-                            {{ booking.vehicle }}
-                        </p>
-                        <p class="mt-1.5 text-sm font-medium text-slate-800">
+                        <StatusPill :status="bookingPill(booking)" />
+                    </div>
+                    <p
+                        class="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-slate-700"
+                    >
+                        <span class="font-medium">
                             {{ booking.customer }}
                             <span class="font-normal text-slate-400">
                                 ({{ bookingCustomerType(booking) }})
                             </span>
-                        </p>
-                        <p
-                            class="mt-0.5 flex items-center gap-1 text-[11px] text-slate-500"
-                        >
+                        </span>
+                        <span class="flex items-center gap-1 text-slate-500">
                             <Phone class="h-3 w-3" />
                             {{ booking.phone }}
-                        </p>
-                        <p class="mt-1 truncate text-xs text-slate-600">
+                        </span>
+                    </p>
+                    <!--
+                        On a phone the service takes its own full line and the
+                        code sits flush left beneath it; from sm up they share
+                        one line. Detail always hugs the right edge.
+                    -->
+                    <div
+                        class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1"
+                    >
+                        <p
+                            class="w-full text-xs text-slate-500 sm:w-auto sm:min-w-0 sm:flex-1 sm:truncate"
+                        >
                             {{ booking.service }}
                         </p>
-                        <div class="mt-1.5 flex flex-wrap items-center gap-2">
-                            <span
-                                class="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200"
-                            >
-                                {{ booking.code }}
-                            </span>
-                            <span class="text-[11px] text-slate-400">
-                                {{ dayLabelFor(booking.date) }}
-                            </span>
-                        </div>
+                        <span
+                            class="shrink-0 rounded-md bg-white px-1.5 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200"
+                        >
+                            {{ booking.code }}
+                        </span>
+                        <span class="shrink-0 text-[11px] text-slate-400">
+                            {{ dayLabelFor(booking.date) }}
+                        </span>
+                        <button
+                            type="button"
+                            class="ml-auto shrink-0 rounded-lg px-2 py-1 text-xs font-medium text-cyan-700 transition hover:bg-cyan-50 sm:ml-0"
+                            @click="detailBookingId = booking.id"
+                        >
+                            Detail
+                        </button>
                     </div>
-                    <StatusPill :status="bookingPill(booking)" />
-                    <button
-                        type="button"
-                        class="rounded-lg px-3 py-1.5 text-xs font-medium text-cyan-700 transition hover:bg-cyan-50"
-                        @click="detailBookingId = booking.id"
-                    >
-                        Detail
-                    </button>
                 </li>
             </ul>
 

@@ -69,7 +69,7 @@ test('booking rows and details follow the order information hierarchy', function
     $bookingRow = mb_substr(
         $bookingsPage,
         mb_strpos($bookingsPage, 'v-for="booking in board.bookings"'),
-        mb_strpos($bookingsPage, '<StatusPill :status="bookingPill(booking)"')
+        mb_strpos($bookingsPage, '@click="detailBookingId = booking.id"')
             - mb_strpos($bookingsPage, 'v-for="booking in board.bookings"'),
     );
     $bookingDetail = mb_substr(
@@ -125,10 +125,10 @@ test('booking rows and details follow the order information hierarchy', function
 });
 
 /*
- * The plate is the title and the vehicle its sub-title, at the sizes the order
- * list uses, so a car reads the same on every board it appears on.
+ * Board cards are compact (MoM 17 Sep 2026): plate and vehicle share one title
+ * line. The detail panel keeps the order list's large plate and vehicle.
  */
-test('booking rows and details size the plate and vehicle like the order list', function () {
+test('booking cards are compact while the detail keeps the order list sizes', function () {
     $bookingsPage = file_get_contents(
         resource_path('js/pages/admin/Bookings.vue'),
     );
@@ -137,17 +137,18 @@ test('booking rows and details size the plate and vehicle like the order list', 
     );
 
     expect($bookingsPage)
-        // The row plate keeps its line; the detail panel has room to wrap.
-        ->toContain(
-            'class="text-2xl font-bold tracking-wide whitespace-nowrap text-slate-900"',
-        )
+        // One card per row, desktop included.
+        ->toContain('class="mt-4 space-y-2"')
+        ->not->toContain('lg:grid-cols-2')
+        // On a phone the service keeps a full line of its own, never squeezed to nothing.
+        ->toContain('w-full text-xs text-slate-500 sm:w-auto sm:min-w-0 sm:flex-1 sm:truncate')
+        ->toContain('class="text-lg font-bold tracking-wide whitespace-nowrap text-slate-900"')
         ->and(substr_count($bookingsPage, 'text-2xl font-bold tracking-wide'))
-        ->toBe(2)
-        // Row and detail both carry the shared vehicle sub-title.
+        ->toBe(1)
         ->and(
             substr_count($bookingsPage, 'mt-0.5 text-xl font-semibold text-slate-700'),
         )
-        ->toBe(2)
+        ->toBe(1)
         ->and($ordersPage)
         ->toContain('mt-0.5 text-xl font-semibold text-slate-700');
 });
