@@ -15,6 +15,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | {app/Models/Lead.php,app/Actions/Admin/CaptureOrderLead.php,app/Actions/Admin/MarkLeadConverted.php,app/Support/Admin/LeadQueries.php,app/Http/Controllers/Admin/LeadController.php} | .ai/rules/controllers-admin.md |
 | {app/Support/Admin/OrderLogCsv.php,app/Http/Controllers/Admin/ReportController.php,app/Http/Controllers/Demo/ReportController.php} | .ai/rules/controllers-demo.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}, {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-js-pages-admin.md |
+| {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,app/Support/Admin/DailySalesCsv.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-support-admin-js-pages-admin.md |
 | {app/Support/AppSettings.php,app/Support/Demo/Brand.php,app/Http/Controllers/Demo/**} | .ai/rules/demo.md |
 | {app/Models/StockItem.php,app/Actions/Admin/RecordStockMovement.php,app/Actions/Admin/SaveStockItem.php,app/Support/Admin/StockQueries.php,app/Http/Requests/Admin/StoreStockMovementRequest.php} | .ai/rules/http-requests-admin.md |
 | {app/Support/Admin/TransactionShiftResolver.php,resources/js/components/admin/AdminSessionDialogs.vue} | .ai/rules/js-components-admin.md |

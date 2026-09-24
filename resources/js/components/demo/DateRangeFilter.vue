@@ -1,13 +1,18 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
-const props = defineProps<{
-    from: string;
-    to: string;
-    /** Latest selectable day — the prototype's fixed "today". */
-    today: string;
-    earliest: string;
-}>();
+const props = withDefaults(
+    defineProps<{
+        from: string;
+        to: string;
+        /** Latest selectable day — the prototype's fixed "today". */
+        today: string;
+        earliest: string;
+        /** Longest range, in days; the server clamps to the same figure. */
+        maxDays?: number;
+    }>(),
+    { maxDays: 95 },
+);
 
 const emit = defineEmits<{
     change: [range: { from: string; to: string }];
@@ -23,7 +28,6 @@ const presets: RangePreset[] = [
     { key: 'week', label: '7 hari', days: 7 },
     { key: 'month', label: '30 hari', days: 30 },
     { key: 'quarter', label: '3 bulan', days: 90 },
-    { key: 'year', label: '12 bulan', days: 365 },
 ];
 
 /**
@@ -54,23 +58,37 @@ const activePreset = computed<string | null>(
         })?.key ?? null,
 );
 
-/** Editing one end drags the other along rather than emitting an inverted range. */
+/**
+ * Editing one end drags the other along rather than emitting an inverted
+ * range, or one longer than maxDays.
+ */
 function changeFrom(value: string): void {
-    if (value !== '') {
-        emit('change', {
-            from: value,
-            to: value > props.to ? value : props.to,
-        });
+    if (value === '') {
+        return;
     }
+
+    const latestEnd = shiftDays(value, props.maxDays - 1);
+    const end = value > props.to ? value : props.to;
+    const cappedEnd = end > latestEnd ? latestEnd : end;
+
+    emit('change', {
+        from: value,
+        to: cappedEnd > props.today ? props.today : cappedEnd,
+    });
 }
 
 function changeTo(value: string): void {
-    if (value !== '') {
-        emit('change', {
-            from: value < props.from ? value : props.from,
-            to: value,
-        });
+    if (value === '') {
+        return;
     }
+
+    const earliestStart = shiftDays(value, -(props.maxDays - 1));
+    const start = value < props.from ? value : props.from;
+
+    emit('change', {
+        from: start < earliestStart ? earliestStart : start,
+        to: value,
+    });
 }
 </script>
 

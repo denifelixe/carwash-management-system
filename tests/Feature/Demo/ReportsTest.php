@@ -4,6 +4,7 @@ use App\Http\Middleware\HandleInertiaRequests;
 use App\Support\Demo\Reports;
 use App\Support\Demo\RoleAccess;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
 
 /**
@@ -88,12 +89,53 @@ test('a custom range is honoured and charted day by day', function () {
 });
 
 test('a long range rolls up into one bar per month', function () {
-    $props = openReports(['from' => '2026-02-01', 'to' => '2026-07-31'])->toArray()['props'];
+    $props = openReports(['from' => '2026-05-01', 'to' => '2026-07-31'])->toArray()['props'];
 
     expect($props['filters']['granularity'])->toBe('bulanan')
-        ->and($props['trend'])->toHaveCount(6)
-        ->and($props['trend'][0]['label'])->toBe('Feb 26')
-        ->and($props['trend'][5]['label'])->toBe('Jul 26');
+        ->and($props['trend'])->toHaveCount(3)
+        ->and($props['trend'][0]['label'])->toBe('Mei 26')
+        ->and($props['trend'][2]['label'])->toBe('Jul 26');
+});
+
+test('the demo report also caps a range at 95 days', function () {
+    $filters = openReports(['from' => '2026-01-01', 'to' => '2026-07-31'])->toArray()['props']['filters'];
+
+    expect($filters['days'])->toBe(95)
+        ->and($filters['to'])->toBe('2026-07-31')
+        ->and($filters['maxDays'])->toBe(95);
+});
+
+test('the range filter offers no 12-month preset and caps a picked range at 95 days', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/components/demo/DateRangeFilter.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('DateRangeFilter.ts', source, ts.ScriptTarget.Latest, true);
+const code = ts.transpile(ast.statements
+    .filter(node => (ts.isFunctionDeclaration(node) && ['shiftDays', 'changeFrom', 'changeTo'].includes(node.name?.text))
+        || (ts.isVariableStatement(node) && node.getText(ast).startsWith('const presets')))
+    .map(node => node.getText(ast))
+    .join('\n'), { target: ts.ScriptTarget.ES2020 });
+const props = { from: '2026-09-18', to: '2026-09-24', today: '2026-09-24', maxDays: 95 };
+const emitted = [];
+const emit = (event, range) => emitted.push(range);
+eval(code + `
+assert.deepEqual(presets.map(preset => preset.days), [7, 30, 90]);
+changeFrom('2026-01-01');
+assert.deepEqual(emitted.at(-1), { from: '2026-01-01', to: '2026-04-05' });
+Object.assign(props, emitted.at(-1));
+changeTo('2026-09-24');
+assert.deepEqual(emitted.at(-1), { from: '2026-06-22', to: '2026-09-24' });
+Object.assign(props, emitted.at(-1));
+changeFrom('2026-09-01');
+assert.deepEqual(emitted.at(-1), { from: '2026-09-01', to: '2026-09-24' });
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
 test('every trend point carries the figures the chart and stat cards read', function () {
@@ -145,11 +187,11 @@ test('an unusable range is clamped instead of failing the page', function (array
 })->with('unusable ranges');
 
 test('the range cannot reach further back than the retained history', function () {
-    $filters = openReports(['from' => '2019-01-01', 'to' => '2026-08-03'])->toArray()['props']['filters'];
+    $earliest = CarbonImmutable::parse(Reports::todayDate())->subDays(730);
+    /* The end stays within the 95-day cap of the floor, so only the floor moves the start. */
+    $filters = openReports(['from' => '2019-01-01', 'to' => $earliest->addDays(30)->toDateString()])->toArray()['props']['filters'];
 
-    expect($filters['from'])->toBe(
-        CarbonImmutable::parse(Reports::todayDate())->subDays(730)->toDateString()
-    );
+    expect($filters['from'])->toBe($earliest->toDateString());
 });
 
 test('every top service has the revenue and order count the contribution bars need', function () {

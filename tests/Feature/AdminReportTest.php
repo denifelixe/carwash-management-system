@@ -14,6 +14,7 @@ use App\Models\Service;
 use App\Models\StockItem;
 use App\Models\StockMovement;
 use App\Support\Admin\FinanceQueries;
+use App\Support\Demo\RoleAccess;
 use Carbon\CarbonImmutable;
 use Illuminate\Testing\TestResponse;
 use Inertia\Testing\AssertableInertia;
@@ -268,23 +269,37 @@ test('a day on the report reports the same takings the finance ledger does', fun
 
 test('a range wider than two months rolls the chart up into whole months', function (): void {
     Order::factory()->create(['service_date' => '2026-01-05']);
-    reportPayment('2026-02-10 09:00', 500000);
-    reportPayment('2026-02-20 09:00', 250000);
-    reportPayment('2026-04-02 09:00', 125000);
+    reportPayment('2026-05-10 09:00', 500000);
+    reportPayment('2026-05-20 09:00', 250000);
+    reportPayment('2026-07-02 09:00', 125000);
 
     $props = openReport(
         Admin::factory()->create(['is_owner' => true]),
-        ['from' => '2026-02-01', 'to' => '2026-07-31'],
+        ['from' => '2026-05-01', 'to' => '2026-07-31'],
     );
 
     $labels = array_column($props['trend'], 'label');
-    $february = collect($props['trend'])->firstWhere('label', 'Feb 26');
+    $may = collect($props['trend'])->firstWhere('label', 'Mei 26');
 
     expect($props['filters']['granularity'])->toBe('bulanan')
-        ->and($labels)->toBe(['Feb 26', 'Mar 26', 'Apr 26', 'Mei 26', 'Jun 26', 'Jul 26'])
-        ->and($february['caption'])->toBe('Feb 2026')
-        ->and($february['revenue'])->toBe(750000)
-        ->and($february['transactions'])->toBe(2);
+        ->and($labels)->toBe(['Mei 26', 'Jun 26', 'Jul 26'])
+        ->and($may['caption'])->toBe('Mei 2026')
+        ->and($may['revenue'])->toBe(750000)
+        ->and($may['transactions'])->toBe(2);
+});
+
+test('a range is never longer than 95 days; the start gives way', function (): void {
+    Order::factory()->create(['service_date' => '2025-06-01']);
+
+    $filters = openReport(
+        Admin::factory()->create(['is_owner' => true]),
+        ['from' => '2026-01-01', 'to' => '2026-08-30'],
+    )['filters'];
+
+    expect($filters['to'])->toBe('2026-08-30')
+        ->and($filters['from'])->toBe('2026-05-28')
+        ->and($filters['days'])->toBe(95)
+        ->and($filters['maxDays'])->toBe(95);
 });
 
 test('an unusable range is clamped rather than rejected', function (array $query, string $from, string $to): void {
@@ -301,7 +316,7 @@ test('an unusable range is clamped rather than rejected', function (array $query
     'a rolled-over date is refused' => [['from' => '2026-02-31', 'to' => '2026-08-30'], '2026-08-24', '2026-08-30'],
     'only a start anchors the default span' => [['from' => '2026-08-01'], '2026-08-01', '2026-08-07'],
     'only an end anchors the default span' => [['to' => '2026-08-20'], '2026-08-14', '2026-08-20'],
-    'a start before the first service day is lifted' => [['from' => '2020-01-01', 'to' => '2026-08-30'], '2025-06-01', '2026-08-30'],
+    'a start before the first service day is lifted' => [['from' => '2020-01-01', 'to' => '2025-08-01'], '2025-06-01', '2025-08-01'],
 ]);
 
 test('the earliest selectable day still leaves room for the default week', function (): void {
@@ -722,4 +737,75 @@ test('the inventory card says nothing was consumed when nothing moved', function
         ->and($summary['lowStock'])->toBe(0)
         ->and($summary['movementsThisWeek'])->toBe(0)
         ->and($summary['topConsumed'])->toBe('—');
+});
+
+test('the daily sales report splits each payment day by method and foots to the trend', function (): void {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    reportPayment('2026-08-28 09:00:00', 45000);
+    /* 100k tendered in cash for a 70k bill: the 30k change never reaches the Tunai column. */
+    reportPayment('2026-08-28 15:00:00', 70000, [
+        'channel_breakdown' => [['label' => 'Tunai', 'amount' => 100000]],
+    ]);
+    reportPayment('2026-08-30 08:00:00', 150000, [
+        'channel_breakdown' => [
+            ['label' => 'Debit · BCA', 'amount' => 100000, 'reference' => 'EDC-1'],
+            ['label' => 'QRIS', 'amount' => 50000],
+        ],
+    ]);
+    reportPayment('2026-08-27 08:00:00', 999000);
+
+    $response = $this->actingAs($owner, 'admin')
+        ->get(route('admin.reports.index', ['from' => '2026-08-28', 'to' => '2026-08-30']))
+        ->assertOk();
+    $report = $response->inertiaProps('dailySales');
+
+    expect($report['methods'])->toBe(['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money'])
+        ->and(array_column($report['rows'], 'date'))->toBe(['2026-08-28', '2026-08-29', '2026-08-30'])
+        ->and($report['rows'][0])->toMatchArray(['transactions' => 2, 'total' => 115000])
+        ->and($report['rows'][0]['methods']['Tunai'])->toBe(115000)
+        ->and($report['rows'][1])->toMatchArray(['transactions' => 0, 'total' => 0])
+        ->and($report['rows'][2]['methods'])->toMatchArray(['Debit' => 100000, 'QRIS' => 50000, 'Tunai' => 0])
+        ->and($report['total'])->toMatchArray(['transactions' => 3, 'total' => 265000])
+        ->and(array_sum($report['total']['methods']))->toBe(265000)
+        ->and($report['total']['total'])->toBe(array_sum(array_column($response->inertiaProps('trend'), 'revenue')));
+});
+
+test('the daily sales report downloads as a spreadsheet with a total line', function (): void {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    reportPayment('2026-08-29 09:00:00', 45000);
+    reportPayment('2026-08-29 10:00:00', 55000, ['channel_breakdown' => [['label' => 'Transfer · Mandiri', 'amount' => 55000]]]);
+
+    $csv = $this->actingAs($owner, 'admin')
+        ->get(route('admin.reports.daily-sales.export', ['from' => '2026-08-29', 'to' => '2026-08-30']))
+        ->assertOk()
+        ->assertDownload('laporan-penjualan-harian-2026-08-29-sd-2026-08-30.csv')
+        ->streamedContent();
+    $rows = array_map(fn (string $line): array => str_getcsv($line, ';', '"', ''), array_filter(explode("\r\n", $csv)));
+
+    expect($csv)->toStartWith("\u{FEFF}Tanggal;")
+        ->and($rows[0])->toBe(["\u{FEFF}Tanggal", 'Jml Trs', 'Total Transaksi', 'Jml Bayar Tunai', 'Jml Bayar QRIS', 'Jml Bayar Kredit', 'Jml Bayar Debit', 'Jml Bayar Transfer', 'Jml Bayar E-Money'])
+        ->and($rows[1])->toBe(['29/08/2026', '2', '100000', '45000', '0', '0', '0', '55000', '0'])
+        ->and($rows[2])->toBe(['30/08/2026', '0', '0', '0', '0', '0', '0', '0', '0'])
+        ->and($rows[3])->toBe(['TOTAL', '2', '100000', '45000', '0', '0', '0', '55000', '0']);
+});
+
+test('a staff member without report access cannot download the daily sales report', function (): void {
+    $this->actingAs(reportStaff(['read' => false]), 'admin')
+        ->get(route('admin.reports.daily-sales.export'))
+        ->assertForbidden();
+});
+
+test('the demo report serves the same daily sales shape and download', function (): void {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.reports', ['from' => '2026-08-28', 'to' => '2026-08-30']))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('dailySales.rows', 3)
+            ->where('dailySales.methods', ['Tunai', 'QRIS', 'Kredit', 'Debit', 'Transfer', 'E-Money'])
+            ->where('dailySales.rows', fn ($rows): bool => collect($rows)->every(
+                fn (array $row): bool => array_sum($row['methods']) === $row['total'],
+            )));
+
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.reports.daily-sales.export'))->assertOk();
 });

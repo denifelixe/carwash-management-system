@@ -10,6 +10,7 @@ import {
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
 import {
+    exportDailySales,
     exportFinance,
     exportOrders,
     index as indexReports,
@@ -32,6 +33,7 @@ import type {
     CarwashBookingSummary,
     CarwashBrand,
     CarwashCustomerBase,
+    CarwashDailySales,
     CarwashInventorySummary,
     CarwashMoneyEntry,
     CarwashPaginated,
@@ -54,6 +56,7 @@ const props = defineProps<{
     shifts: CarwashReportShift[];
     /** Only present once the contribution card has been opened. */
     orderLog?: CarwashPaginated<CarwashReportOrder>;
+    dailySales: CarwashDailySales;
     financeSummary: {
         moneyIn: number;
         moneyOut: number;
@@ -92,6 +95,7 @@ function applyRange(range: { from: string; to: string }): void {
                 'bookingSummary',
                 'shifts',
                 'financeSummary',
+                'dailySales',
             ],
             onStart: () => {
                 isLoading.value = true;
@@ -241,6 +245,22 @@ function openFinanceLog(direction: 'all' | 'in' | 'out' = 'all'): void {
     loadFinanceLog(1);
 }
 
+/** "01/09/2026", the way the outlet's old daily report prints a date. */
+function reportDate(date: string): string {
+    const [year, month, day] = date.split('-');
+
+    return `${day}/${month}/${year}`;
+}
+
+/** A plain link, like the other exports: the CSV streams back as a download. */
+const dailySalesDownloadUrl = computed<string>(() => {
+    const query = { from: props.filters.from, to: props.filters.to };
+
+    return props.mode === 'demo'
+        ? admin.reports.dailySales.export.url({ query })
+        : exportDailySales.url({ query });
+});
+
 const financeLogDownloadUrl = computed(() => {
     const query = {
         from: props.filters.from,
@@ -273,6 +293,7 @@ const financeLogDownloadUrl = computed(() => {
                 :to="filters.to"
                 :today="filters.today"
                 :earliest="filters.earliest"
+                :max-days="filters.maxDays"
                 @change="applyRange"
             />
         </section>
@@ -466,6 +487,104 @@ const financeLogDownloadUrl = computed(() => {
                         </div>
                     </div>
                 </div>
+            </div>
+        </SectionCard>
+
+        <!--
+            Laporan Penjualan Harian (MoM 17 Sep 2026), laid out like the
+            outlet's old report: a row per day, a column per payment method.
+            A single day is the same report with from = to.
+        -->
+        <SectionCard
+            title="Laporan Penjualan Harian"
+            :caption="`Per tanggal bayar · ${filters.label} · ${formatNumber(dailySales.total.transactions)} transaksi`"
+            :padded="false"
+        >
+            <template #actions>
+                <a
+                    :href="dailySalesDownloadUrl"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
+                    download
+                >
+                    <Download class="h-3.5 w-3.5" />
+                    Unduh Excel
+                </a>
+            </template>
+            <!-- Clipped to the card's rounded bottom, so the sticky TOTAL row never squares it off. -->
+            <div class="max-h-[28rem] overflow-auto rounded-b-2xl">
+                <table
+                    class="w-full min-w-[46rem] text-right text-xs tabular-nums"
+                    data-daily-sales
+                >
+                    <thead
+                        class="sticky top-0 bg-slate-50 text-[11px] font-semibold text-slate-600"
+                    >
+                        <tr>
+                            <th class="px-4 py-2.5 text-left">Tanggal</th>
+                            <th class="px-3 py-2.5">Jml Trs</th>
+                            <th class="px-3 py-2.5">Total Transaksi</th>
+                            <th
+                                v-for="method in dailySales.methods"
+                                :key="method"
+                                class="px-3 py-2.5"
+                            >
+                                {{ method }}
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-slate-700">
+                        <tr
+                            v-for="row in dailySales.rows"
+                            :key="row.date"
+                            :class="
+                                row.transactions === 0 ? 'text-slate-400' : ''
+                            "
+                        >
+                            <td class="px-4 py-2 text-left">
+                                {{ reportDate(row.date) }}
+                            </td>
+                            <td class="px-3 py-2">
+                                {{ formatNumber(row.transactions) }}
+                            </td>
+                            <td class="px-3 py-2 font-medium text-slate-900">
+                                {{ formatCurrency(row.total) }}
+                            </td>
+                            <td
+                                v-for="method in dailySales.methods"
+                                :key="method"
+                                class="px-3 py-2"
+                            >
+                                {{ formatCurrency(row.methods[method] ?? 0) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot
+                        class="sticky bottom-0 bg-slate-50 font-semibold text-slate-900 shadow-[0_-1px_0_0_var(--color-slate-300)]"
+                    >
+                        <tr>
+                            <td class="px-4 py-3.5 text-left">TOTAL</td>
+                            <td class="px-3 py-3.5">
+                                {{
+                                    formatNumber(dailySales.total.transactions)
+                                }}
+                            </td>
+                            <td class="px-3 py-3.5">
+                                {{ formatCurrency(dailySales.total.total) }}
+                            </td>
+                            <td
+                                v-for="method in dailySales.methods"
+                                :key="method"
+                                class="px-3 py-3.5"
+                            >
+                                {{
+                                    formatCurrency(
+                                        dailySales.total.methods[method] ?? 0,
+                                    )
+                                }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
             </div>
         </SectionCard>
 

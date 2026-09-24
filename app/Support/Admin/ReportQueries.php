@@ -31,6 +31,9 @@ class ReportQueries
     /** Widest range still charted day by day; anything longer rolls up to months. */
     public const DAILY_RANGE_LIMIT = 62;
 
+    /** Longest range the report accepts (MoM follow-up: at most 95 days). */
+    public const MAX_RANGE_DAYS = 95;
+
     /** Default span when no range is supplied, in days. */
     private const DEFAULT_DAYS = 7;
 
@@ -81,6 +84,11 @@ class ReportQueries
         $start = $start->lessThan($earliest) ? $earliest : $start;
         $end = $end->greaterThan($today) ? $today : $end;
 
+        /* A report never spans more than MAX_RANGE_DAYS; the start gives way. */
+        if ($start->lessThan($end->subDays(self::MAX_RANGE_DAYS - 1))) {
+            $start = $end->subDays(self::MAX_RANGE_DAYS - 1);
+        }
+
         return [
             'from' => $start->greaterThan($end) ? $end : $start,
             'to' => $end,
@@ -107,7 +115,7 @@ class ReportQueries
     /**
      * Everything the filter bar needs to describe and re-select the range.
      *
-     * @return array{from: string, to: string, label: string, granularity: string, days: int, today: string, earliest: string}
+     * @return array{from: string, to: string, label: string, granularity: string, days: int, today: string, earliest: string, maxDays: int}
      */
     public static function rangeMeta(CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -121,6 +129,7 @@ class ReportQueries
             'days' => $days,
             'today' => CarbonImmutable::now()->toDateString(),
             'earliest' => self::earliest(),
+            'maxDays' => self::MAX_RANGE_DAYS,
         ];
     }
 
@@ -354,6 +363,79 @@ class ReportQueries
             'showRate' => $settled === 0
                 ? 0.0
                 : round((($settled - $cancelled) / $settled) * 100, 1),
+        ];
+    }
+
+    /**
+     * Laporan Penjualan Harian (MoM 17 Sep 2026): per payment day, how many
+     * payments came in, what they totalled, and how that total split across
+     * the payment methods. Every day of the range gets a row, quiet ones too.
+     *
+     * The day total is order_transactions.amount, exactly what trend() sums.
+     * The method split is the only place this module reads the financial
+     * breakdown: the tender carries cash change, so splitting it would make
+     * the Tunai column outgrow the day. The financial allocation always adds
+     * back up to the amount, so the method columns foot to the day total.
+     *
+     * @return array{methods: list<string>, rows: list<array{date: string, transactions: int, total: int, methods: array<string, int>}>, total: array{transactions: int, total: int, methods: array<string, int>}}
+     */
+    public static function dailySales(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $methods = OrderQueries::PAYMENT_METHODS;
+        $emptyMethods = array_fill_keys($methods, 0);
+        $days = [];
+
+        for ($date = $from; $date->lessThanOrEqualTo($to); $date = $date->addDay()) {
+            $days[$date->toDateString()] = [
+                'date' => $date->toDateString(),
+                'transactions' => 0,
+                'total' => 0,
+                'methods' => $emptyMethods,
+            ];
+        }
+
+        OrderTransaction::query()
+            ->select(['id', 'amount', 'channel_breakdown', 'paid_at'])
+            ->where('paid_at', '>=', $from->startOfDay())
+            ->where('paid_at', '<', $to->startOfDay()->addDay())
+            ->where('amount', '>', 0)
+            ->lazyById()
+            ->each(function (OrderTransaction $transaction) use (&$days, &$methods): void {
+                $day = $transaction->paid_at->toDateString();
+                $amount = (int) $transaction->amount;
+
+                $days[$day]['transactions']++;
+                $days[$day]['total'] += $amount;
+
+                foreach (PaymentChannelBreakdown::financial($transaction->channel_breakdown, $amount) as $channel) {
+                    $method = str($channel['label'])->before(' · ')->toString();
+
+                    /* A legacy or retired channel still has to foot to the day. */
+                    if (! in_array($method, $methods, true)) {
+                        $methods[] = $method;
+                    }
+
+                    $days[$day]['methods'][$method] = ($days[$day]['methods'][$method] ?? 0) + $channel['amount'];
+                }
+            });
+
+        $rows = array_map(static function (array $row) use ($methods): array {
+            $row['methods'] = array_map(static fn (string $method): int => $row['methods'][$method] ?? 0, array_combine($methods, $methods));
+
+            return $row;
+        }, array_values($days));
+
+        return [
+            'methods' => $methods,
+            'rows' => $rows,
+            'total' => [
+                'transactions' => array_sum(array_column($rows, 'transactions')),
+                'total' => array_sum(array_column($rows, 'total')),
+                'methods' => array_map(
+                    static fn (string $method): int => array_sum(array_map(static fn (array $row): int => $row['methods'][$method], $rows)),
+                    array_combine($methods, $methods),
+                ),
+            ],
         ];
     }
 

@@ -58,6 +58,9 @@ class Reports
     /** Widest range still charted day by day; anything longer rolls up to months. */
     private const DAILY_RANGE_LIMIT = 62;
 
+    /** Longest range the report accepts (MoM follow-up: at most 95 days). */
+    public const MAX_RANGE_DAYS = 95;
+
     /** Rows per page in the order log, matching the live reader. */
     private const ORDERS_PER_PAGE = 25;
 
@@ -268,6 +271,11 @@ class Reports
         $start = $start->lessThan($earliest) ? $earliest : $start;
         $end = $end->greaterThan($today) ? $today : $end;
 
+        /* A report never spans more than MAX_RANGE_DAYS; the start gives way. */
+        if ($start->lessThan($end->subDays(self::MAX_RANGE_DAYS - 1))) {
+            $start = $end->subDays(self::MAX_RANGE_DAYS - 1);
+        }
+
         return [
             'from' => $start->greaterThan($end) ? $end : $start,
             'to' => $end,
@@ -277,7 +285,7 @@ class Reports
     /**
      * Everything the filter bar needs to describe and re-select the range.
      *
-     * @return array{from: string, to: string, label: string, granularity: string, days: int, today: string, earliest: string}
+     * @return array{from: string, to: string, label: string, granularity: string, days: int, today: string, earliest: string, maxDays: int}
      */
     public static function rangeMeta(CarbonImmutable $from, CarbonImmutable $to): array
     {
@@ -291,6 +299,7 @@ class Reports
             'days' => $days,
             'today' => self::todayDate(),
             'earliest' => self::today()->subDays(self::HISTORY_DAYS)->toDateString(),
+            'maxDays' => self::MAX_RANGE_DAYS,
         ];
     }
 
@@ -314,6 +323,51 @@ class Reports
     public static function rangeScale(CarbonImmutable $from, CarbonImmutable $to): float
     {
         return self::rangeDays($from, $to) / count(self::CURATED_DAYS);
+    }
+
+    /**
+     * The demo's Laporan Penjualan Harian: the same day figures trend() charts,
+     * split across the payment methods in a fixed mix. The last method takes
+     * the rounding, so every row still foots to its total like the live one.
+     *
+     * @return array{methods: list<string>, rows: list<array{date: string, transactions: int, total: int, methods: array<string, int>}>, total: array{transactions: int, total: int, methods: array<string, int>}}
+     */
+    public static function dailySales(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $shares = ['Tunai' => 0.22, 'QRIS' => 0.28, 'Kredit' => 0.05, 'Debit' => 0.3, 'Transfer' => 0.12, 'E-Money' => 0.03];
+        $methods = array_keys($shares);
+        $rows = [];
+
+        for ($date = $from; $date->lessThanOrEqualTo($to); $date = $date->addDay()) {
+            $figures = self::dayFigures($date);
+            $split = [];
+
+            foreach ($shares as $method => $share) {
+                $split[$method] = self::toNearest($figures['revenue'] * $share);
+            }
+
+            $split['E-Money'] = $figures['revenue'] - array_sum(array_slice($split, 0, -1));
+
+            $rows[] = [
+                'date' => $date->toDateString(),
+                'transactions' => $figures['transactions'],
+                'total' => $figures['revenue'],
+                'methods' => $split,
+            ];
+        }
+
+        return [
+            'methods' => $methods,
+            'rows' => $rows,
+            'total' => [
+                'transactions' => array_sum(array_column($rows, 'transactions')),
+                'total' => array_sum(array_column($rows, 'total')),
+                'methods' => array_combine($methods, array_map(
+                    static fn (string $method): int => array_sum(array_map(static fn (array $row): int => $row['methods'][$method], $rows)),
+                    $methods,
+                )),
+            ],
+        ];
     }
 
     /**

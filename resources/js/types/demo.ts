@@ -643,6 +643,22 @@ export interface CarwashDateFilter {
     timezone: string;
 }
 
+/** One day of the Laporan Penjualan Harian. */
+export interface CarwashDailySalesRow {
+    /** ISO date. */
+    date: string;
+    transactions: number;
+    total: number;
+    /** Amount per payment method, keyed as listed in CarwashDailySales.methods. */
+    methods: Record<string, number>;
+}
+
+export interface CarwashDailySales {
+    methods: string[];
+    rows: CarwashDailySalesRow[];
+    total: Omit<CarwashDailySalesRow, 'date'>;
+}
+
 export interface CarwashReportFilters {
     from: string;
     to: string;
@@ -651,6 +667,8 @@ export interface CarwashReportFilters {
     days: number;
     today: string;
     earliest: string;
+    /** Longest range the report accepts, in days. */
+    maxDays: number;
 }
 
 /**

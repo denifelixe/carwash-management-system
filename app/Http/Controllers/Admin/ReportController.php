@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\DailySalesCsv;
 use App\Support\Admin\FinanceLogCsv;
 use App\Support\Admin\FinanceReportQueries;
 use App\Support\Admin\OrderLogCsv;
@@ -40,6 +41,7 @@ class ReportController extends Controller
             'trend' => ReportQueries::trend($from, $to),
             'filters' => ReportQueries::rangeMeta($from, $to),
             'financeSummary' => fn (): array => FinanceReportQueries::summary($from, $to),
+            'dailySales' => fn (): array => ReportQueries::dailySales($from, $to),
             'financeLog' => Inertia::optional(fn (): array => FinanceReportQueries::log(
                 $from,
                 $to,
@@ -85,6 +87,21 @@ class ReportController extends Controller
         return OrderLogCsv::download(
             ReportQueries::orderLogRows($from, $to, $service),
             OrderLogCsv::fileName($from, $to, $service),
+        );
+    }
+
+    public function exportDailySales(Request $request): StreamedResponse
+    {
+        Gate::authorize('admin.reports.read');
+
+        ['from' => $from, 'to' => $to] = ReportQueries::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+
+        return DailySalesCsv::download(
+            ReportQueries::dailySales($from, $to),
+            DailySalesCsv::fileName($from, $to),
         );
     }
 
