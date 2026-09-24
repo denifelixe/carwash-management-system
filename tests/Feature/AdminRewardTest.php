@@ -95,9 +95,9 @@ test('an owner sees the live reward module and its sidebar entry', function () {
             ->where('stats.redeemed', 1)
             ->where('stampBalances', [7])
             ->where('capabilities', ['create' => true, 'update' => true, 'delete' => true])
-            ->where('modules.8.key', 'rewards')
-            ->where('modules.8.enabled', true)
-            ->where('modules.8.href', route('admin.rewards.index', absolute: false)));
+            ->where('modules.6.key', 'rewards')
+            ->where('modules.6.enabled', true)
+            ->where('modules.6.href', route('admin.rewards.index', absolute: false)));
 });
 
 test('a reward is created with variation discounts and normalised fields', function () {

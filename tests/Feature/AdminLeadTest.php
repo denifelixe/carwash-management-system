@@ -76,11 +76,11 @@ test('an owner sees the live paginated lead module and sidebar wiring', function
                 ->where('filters.status', 'Semua')
                 ->where('filters.conversion', 'Belum jadi member')
                 ->where('conversionFilters', ['Semua', 'Belum jadi member', 'Sudah jadi member'])
-                ->where('modules.6.key', 'leads')
-                ->where('modules.6.label', 'Leads')
-                ->where('modules.6.active', true)
-                ->where('modules.6.enabled', true)
-                ->where('modules.6.href', route('admin.leads.index', absolute: false)),
+                ->where('modules.7.key', 'leads')
+                ->where('modules.7.label', 'Leads')
+                ->where('modules.7.active', true)
+                ->where('modules.7.enabled', true)
+                ->where('modules.7.href', route('admin.leads.index', absolute: false)),
         );
 });
 

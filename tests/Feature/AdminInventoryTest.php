@@ -80,11 +80,11 @@ test('an owner sees the live paginated inventory module and sidebar wiring', fun
                 ->where('filters.stock', 'Semua')
                 ->where('movementTypes', ['masuk', 'keluar', 'penyesuaian'])
                 ->where('stockFilters', ['Semua', 'Stok menipis'])
-                ->where('modules.7.key', 'inventory')
-                ->where('modules.7.label', 'Stock Inventory')
-                ->where('modules.7.active', true)
-                ->where('modules.7.enabled', true)
-                ->where('modules.7.href', route('admin.inventory.index', absolute: false)),
+                ->where('modules.8.key', 'inventory')
+                ->where('modules.8.label', 'Stock Inventory')
+                ->where('modules.8.active', true)
+                ->where('modules.8.enabled', true)
+                ->where('modules.8.href', route('admin.inventory.index', absolute: false)),
         );
 });
 
