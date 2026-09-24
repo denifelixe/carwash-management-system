@@ -42,7 +42,7 @@ class Finance
         $entries = [];
 
         foreach (Operations::orders() as $order) {
-            foreach ($order['transactions'] as $transactionIndex => $transaction) {
+            foreach ($order['transactions'] as $transaction) {
                 if ($transaction['amount'] <= 0) {
                     continue;
                 }
@@ -53,11 +53,7 @@ class Finance
 
                 $entries[] = [
                     'id' => 'pos-'.$transaction['id'],
-                    'ref' => self::transactionRef(
-                        $transaction['type'].' Order',
-                        $transaction['date'],
-                        $order['orderNo'].'-TRX-'.($transactionIndex + 1),
-                    ),
+                    'ref' => $transaction['id'],
                     'date' => $transaction['date'],
                     'time' => $transaction['time'],
                     'category' => $category,
@@ -86,9 +82,9 @@ class Finance
     private static function manualMoneyIn(): array
     {
         return [
-            ['id' => 'manual-income-29', 'ref' => self::transactionRef('Penjualan Produk', self::date(0), 29), 'date' => self::date(0), 'time' => '09.05', 'category' => 'Penjualan Produk', 'description' => 'Penjualan parfum mobil 6 botol', 'amount' => 360000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 360000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
-            ['id' => 'manual-income-27', 'ref' => self::transactionRef('Sewa Tempat', self::date(1), 27), 'date' => self::date(1), 'time' => '15.10', 'category' => 'Sewa Tempat', 'description' => 'Sewa lapak kopi area tunggu', 'amount' => 1500000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1500000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
-            ['id' => 'manual-income-26', 'ref' => self::transactionRef('Pendapatan Lain', self::date(2), 26), 'date' => self::date(2), 'time' => '19.55', 'category' => 'Pendapatan Lain', 'description' => 'Penjualan limbah kemasan operasional', 'amount' => 250000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 250000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
+            ['id' => 'manual-income-29', 'ref' => self::transactionRef('Penjualan Produk', self::date(0), 1), 'date' => self::date(0), 'time' => '09.05', 'category' => 'Penjualan Produk', 'description' => 'Penjualan parfum mobil 6 botol', 'amount' => 360000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 360000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
+            ['id' => 'manual-income-27', 'ref' => self::transactionRef('Sewa Tempat', self::date(1), 2), 'date' => self::date(1), 'time' => '15.10', 'category' => 'Sewa Tempat', 'description' => 'Sewa lapak kopi area tunggu', 'amount' => 1500000, 'method' => 'Transfer', 'channelBreakdown' => [['label' => 'Transfer', 'amount' => 1500000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
+            ['id' => 'manual-income-26', 'ref' => self::transactionRef('Pendapatan Lain', self::date(2), 3), 'date' => self::date(2), 'time' => '19.55', 'category' => 'Pendapatan Lain', 'description' => 'Penjualan limbah kemasan operasional', 'amount' => 250000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 250000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'source' => 'manual', 'orderId' => null, 'orderNo' => null, 'customer' => null, 'vehicle' => null, 'plate' => null],
         ];
     }
 
@@ -100,12 +96,12 @@ class Finance
     public static function moneyOut(): array
     {
         return [
-            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 22), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-1', 'nota-supplier-0803.jpg', '412 KB')]],
-            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 21), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-2', 'struk-token-listrik.pdf', '128 KB')]],
-            ['id' => 3, 'ref' => self::transactionRef('Gaji & Upah', self::date(1), 20), 'date' => self::date(1), 'time' => '17.40', 'category' => 'Gaji & Upah', 'description' => 'Uang makan crew shift sore (5 orang)', 'amount' => 175000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 175000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'attachments' => [self::attachment('expense-3', 'rekap-uang-makan.jpg', '287 KB')]],
-            ['id' => 4, 'ref' => self::transactionRef('Perawatan Alat', self::date(1), 19), 'date' => self::date(1), 'time' => '11.20', 'category' => 'Perawatan Alat', 'description' => 'Servis mesin high pressure Bay 2', 'amount' => 850000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 850000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-4', 'invoice-servis-mesin.pdf', '96 KB')]],
-            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 18), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-5', 'nota-microfiber.jpg', '355 KB')]],
-            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 17), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-6', 'bukti-bayar-ads.png', '204 KB')]],
+            ['id' => 1, 'ref' => self::transactionRef('Pembelian Bahan', self::date(0), 3), 'date' => self::date(0), 'time' => '10.35', 'category' => 'Pembelian Bahan', 'description' => 'Snow foam 4 galon + shampoo pH netral', 'amount' => 1280000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 1280000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-1', 'nota-supplier-0803.jpg', '412 KB')]],
+            ['id' => 2, 'ref' => self::transactionRef('Operasional', self::date(0), 2), 'date' => self::date(0), 'time' => '09.15', 'category' => 'Operasional', 'description' => 'Token listrik bulanan', 'amount' => 500000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 500000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-2', 'struk-token-listrik.pdf', '128 KB')]],
+            ['id' => 3, 'ref' => self::transactionRef('Gaji & Upah', self::date(1), 3), 'date' => self::date(1), 'time' => '17.40', 'category' => 'Gaji & Upah', 'description' => 'Uang makan crew shift sore (5 orang)', 'amount' => 175000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 175000]], 'shift' => self::shiftOf('Rina Marlina'), 'recordedBy' => 'Rina Marlina', 'attachments' => [self::attachment('expense-3', 'rekap-uang-makan.jpg', '287 KB')]],
+            ['id' => 4, 'ref' => self::transactionRef('Perawatan Alat', self::date(1), 1), 'date' => self::date(1), 'time' => '11.20', 'category' => 'Perawatan Alat', 'description' => 'Servis mesin high pressure Bay 2', 'amount' => 850000, 'method' => 'Tunai', 'channelBreakdown' => [['label' => 'Tunai', 'amount' => 850000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-4', 'invoice-servis-mesin.pdf', '96 KB')]],
+            ['id' => 5, 'ref' => self::transactionRef('Pembelian Bahan', self::date(2), 2), 'date' => self::date(2), 'time' => '16.05', 'category' => 'Pembelian Bahan', 'description' => 'Microfiber towel 3 lusin', 'amount' => 540000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 540000]], 'shift' => self::shiftOf('Yuni Astuti'), 'recordedBy' => 'Yuni Astuti', 'attachments' => [self::attachment('expense-5', 'nota-microfiber.jpg', '355 KB')]],
+            ['id' => 6, 'ref' => self::transactionRef('Marketing', self::date(2), 1), 'date' => self::date(2), 'time' => '08.30', 'category' => 'Marketing', 'description' => 'Iklan Instagram promo Senin Kinclong', 'amount' => 300000, 'method' => 'Non-Tunai', 'channelBreakdown' => [['label' => 'Non-Tunai', 'amount' => 300000]], 'shift' => self::shiftOf('Sinta Dewi'), 'recordedBy' => 'Sinta Dewi', 'attachments' => [self::attachment('expense-6', 'bukti-bayar-ads.png', '204 KB')]],
         ];
     }
 
@@ -151,7 +147,7 @@ class Finance
         return Reports::today()->subDays($daysBack)->toDateString();
     }
 
-    /** Transaction references use TRX-{category code}-{YYMMDD}-{stable ID}. */
+    /** Demo cash entries use the same daily sequence format as live entries. */
     private static function transactionRef(
         string $category,
         string $date,

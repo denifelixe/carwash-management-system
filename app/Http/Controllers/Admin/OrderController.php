@@ -19,6 +19,7 @@ use App\Models\Order;
 use App\Models\OrderCancellationPhoto;
 use App\Models\ServiceVariation;
 use App\Support\Admin\AdminShell;
+use App\Support\Admin\DocumentNumbers;
 use App\Support\Admin\LeadQueries;
 use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderPresenter;
@@ -164,8 +165,10 @@ class OrderController extends Controller
                 fn (ServiceVariation $variation): int => $variation->price * $quantities[$variation->id],
             );
 
+            $number = DocumentNumbers::order(false);
             $order = Order::query()->create([
-                'number' => 'ORD-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
+                'number' => $number,
+                'invoice_number' => $number,
                 'member_id' => $member?->id,
                 'member_vehicle_id' => $vehicle?->id,
                 'lead_id' => $lead?->id,

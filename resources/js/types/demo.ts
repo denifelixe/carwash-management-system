@@ -116,7 +116,6 @@ export interface CarwashReward {
         discountPercent: number;
     }>;
     icon: string;
-    category: string;
     status: string;
     stock: number;
     redeemed: number;
@@ -307,6 +306,21 @@ export interface CarwashWashEntry {
     stamps: number;
     rating: number;
     status: string;
+    number?: string;
+    invoice?: string | null;
+    vehicleName?: string;
+    items?: { name: string; quantity: number; total: number }[];
+    subtotal?: number;
+    discount?: number;
+    paidAmount?: number;
+    transactions?: {
+        reference: string;
+        type: string;
+        date: string;
+        amount: number;
+        channels: string;
+        receiptUrl: string | null;
+    }[];
 }
 
 export interface CarwashVoucher {

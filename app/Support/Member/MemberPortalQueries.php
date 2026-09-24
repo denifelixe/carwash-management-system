@@ -4,6 +4,7 @@ namespace App\Support\Member;
 
 use App\Models\Member;
 use App\Models\Order;
+use App\Models\OrderTransaction;
 use App\Models\Reward;
 use App\Models\Service;
 use App\Support\Admin\MemberStamps;
@@ -12,6 +13,7 @@ use App\Support\Admin\OrderQueries;
 use App\Support\Admin\RewardPresenter;
 use App\Support\Admin\RewardQueries;
 use App\Support\Demo\DateFilter;
+use Illuminate\Support\Facades\URL;
 
 /**
  * Reads for the live member portal. Every query is scoped to the signed-in
@@ -54,14 +56,14 @@ class MemberPortalQueries
      * The member's visits, newest first. A visit still in progress shows up
      * too, but its stamps are only added once it is completed or paid in full.
      *
-     * @return list<array{id: int, service: string, vehicle: string, date: string, total: int, stamps: int, rating: int, status: string}>
+     * @return list<array<string, mixed>>
      */
     public static function washHistory(Member $member): array
     {
         return array_values(Order::query()
             ->whereBelongsTo($member)
             ->whereNotIn('status', ['batal', 'booking'])
-            ->with('serviceVariations:id,service_id')
+            ->with(['serviceVariations:id,service_id', 'transactions'])
             ->latest('service_date')
             ->latest('id')
             ->limit(self::HISTORY_LIMIT)
@@ -76,6 +78,25 @@ class MemberPortalQueries
                 /* The live portal does not collect ratings; 0 hides the stars. */
                 'rating' => 0,
                 'status' => $order->status,
+                'number' => $order->number,
+                'invoice' => $order->number,
+                'vehicleName' => $order->vehicle_name,
+                'items' => $order->serviceVariations->map(fn ($variation): array => [
+                    'name' => (string) $variation->pivot->service_name,
+                    'quantity' => (int) $variation->pivot->quantity,
+                    'total' => (int) $variation->pivot->total_price,
+                ])->all(),
+                'subtotal' => (int) $order->subtotal,
+                'discount' => (int) $order->discount,
+                'paidAmount' => (int) $order->paid_amount,
+                'transactions' => $order->transactions->map(fn (OrderTransaction $transaction): array => [
+                    'reference' => $transaction->reference,
+                    'type' => $transaction->type,
+                    'date' => DateFilter::format($transaction->paid_at->toDateString()),
+                    'amount' => (int) $transaction->amount,
+                    'channels' => collect($transaction->channel_breakdown)->pluck('label')->join(' + '),
+                    'receiptUrl' => URL::signedRoute('receipts.show', $transaction),
+                ])->all(),
             ])
             ->all());
     }
@@ -106,7 +127,7 @@ class MemberPortalQueries
     }
 
     /**
-     * The category chips for a list of services or rewards, in list order.
+     * The category labels for services, in list order.
      *
      * @param  list<array<string, mixed>>  $rows
      * @return list<string>

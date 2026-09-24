@@ -53,11 +53,8 @@ class PortalController extends Controller
 
     public function rewards(Request $request): Response
     {
-        $rewards = MemberPortalQueries::rewards();
-
         return $this->page($this->member($request), 'member/Rewards', [
-            'rewards' => $rewards,
-            'categories' => MemberPortalQueries::categoriesOf($rewards),
+            'rewards' => MemberPortalQueries::rewards(),
             'vouchers' => [],
         ]);
     }

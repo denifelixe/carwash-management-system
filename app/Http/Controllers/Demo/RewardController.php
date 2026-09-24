@@ -38,7 +38,6 @@ class RewardController extends AdminController
                 array_column($customers, 'stamps'),
                 fn (int $stamps): bool => $stamps > 0,
             )),
-            'categories' => array_values(array_unique([...RewardQueries::DEFAULT_CATEGORIES, ...Catalog::rewardCategories()])),
             'serviceOptions' => array_map(
                 fn (array $service): array => [
                     'id' => $service['id'],

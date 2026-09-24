@@ -65,7 +65,8 @@ test('one setor tunai writes a Tunai outflow and a Setor Tunai inflow with the s
         ->and($out->occurred_at->format('Y-m-d H:i'))->toBe('2026-09-24 13:30')
         ->and($in->occurred_at->format('Y-m-d H:i'))->toBe('2026-09-24 13:30')
         ->and($out->transfer_reference)->not->toBeNull()->toBe($in->transfer_reference)
-        ->and($out->reference)->not->toBe($in->reference)
+        ->and($out->reference)->toBe('TRX-ST-260924-0001')
+        ->and($in->reference)->toBe('TRX-ST-260924-0002')
         ->and($out->attachments->pluck('original_name')->all())->toBe(['slip-setoran.jpg'])
         ->and($in->attachments->pluck('original_name')->all())->toBe(['slip-setoran.jpg'])
         ->and($out->attachments->first()->path)->not->toBe($in->attachments->first()->path);
@@ -79,6 +80,27 @@ test('one setor tunai writes a Tunai outflow and a Setor Tunai inflow with the s
         ->non_cash_income->toBe(500000)
         ->cash_income->toBe(0)
         ->non_cash_expense->toBe(0);
+});
+
+test('moving a deposit to another day gives both halves new daily numbers', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $this->actingAs($owner, 'admin')->post(route('admin.finance.deposits.store'), depositPayload());
+    [$out] = depositPair();
+
+    $this->patch(route('admin.finance.update', $out), [
+        'entry_date' => '2026-09-23',
+        'entry_time' => '12:00',
+        'category' => 'Setor Tunai',
+        'method' => 'Tunai',
+        'description' => 'Setor tunai ke BCA',
+        'amount' => 500000,
+    ])->assertSessionHasNoErrors();
+
+    [$out, $in] = depositPair();
+    expect($out->reference)->toBe('TRX-ST-260923-0001')
+        ->and($in->reference)->toBe('TRX-ST-260923-0002')
+        ->and($out->attachments->first()->path)->toContain('TRX-ST-260924-0001')
+        ->and($in->attachments->first()->path)->toContain('TRX-ST-260924-0002');
 });
 
 test('both halves show in the ledger and count in the totals', function () {

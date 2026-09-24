@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\DB;
 class SaveReward
 {
     /**
-     * @param  array{name: string, description: string|null, icon: string, category: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>}  $data
+     * @param  array{name: string, description: string|null, icon: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>}  $data
      */
     public function handle(array $data, ?Reward $reward = null): Reward
     {

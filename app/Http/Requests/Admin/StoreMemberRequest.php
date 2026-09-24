@@ -34,7 +34,7 @@ class StoreMemberRequest extends FormRequest
             'phone' => ['required', 'string', 'max:30', Rule::unique(Member::class, 'phone')],
             'email' => ['nullable', 'required_with:password', 'email', 'max:255', Rule::unique(Member::class, 'email')],
             /* Portal credentials: optional, and left blank on an edit to keep the current one. */
-            'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
+            'password' => ['nullable', 'string', 'confirmed'],
             'vehicles' => ['required', 'array', 'min:1', 'max:10'],
             'vehicles.*.name' => ['required', 'string', 'max:255'],
             'vehicles.*.is_special_plate' => ['sometimes', 'boolean'],
@@ -59,7 +59,6 @@ class StoreMemberRequest extends FormRequest
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah dipakai member lain.',
             'email.required_with' => 'Email wajib diisi agar member bisa login ke portal.',
-            'password.min' => 'Password minimal 8 karakter.',
             'password.confirmed' => 'Konfirmasi password tidak sama.',
             'vehicles.required' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.min' => 'Minimal satu kendaraan wajib diisi.',

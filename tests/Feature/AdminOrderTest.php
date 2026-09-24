@@ -174,6 +174,8 @@ test('an owner can create a member order with database priced services', functio
     $order = Order::query()->latest('id')->firstOrFail();
 
     expect($order)
+        ->number->toBe('00000001/ORD/'.now()->format('my'))
+        ->invoice_number->toBe($order->number)
         ->member_id->toBe($member->id)
         ->member_vehicle_id->toBe($vehicle->id)
         ->customer_name->toBe($member->name)

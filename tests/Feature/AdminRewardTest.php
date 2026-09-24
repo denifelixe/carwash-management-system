@@ -9,6 +9,7 @@ use App\Models\Reward;
 use App\Models\RewardRedemption;
 use App\Models\Service;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Schema;
 use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
@@ -45,7 +46,6 @@ function rewardPayload(array $overrides = []): array
         'name' => '  Gratis   Cuci Mobil  ',
         'description' => ' Satu kali cuci reguler. ',
         'icon' => '🚗',
-        'category' => 'Layanan',
         'required_stamps' => 10,
         'stock' => 25,
         'is_active' => true,
@@ -83,6 +83,8 @@ test('an owner sees the live reward module and its sidebar entry', function () {
             ->where('mode', 'live')
             ->has('rewards', 2)
             ->where('rewards.0.id', $reward->id)
+            ->missing('rewards.0.category')
+            ->missing('categories')
             ->where('rewards.0.applicableVariations', [['serviceVariationId' => $variation->id, 'quantity' => 1, 'discountPercent' => 100]])
             ->where('rewards.0.redeemed', 1)
             ->where('rewards.1.status', 'nonaktif')
@@ -114,6 +116,7 @@ test('a reward is created with variation discounts and normalised fields', funct
     $reward = Reward::query()->sole();
 
     expect($reward->name)->toBe('Gratis Cuci Mobil')
+        ->and(Schema::hasColumn('rewards', 'category'))->toBeFalse()
         ->and($reward->description)->toBe('Satu kali cuci reguler.')
         ->and($reward->required_stamps)->toBe(10)
         ->and($reward->serviceVariations->pluck('id')->all())->toBe([$service->serviceVariations()->firstOrFail()->id])

@@ -110,10 +110,6 @@ const passwordError = computed<string | null>(() => {
         return 'Isi email agar member bisa login ke portal.';
     }
 
-    if (password.length < 8) {
-        return 'Password minimal 8 karakter.';
-    }
-
     return password === passwordConfirmation
         ? null
         : 'Konfirmasi password tidak sama.';
@@ -1124,7 +1120,7 @@ function stampToneClass(type: string): string {
                             v-model="draft.password"
                             type="password"
                             autocomplete="new-password"
-                            placeholder="Minimal 8 karakter"
+                            placeholder="Isi password baru"
                             class="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none"
                         />
                     </div>

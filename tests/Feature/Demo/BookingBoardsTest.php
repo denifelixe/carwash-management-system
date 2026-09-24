@@ -276,11 +276,11 @@ test('the day markers have their own pill tones', function () {
 
 test('booking numbers reuse the order numbering with a BK marker', function () {
     foreach (Operations::bookings() as $booking) {
-        expect($booking['code'])->toStartWith('ORD-BK-');
+        expect($booking['code'])->toMatch('/^\d{8}\/ORD\/BK\/\d{4}$/');
     }
 
     expect(file_get_contents(resource_path('js/pages/admin/Bookings.vue')))
-        ->toContain('code: `ORD-BK-${formatDateCode(draft.value.date)}${String(sequence).padStart(2,');
+        ->toContain('code: `${String(sequence).padStart(8,');
 });
 
 test('the booking module schedules a day, never an hour', function () {

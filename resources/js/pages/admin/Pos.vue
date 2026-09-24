@@ -268,6 +268,19 @@ const orderList = computed<CarwashOrder[]>(() =>
     props.mode === 'demo' ? workflow.orders.value : liveOrders.value,
 );
 
+const demoPaymentCounters = new Map<number, number>();
+
+function nextDemoPaymentNumber(order: CarwashOrder): number {
+    const previous = Math.max(
+        demoPaymentCounters.get(order.id) ?? 0,
+        ...order.transactions.map((transaction) => Number(transaction.id.match(/\/TRX(\d+)$/)?.[1] ?? 0)),
+    );
+    const next = previous + 1;
+    demoPaymentCounters.set(order.id, next);
+
+    return next;
+}
+
 const customerList = computed<CarwashCustomer[]>(() =>
     props.mode === 'demo' ? workflow.customers.value : props.customers,
 );
@@ -1366,20 +1379,11 @@ function paymentTransactionLabel(transaction: CarwashTransaction): string {
 /** Uses the same public transaction reference shown by the Finance ledger. */
 function paymentTransactionReference(
     transaction: CarwashTransaction,
-    order: CarwashOrder,
+    _order: CarwashOrder,
 ): string {
-    const categoryCode =
-        transaction.type === 'Pembayaran Sebagian' ? 'PSO' : 'PLO';
-    const dateCode = transaction.date.replaceAll('-', '').slice(2);
-    const transactionIndex = order.transactions.findIndex(
-        (candidate) => candidate.id === transaction.id,
-    );
-    const transactionNumber = Math.max(transactionIndex + 1, 1);
-    const stableIdentifier = `${order.orderNo}-TRX-${transactionNumber}`
-        .toUpperCase()
-        .replace(/[^A-Z0-9]+/g, '');
+    void _order;
 
-    return `TRX-${categoryCode}-${dateCode}-${stableIdentifier}`;
+    return transaction.id;
 }
 
 function paymentTransactionRecorder(transaction: CarwashTransaction): string {
@@ -1594,8 +1598,8 @@ function paymentSnapshot(order: CarwashOrder): PaymentSnapshot {
 
 /**
  * Records money against the selected order. Anything short of the full amount
- * leaves the order with a `sebagian` payment; settling it issues the invoice and
- * releases the member's stamps.
+ * leaves the order with a `sebagian` payment; settling it releases the member's
+ * stamps. The invoice shares the order number from creation.
  */
 function submitPayment(): void {
     const order = selectedOrder.value;
@@ -1669,7 +1673,7 @@ function completePayment(
 
 /**
  * Hands the payment to the server and prints from what comes back, because the
- * invoice number and the transaction reference are issued by the write.
+ * payment reference is issued by the write.
  */
 function submitLivePayment(
     order: CarwashOrder,
@@ -1829,7 +1833,7 @@ function applyDemoPayment(
         .format(new Date())
         .replace(':', '.');
     const transaction: CarwashTransaction = {
-        id: `${order.orderNo}-TRX-${order.transactions.length + 1}`,
+        id: `${order.orderNo}/TRX${nextDemoPaymentNumber(order)}`,
         orderId: order.id,
         date: props.filters.today,
         time: transactionTime,
@@ -1890,9 +1894,7 @@ function applyDemoPayment(
     if (completesOrder) {
         order.status = 'selesai';
 
-        if (order.invoice === '—') {
-            order.invoice = order.orderNo.replace('ORD', 'ZW');
-        }
+        order.invoice = order.orderNo;
 
         if (customer) {
             customer.visits += 1;
@@ -3379,7 +3381,7 @@ const memberForm = useForm({
                 <template #toolbar>
                     <DataToolbar
                         v-model:search="completedSearch"
-                        placeholder="Cari order / invoice / plat"
+                        placeholder="Cari nomor order / plat"
                     />
                 </template>
 
@@ -3399,7 +3401,7 @@ const memberForm = useForm({
                                 <p
                                     class="text-[11px] font-semibold tracking-wide text-emerald-700"
                                 >
-                                    {{ order.invoice }} · {{ order.orderNo }}
+                                    {{ order.orderNo }}
                                 </p>
                                 <p
                                     class="mt-1 text-2xl font-bold tracking-wide text-slate-950"

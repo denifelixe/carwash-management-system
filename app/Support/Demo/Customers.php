@@ -240,11 +240,11 @@ class Customers
     /**
      * Wash history for the signed-in member (BR-02).
      *
-     * @return list<array{id: int, service: string, vehicle: string, date: string, total: int, stamps: int, rating: int, status: string}>
+     * @return list<array<string, mixed>>
      */
     public static function washHistory(): array
     {
-        return [
+        $visits = [
             ['id' => 1, 'service' => 'Cuci Mobil + Wax', 'vehicle' => 'B 1234 CDE', 'date' => '2 Agu 2026', 'total' => 85000, 'stamps' => 1, 'rating' => 5, 'status' => 'selesai'],
             ['id' => 2, 'service' => 'Snow Wash Premium', 'vehicle' => 'B 1234 CDE', 'date' => '26 Jul 2026', 'total' => 120000, 'stamps' => 2, 'rating' => 5, 'status' => 'selesai'],
             ['id' => 3, 'service' => 'Deep Clean Interior', 'vehicle' => 'B 1234 CDE', 'date' => '12 Jul 2026', 'total' => 150000, 'stamps' => 2, 'rating' => 4, 'status' => 'selesai'],
@@ -252,6 +252,25 @@ class Customers
             ['id' => 5, 'service' => 'Cuci Mobil Reguler', 'vehicle' => 'B 1234 CDE', 'date' => '18 Jun 2026', 'total' => 45000, 'stamps' => 1, 'rating' => 5, 'status' => 'selesai'],
             ['id' => 6, 'service' => 'Salon Jok & Karpet', 'vehicle' => 'B 1234 CDE', 'date' => '2 Jun 2026', 'total' => 350000, 'stamps' => 3, 'rating' => 4, 'status' => 'selesai'],
         ];
+
+        return array_map(fn (array $visit): array => [
+            ...$visit,
+            'number' => 'DEMO-'.str_pad((string) $visit['id'], 6, '0', STR_PAD_LEFT),
+            'invoice' => null,
+            'vehicleName' => $visit['vehicle'],
+            'items' => [['name' => $visit['service'], 'quantity' => 1, 'total' => $visit['total']]],
+            'subtotal' => $visit['total'],
+            'discount' => 0,
+            'paidAmount' => $visit['total'],
+            'transactions' => [[
+                'reference' => 'DEMO-TRX-'.$visit['id'],
+                'type' => 'Pembayaran Lunas',
+                'date' => $visit['date'],
+                'amount' => $visit['total'],
+                'channels' => 'Tunai',
+                'receiptUrl' => null,
+            ]],
+        ], $visits);
     }
 
     /**

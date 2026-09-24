@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { CircleCheck, Lock, Sparkles, Ticket } from '@lucide/vue';
-import { computed, ref } from 'vue';
-import StampProgress from '@/components/demo/StampProgress.vue';
+import { computed } from 'vue';
 import type {
     CarwashBrand,
     CarwashMember,
@@ -15,25 +14,12 @@ const props = defineProps<{
     brand: CarwashBrand;
     member: CarwashMember;
     rewards: CarwashReward[];
-    categories: string[];
     vouchers: CarwashVoucher[];
 }>();
-
-const activeCategory = ref<string>('Semua');
-
-const filterOptions = computed<string[]>(() => ['Semua', ...props.categories]);
 
 /** Only active rewards are shown to customers (BR-04). */
 const availableRewards = computed<CarwashReward[]>(() =>
     props.rewards.filter((reward) => reward.status === 'aktif'),
-);
-
-const visibleRewards = computed<CarwashReward[]>(() =>
-    activeCategory.value === 'Semua'
-        ? availableRewards.value
-        : availableRewards.value.filter(
-              (reward) => reward.category === activeCategory.value,
-          ),
 );
 
 const unlockedCount = computed<number>(
@@ -71,13 +57,6 @@ function progressFor(reward: CarwashReward): number {
                 {{ unlockedCount }} dari {{ availableRewards.length }} reward
                 sudah bisa kamu klaim
             </p>
-            <div class="mt-4">
-                <StampProgress
-                    :stamps="member.stamps"
-                    :target="brand.stampTarget"
-                    compact
-                />
-            </div>
         </section>
 
         <!-- Claimed vouchers -->
@@ -128,26 +107,9 @@ function progressFor(reward: CarwashReward): number {
                 Tukarkan stempel kamu di kasir saat berkunjung.
             </p>
 
-            <div class="mt-3 flex flex-wrap gap-2">
-                <button
-                    v-for="category in filterOptions"
-                    :key="category"
-                    type="button"
-                    class="rounded-full px-3 py-1.5 text-xs font-medium transition"
-                    :class="
-                        activeCategory === category
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-white text-slate-600 ring-1 ring-slate-200'
-                    "
-                    @click="activeCategory = category"
-                >
-                    {{ category }}
-                </button>
-            </div>
-
             <ul class="mt-3 space-y-3">
                 <li
-                    v-for="reward in visibleRewards"
+                    v-for="reward in availableRewards"
                     :key="reward.id"
                     class="rounded-2xl border bg-white p-4"
                     :class="
@@ -163,21 +125,9 @@ function progressFor(reward: CarwashReward): number {
                             {{ reward.icon }}
                         </div>
                         <div class="min-w-0 flex-1">
-                            <div class="flex items-start justify-between gap-2">
-                                <p class="text-sm font-semibold text-slate-900">
-                                    {{ reward.name }}
-                                </p>
-                                <span
-                                    class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                    :class="
-                                        isUnlocked(reward)
-                                            ? 'bg-emerald-50 text-emerald-700'
-                                            : 'bg-slate-100 text-slate-500'
-                                    "
-                                >
-                                    {{ reward.category }}
-                                </span>
-                            </div>
+                            <p class="text-sm font-semibold text-slate-900">
+                                {{ reward.name }}
+                            </p>
                             <p class="mt-0.5 text-xs text-slate-500">
                                 {{ reward.description }}
                             </p>

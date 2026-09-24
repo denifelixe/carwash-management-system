@@ -152,6 +152,8 @@ test('an owner can create a member booking at database prices', function () {
     $booking = Order::query()->latest('id')->firstOrFail();
 
     expect($booking)
+        ->number->toBe('00000001/ORD/BK/'.now()->format('my'))
+        ->invoice_number->toBe($booking->number)
         ->member_id->toBe($member->id)
         ->member_vehicle_id->toBe($vehicle->id)
         ->source->toBe('booking')

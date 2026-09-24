@@ -9,6 +9,7 @@ use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\RewardRedemption;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia;
 
 beforeEach(function (): void {
@@ -263,6 +264,23 @@ test('an owner can create edit and toggle a member without portal credentials', 
         ->patch(route('admin.members.status.update', $member), ['is_active' => true])
         ->assertSessionHasNoErrors();
     expect($member->refresh()->is_active)->toBeTrue();
+});
+
+test('an owner can create a member with a one character portal password', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.members.store'), memberPayload([
+            'email' => 'budi@example.com',
+            'password' => '!',
+            'password_confirmation' => '!',
+        ]))
+        ->assertSessionHasNoErrors();
+
+    $member = Member::query()->sole();
+
+    expect($member->email)->toBe('budi@example.com')
+        ->and(Hash::check('!', $member->password))->toBeTrue();
 });
 
 test('member validation rejects duplicate identity and invalid vehicle data', function () {

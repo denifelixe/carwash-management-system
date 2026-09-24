@@ -32,7 +32,7 @@ const passwordError = computed<string | null>(() => {
         return 'Password wajib diisi.';
     }
 
-    return password.value.length < 8 ? 'Password minimal 8 karakter.' : null;
+    return null;
 });
 
 /** Prototype login: validates locally, then enters the portal. */
@@ -134,7 +134,7 @@ function submit(): void {
                                 v-model="password"
                                 :type="showPassword ? 'text' : 'password'"
                                 autocomplete="current-password"
-                                placeholder="Minimal 8 karakter"
+                                placeholder="Password"
                                 class="w-full bg-transparent text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none"
                             />
                             <button
@@ -185,16 +185,6 @@ function submit(): void {
                         <Sparkles class="h-4 w-4" />
                         Masuk
                     </button>
-
-                    <p class="text-center text-xs text-slate-500">
-                        Belum punya akun?
-                        <Link
-                            :href="member.register.url()"
-                            class="font-semibold text-cyan-700 hover:text-cyan-800"
-                        >
-                            Daftar member
-                        </Link>
-                    </p>
                 </form>
             </div>
 

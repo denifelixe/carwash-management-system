@@ -34,6 +34,7 @@ class BookingController extends Controller
         return Inertia::render('admin/Bookings', [
             ...$adminShell->props($admin, 'Booking Order', 'bookings'),
             'bookings' => $bookings->map(fn (Order $booking): array => OrderPresenter::booking($booking))->all(),
+            'orderNumbers' => [],
             'today' => now()->toDateString(),
             'services' => $services->map(fn (Service $service): array => OrderPresenter::service($service))->all(),
             'customers' => OrderQueries::customers()

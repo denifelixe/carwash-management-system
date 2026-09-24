@@ -21,7 +21,6 @@ class RewardFactory extends Factory
             'name' => fake()->randomElement(['Gratis Semir Ban', 'Gratis Parfum Mobil', 'Gratis Cuci Mobil Reguler', 'Tumbler Eksklusif']).' '.fake()->unique()->numerify('###'),
             'description' => fake()->sentence(),
             'icon' => fake()->randomElement(['🎁', '🚗', '💨', '🥤']),
-            'category' => fake()->randomElement(['Add-on', 'Layanan', 'Diskon', 'Merchandise']),
             'required_stamps' => fake()->numberBetween(3, 12),
             'stock' => fake()->numberBetween(10, 50),
             'is_active' => true,

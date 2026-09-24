@@ -17,6 +17,7 @@ class BookingController extends AdminController
     {
         return $this->page($request, 'admin/Bookings', [
             'bookings' => Operations::scheduledBookings(),
+            'orderNumbers' => array_column(Operations::orders(), 'orderNo'),
             'today' => now()->toDateString(),
             'services' => Catalog::services(),
             'customers' => Customers::all(),

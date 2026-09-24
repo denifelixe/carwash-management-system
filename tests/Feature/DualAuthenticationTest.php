@@ -2,6 +2,7 @@
 
 use App\Models\Admin;
 use App\Models\Member;
+use App\Support\AppSettings;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -33,6 +34,16 @@ test('admin and member login pages are distinct', function () {
     $this->get(route('member.login'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->component('auth/MemberLogin'));
+});
+
+test('member login shows the WhatsApp number saved in Master Aplikasi', function () {
+    AppSettings::put(AppSettings::WHATSAPP, '6281234567890');
+
+    $this->get(route('member.login'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('auth/MemberLogin')
+            ->where('whatsapp', '6281234567890'));
 });
 
 test('admin can authenticate only with the admin guard', function () {

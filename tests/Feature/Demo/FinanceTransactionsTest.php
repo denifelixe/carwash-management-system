@@ -50,12 +50,11 @@ test('POS income records every received payment on its transaction date', functi
     $expectedTransactions = [];
 
     foreach (Operations::orders() as $order) {
-        foreach ($order['transactions'] as $transactionIndex => $transaction) {
+        foreach ($order['transactions'] as $transaction) {
             if ($transaction['amount'] > 0) {
                 $expectedTransactions['pos-'.$transaction['id']] = [
                     $order,
                     $transaction,
-                    $transactionIndex + 1,
                 ];
             }
         }
@@ -70,16 +69,11 @@ test('POS income records every received payment on its transaction date', functi
     expect($actualIdentifiers)->toBe($expectedIdentifiers);
 
     foreach ($posEntries as $entry) {
-        [$order, $transaction, $transactionNumber] = $expectedTransactions[$entry['id']];
-        $categoryCode = $transaction['type'] === 'Pembayaran Sebagian'
-            ? 'PSO'
-            : 'PLO';
-        $dateCode = str_replace('-', '', substr($transaction['date'], 2));
-        $orderNumber = preg_replace('/[^A-Z0-9]+/', '', $order['orderNo']);
+        [$order, $transaction] = $expectedTransactions[$entry['id']];
 
         expect($entry)
             ->toMatchArray([
-                'ref' => "TRX-{$categoryCode}-{$dateCode}-{$orderNumber}TRX{$transactionNumber}",
+                'ref' => $transaction['id'],
                 'date' => $transaction['date'],
                 'time' => $transaction['time'],
                 'category' => $transaction['type'] === 'Pembayaran Sebagian'
@@ -125,12 +119,12 @@ test('finance and POS agree on todays partial payment transaction count', functi
         ->and($financePartialPayments)->toHaveCount($posPartialPayments->count());
 });
 
-test('finance references use one category date and identifier format', function () {
+test('finance separates order payment references from daily cash numbers', function () {
     $entries = [...Finance::moneyIn(), ...Finance::moneyOut()];
 
     foreach ($entries as $entry) {
         expect(preg_match(
-            '/^TRX-[A-Z0-9]+-\d{6}-[A-Z0-9]+$/',
+            ($entry['source'] ?? 'manual') === 'pos' ? '/^\d{8}\/ORD\/(?:BK\/)?\d{4}\/TRX\d+$/' : '/^TRX-[A-Z0-9]+-\d{6}-\d{4}$/',
             $entry['ref'],
         ))->toBe(1);
     }
@@ -144,24 +138,24 @@ test('finance references use one category date and identifier format', function 
     $materialPurchase = collect(Finance::moneyOut())
         ->firstWhere('category', 'Pembelian Bahan');
 
-    expect($partialPayment['ref'])->toStartWith('TRX-PSO-')
-        ->and($finalPayment['ref'])->toStartWith('TRX-PLO-')
+    expect($partialPayment['ref'])->toContain('/TRX')
+        ->and($finalPayment['ref'])->toContain('/TRX')
         ->and($productSale['ref'])->toStartWith('TRX-PP-')
         ->and($materialPurchase['ref'])->toStartWith('TRX-PB-')
         ->and(implode(' ', array_column(Finance::moneyIn(), 'ref')))
         ->not->toContain('ZW');
 
     $installmentReferences = collect(Finance::moneyIn())
-        ->where('orderNo', 'ORD-BK-'.Reports::today()->format('ymd').'01')
+        ->where('orderNo', collect(Operations::orders())->firstWhere('id', 10)['orderNo'])
         ->pluck('ref')
         ->sort()
         ->values()
         ->all();
 
     expect($installmentReferences)->toBe([
-        'TRX-PSO-'.Reports::today()->subDay()->format('ymd').'-ORDBK'.Reports::today()->format('ymd').'01TRX1',
-        'TRX-PSO-'.Reports::today()->format('ymd').'-ORDBK'.Reports::today()->format('ymd').'01TRX2',
-        'TRX-PSO-'.Reports::today()->format('ymd').'-ORDBK'.Reports::today()->format('ymd').'01TRX3',
+        collect(Operations::orders())->firstWhere('id', 10)['orderNo'].'/TRX1',
+        collect(Operations::orders())->firstWhere('id', 10)['orderNo'].'/TRX2',
+        collect(Operations::orders())->firstWhere('id', 10)['orderNo'].'/TRX3',
     ]);
 
     $financePage = file_get_contents(
@@ -171,7 +165,7 @@ test('finance references use one category date and identifier format', function 
     expect($financePage)
         ->toContain('function transactionReference(')
         ->toContain('`TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`')
-        ->toContain('ref: transactionReference(')
+        ->toContain('ref: nextDemoCashReference(')
         ->toContain('props.capabilities.edit_cash_entry_backdate')
         ->toContain('? props.filters.date')
         ->toContain(': props.filters.today;')

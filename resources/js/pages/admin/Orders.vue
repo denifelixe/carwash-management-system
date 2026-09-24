@@ -41,7 +41,6 @@ import StatusPill from '@/components/demo/StatusPill.vue';
 import {
     formatCurrency,
     formatDate,
-    formatDateCode,
 } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import {
@@ -1147,8 +1146,11 @@ function createOrder(): void {
         return;
     }
 
-    const sequence = orderList.value.length + 13;
-    const orderNo = `ORD-${formatDateCode(props.filters.today)}${String(sequence).padStart(2, '0')}`;
+    const monthYear = `${props.filters.today.slice(5, 7)}${props.filters.today.slice(2, 4)}`;
+    const sequence = Math.max(0, ...orderList.value
+        .filter((order) => order.orderNo.endsWith(`/${monthYear}`))
+        .map((order) => Number(order.orderNo.slice(0, 8)) || 0)) + 1;
+    const orderNo = `${String(sequence).padStart(8, '0')}/ORD/${monthYear}`;
     const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
     const customerName =
         customer?.name ?? `${draft.value.walkInName.trim()}${walkInLabel}`;
@@ -1202,7 +1204,7 @@ function createOrder(): void {
     workflow.addOrder({
         id: sequence,
         orderNo,
-        invoice: '—',
+        invoice: orderNo,
         date: props.filters.today,
         time: 'Baru saja',
         bookingDate: null,

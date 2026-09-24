@@ -25,13 +25,6 @@ class MemberController extends Controller
         ]);
     }
 
-    public function register(): Response
-    {
-        return Inertia::render('demo/auth/MemberRegister', [
-            'brand' => Brand::identity(),
-        ]);
-    }
-
     public function dashboard(): Response
     {
         return $this->page('member/Dashboard', [
@@ -63,7 +56,6 @@ class MemberController extends Controller
     {
         return $this->page('member/Rewards', [
             'rewards' => Catalog::rewards(),
-            'categories' => Catalog::rewardCategories(),
             'vouchers' => Customers::vouchers(),
         ]);
     }

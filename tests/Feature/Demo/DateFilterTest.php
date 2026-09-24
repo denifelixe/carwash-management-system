@@ -210,8 +210,8 @@ test('the seeded data moves with the calendar', function () {
 
     expect(Reports::todayDate())->toBe('2027-03-09')
         ->and($todaysOrders)->not->toBeEmpty()
-        // The numbers carry the day they belong to.
-        ->and($todaysOrders[0]['orderNo'])->toContain('270309');
+        // The numbers carry the month in which the order was created.
+        ->and($todaysOrders[0]['orderNo'])->toContain('/0327');
 
     // Money in and out lands on today and the two days before it.
     expect(array_column(Finance::moneyIn(), 'date'))

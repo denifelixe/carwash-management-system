@@ -46,7 +46,6 @@ class RewardController extends Controller
             ),
             'stats' => fn (): array => RewardQueries::stats(),
             'stampBalances' => fn (): array => RewardQueries::stampBalances(),
-            'categories' => fn (): array => RewardQueries::categoryOptions(),
             'serviceOptions' => fn (): array => RewardQueries::serviceOptions(),
             'filters' => $filters,
             'capabilities' => [

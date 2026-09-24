@@ -11,7 +11,6 @@ import {
     Users,
 } from '@lucide/vue';
 import { ref } from 'vue';
-import StampProgress from '@/components/demo/StampProgress.vue';
 import {
     formatNumber,
     formatShortCurrency,
@@ -100,16 +99,8 @@ function copyReferralCode(): void {
                 <span
                     class="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700"
                 >
-                    {{ member.stamps }}/{{ brand.stampTarget }}
+                    {{ member.stamps }} stempel
                 </span>
-            </div>
-
-            <div class="mt-4">
-                <StampProgress
-                    :stamps="member.stamps"
-                    :target="brand.stampTarget"
-                    compact
-                />
             </div>
 
             <div class="mt-4 grid grid-cols-3 gap-3">

@@ -72,21 +72,21 @@ class Catalog
     /**
      * Reward catalog with variation discounts offered at the till.
      *
-     * @return list<array{id: int, name: string, description: string, requiredStamps: int, applicableVariations: list<array{serviceVariationId: int, quantity: int, discountPercent: int}>, icon: string, category: string, status: string, stock: int, redeemed: int}>
+     * @return list<array{id: int, name: string, description: string, requiredStamps: int, applicableVariations: list<array{serviceVariationId: int, quantity: int, discountPercent: int}>, icon: string, status: string, stock: int, redeemed: int}>
      */
     public static function rewards(): array
     {
         return [
-            ['id' => 1, 'name' => 'Gratis Semir Ban', 'description' => 'Semir ban premium gratis untuk satu kali kunjungan.', 'requiredStamps' => 3, 'applicableVariations' => [['serviceVariationId' => 12, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '⚫', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 50, 'redeemed' => 34],
-            ['id' => 2, 'name' => 'Gratis Parfum Mobil', 'description' => 'Wangi kabin tahan lama untuk sekali kunjungan.', 'requiredStamps' => 4, 'applicableVariations' => [], 'icon' => '💨', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 60, 'redeemed' => 28],
-            ['id' => 3, 'name' => 'Gratis Vacuum Interior', 'description' => 'Vacuum kabin menyeluruh tanpa biaya tambahan.', 'requiredStamps' => 5, 'applicableVariations' => [], 'icon' => '🧽', 'category' => 'Add-on', 'status' => 'aktif', 'stock' => 35, 'redeemed' => 19],
-            ['id' => 4, 'name' => 'Gratis Cuci Motor', 'description' => 'Tukar stempel dengan satu kali cuci motor reguler.', 'requiredStamps' => 6, 'applicableVariations' => [['serviceVariationId' => 4, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🏍️', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 40, 'redeemed' => 22],
-            ['id' => 5, 'name' => 'Diskon 50% Snow Wash', 'description' => 'Potongan setengah harga untuk snow wash premium.', 'requiredStamps' => 8, 'applicableVariations' => [['serviceVariationId' => 3, 'quantity' => 1, 'discountPercent' => 50]], 'icon' => '❄️', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 25, 'redeemed' => 11],
-            ['id' => 6, 'name' => 'Gratis Cuci Mobil Reguler', 'description' => 'Satu kali cuci mobil reguler gratis.', 'requiredStamps' => 10, 'applicableVariations' => [['serviceVariationId' => 1, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🚗', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 30, 'redeemed' => 15],
-            ['id' => 7, 'name' => 'Tumbler ZenWash Eksklusif', 'description' => 'Merchandise tumbler stainless edisi terbatas.', 'requiredStamps' => 12, 'applicableVariations' => [], 'icon' => '🥤', 'category' => 'Merchandise', 'status' => 'aktif', 'stock' => 12, 'redeemed' => 6],
-            ['id' => 8, 'name' => 'Diskon 25% Poles Body', 'description' => 'Potongan seperempat harga untuk layanan poles body detailing.', 'requiredStamps' => 15, 'applicableVariations' => [['serviceVariationId' => 6, 'quantity' => 1, 'discountPercent' => 25]], 'icon' => '💎', 'category' => 'Diskon', 'status' => 'aktif', 'stock' => 18, 'redeemed' => 4],
-            ['id' => 9, 'name' => 'Gratis Deep Clean Interior', 'description' => 'Interior detailing menyeluruh tanpa biaya.', 'requiredStamps' => 20, 'applicableVariations' => [['serviceVariationId' => 9, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🪑', 'category' => 'Layanan', 'status' => 'aktif', 'stock' => 10, 'redeemed' => 2],
-            ['id' => 10, 'name' => 'Gratis Nano Ceramic Coating', 'description' => 'Reward utama: coating penuh selama 12 bulan proteksi.', 'requiredStamps' => 40, 'applicableVariations' => [['serviceVariationId' => 7, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🛡️', 'category' => 'Layanan', 'status' => 'nonaktif', 'stock' => 3, 'redeemed' => 1],
+            ['id' => 1, 'name' => 'Gratis Semir Ban', 'description' => 'Semir ban premium gratis untuk satu kali kunjungan.', 'requiredStamps' => 3, 'applicableVariations' => [['serviceVariationId' => 12, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '⚫', 'status' => 'aktif', 'stock' => 50, 'redeemed' => 34],
+            ['id' => 2, 'name' => 'Gratis Parfum Mobil', 'description' => 'Wangi kabin tahan lama untuk sekali kunjungan.', 'requiredStamps' => 4, 'applicableVariations' => [], 'icon' => '💨', 'status' => 'aktif', 'stock' => 60, 'redeemed' => 28],
+            ['id' => 3, 'name' => 'Gratis Vacuum Interior', 'description' => 'Vacuum kabin menyeluruh tanpa biaya tambahan.', 'requiredStamps' => 5, 'applicableVariations' => [], 'icon' => '🧽', 'status' => 'aktif', 'stock' => 35, 'redeemed' => 19],
+            ['id' => 4, 'name' => 'Gratis Cuci Motor', 'description' => 'Tukar stempel dengan satu kali cuci motor reguler.', 'requiredStamps' => 6, 'applicableVariations' => [['serviceVariationId' => 4, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🏍️', 'status' => 'aktif', 'stock' => 40, 'redeemed' => 22],
+            ['id' => 5, 'name' => 'Diskon 50% Snow Wash', 'description' => 'Potongan setengah harga untuk snow wash premium.', 'requiredStamps' => 8, 'applicableVariations' => [['serviceVariationId' => 3, 'quantity' => 1, 'discountPercent' => 50]], 'icon' => '❄️', 'status' => 'aktif', 'stock' => 25, 'redeemed' => 11],
+            ['id' => 6, 'name' => 'Gratis Cuci Mobil Reguler', 'description' => 'Satu kali cuci mobil reguler gratis.', 'requiredStamps' => 10, 'applicableVariations' => [['serviceVariationId' => 1, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🚗', 'status' => 'aktif', 'stock' => 30, 'redeemed' => 15],
+            ['id' => 7, 'name' => 'Tumbler ZenWash Eksklusif', 'description' => 'Merchandise tumbler stainless edisi terbatas.', 'requiredStamps' => 12, 'applicableVariations' => [], 'icon' => '🥤', 'status' => 'aktif', 'stock' => 12, 'redeemed' => 6],
+            ['id' => 8, 'name' => 'Diskon 25% Poles Body', 'description' => 'Potongan seperempat harga untuk layanan poles body detailing.', 'requiredStamps' => 15, 'applicableVariations' => [['serviceVariationId' => 6, 'quantity' => 1, 'discountPercent' => 25]], 'icon' => '💎', 'status' => 'aktif', 'stock' => 18, 'redeemed' => 4],
+            ['id' => 9, 'name' => 'Gratis Deep Clean Interior', 'description' => 'Interior detailing menyeluruh tanpa biaya.', 'requiredStamps' => 20, 'applicableVariations' => [['serviceVariationId' => 9, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🪑', 'status' => 'aktif', 'stock' => 10, 'redeemed' => 2],
+            ['id' => 10, 'name' => 'Gratis Nano Ceramic Coating', 'description' => 'Reward utama: coating penuh selama 12 bulan proteksi.', 'requiredStamps' => 40, 'applicableVariations' => [['serviceVariationId' => 7, 'quantity' => 1, 'discountPercent' => 100]], 'icon' => '🛡️', 'status' => 'nonaktif', 'stock' => 3, 'redeemed' => 1],
         ];
     }
 
@@ -113,13 +113,5 @@ class Catalog
     public static function serviceCategories(): array
     {
         return array_values(array_unique(array_column(self::services(), 'category')));
-    }
-
-    /**
-     * @return list<string>
-     */
-    public static function rewardCategories(): array
-    {
-        return array_values(array_unique(array_column(self::rewards(), 'category')));
     }
 }

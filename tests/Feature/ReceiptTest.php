@@ -12,8 +12,8 @@ test('a signed receipt link is publicly viewable without login', function () {
     $cashier = Admin::factory()->create(['name' => 'Deni Victoria']);
     $service = Service::factory()->create(['name' => 'Express Wash']);
     $order = Order::factory()->create([
-        'number' => 'ORD-20260901-AIHOQS',
-        'invoice_number' => 'ZW-20260901-AIHOQS',
+        'number' => '00000001/ORD/0926',
+        'invoice_number' => '00000001/ORD/0926',
         'status' => 'selesai',
         'subtotal' => 45000,
         'total' => 45000,
@@ -28,7 +28,7 @@ test('a signed receipt link is publicly viewable without login', function () {
     ]);
     $transaction = OrderTransaction::factory()->for($order)->create([
         'recorded_by_admin_id' => $cashier->id,
-        'reference' => 'TRX-PLO-260901-ORD20260901AIHOQS-TRX1',
+        'reference' => '00000001/ORD/0926/TRX1',
         'type' => 'Pembayaran Lunas',
         'amount' => 45000,
         'channel_breakdown' => [['label' => 'Tunai', 'amount' => 45000]],
@@ -44,8 +44,8 @@ test('a signed receipt link is publicly viewable without login', function () {
     $response->assertSuccessful()
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->component('receipts/Show')
-            ->where('receipt.invoice', 'ZW-20260901-AIHOQS')
-            ->where('receipt.reference', 'TRX-PLO-260901-ORD20260901AIHOQS-TRX1')
+            ->where('receipt.invoice', '00000001/ORD/0926')
+            ->where('receipt.reference', '00000001/ORD/0926/TRX1')
             ->where('receipt.cashier', 'Deni Victoria')
             ->where('receipt.customerStatus', 'Non-member')
             ->where('receipt.lines.0.name', 'Express Wash')

@@ -6,6 +6,7 @@ use App\Models\Member;
 use App\Models\MemberVehicle;
 use App\Models\Order;
 use App\Models\ServiceVariation;
+use App\Support\Admin\DocumentNumbers;
 use App\Support\Admin\OperationalDataWindow;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\DB;
@@ -145,9 +146,11 @@ class SaveBooking
             ];
 
             if ($booking === null) {
+                $number = DocumentNumbers::order(true);
                 $booking = Order::query()->create([
                     ...$values,
-                    'number' => 'ORD-BK-'.now()->format('Ymd').'-'.Str::upper(Str::random(6)),
+                    'number' => $number,
+                    'invoice_number' => $number,
                     'created_by_admin_id' => $adminId,
                     'arrived_at' => null,
                     'booking_date' => now()->toDateString(),

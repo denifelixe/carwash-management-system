@@ -47,7 +47,6 @@ const props = defineProps<{
     redemptions: CarwashPaginated<CarwashRewardRedemption>;
     stats: CarwashRewardStats;
     stampBalances: number[];
-    categories: string[];
     serviceOptions: CarwashRewardServiceOption[];
     filters: CarwashRewardFilters;
     capabilities: { create: boolean; update: boolean; delete: boolean };
@@ -99,7 +98,6 @@ const rewardForm = useForm({
     name: '',
     description: '' as string | null,
     icon: '🎁',
-    category: '',
     required_stamps: 5,
     stock: 20,
     is_active: true,
@@ -136,7 +134,6 @@ function emptyDraft() {
         description: '',
         requiredStamps: 5,
         icon: '🎁',
-        category: 'Reward',
         status: 'aktif',
         stock: 20,
         applicableVariations: [] as CarwashReward['applicableVariations'],
@@ -340,7 +337,6 @@ function openEdit(reward: CarwashReward): void {
         description: reward.description,
         requiredStamps: reward.requiredStamps,
         icon: reward.icon,
-        category: reward.category,
         status: reward.status,
         stock: reward.stock,
         applicableVariations: reward.applicableVariations.map((variation) => ({
@@ -370,7 +366,6 @@ function saveReward(): void {
     rewardForm.name = draft.value.name;
     rewardForm.description = draft.value.description || null;
     rewardForm.icon = draft.value.icon;
-    rewardForm.category = draft.value.category;
     rewardForm.required_stamps = draft.value.requiredStamps;
     rewardForm.stock = draft.value.stock;
     rewardForm.is_active = draft.value.status === 'aktif';

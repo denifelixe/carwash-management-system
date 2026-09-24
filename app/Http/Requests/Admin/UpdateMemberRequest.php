@@ -39,7 +39,7 @@ class UpdateMemberRequest extends FormRequest
             /* A member who can already sign in keeps an email, since it is their login. */
             'email' => ['nullable', Rule::requiredIf(fn (): bool => $this->filled('password') || $member->password !== null), 'email', 'max:255', Rule::unique(Member::class, 'email')->ignore($memberId)],
             /* Portal credentials: optional, and left blank on an edit to keep the current one. */
-            'password' => ['nullable', 'string', 'min:8', 'max:255', 'confirmed'],
+            'password' => ['nullable', 'string', 'confirmed'],
             'vehicles' => ['required', 'array', 'min:1', 'max:10'],
             'vehicles.*.id' => ['nullable', 'integer', Rule::exists(MemberVehicle::class, 'id')->where('member_id', $memberId)],
             'vehicles.*.name' => ['required', 'string', 'max:255'],
@@ -73,7 +73,6 @@ class UpdateMemberRequest extends FormRequest
             'email.email' => 'Format email tidak valid.',
             'email.unique' => 'Email ini sudah dipakai member lain.',
             'email.required' => 'Email wajib diisi agar member bisa login ke portal.',
-            'password.min' => 'Password minimal 8 karakter.',
             'password.confirmed' => 'Konfirmasi password tidak sama.',
             'vehicles.required' => 'Minimal satu kendaraan wajib diisi.',
             'vehicles.min' => 'Minimal satu kendaraan wajib diisi.',

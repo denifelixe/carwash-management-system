@@ -85,8 +85,8 @@ class PosController extends Controller
 
         /*
          * The slip is printed from the reloaded order rather than from what was
-         * submitted, so the invoice number and transaction reference the write
-         * issued are the ones the cashier hands over.
+         * submitted, so the stored order and payment references are the ones
+         * the cashier hands over.
          */
         return back()->with('success', 'Pembayaran berhasil dicatat.');
     }

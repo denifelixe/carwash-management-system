@@ -653,6 +653,27 @@ test('an owner can record money on the selected finance date', function () {
         ->toBe('2026-08-27');
 });
 
+test('cash reference keeps its sequence on category edit and gets a new date sequence when moved', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $entry = CashEntry::factory()->withDailyBalance()->create([
+        'reference' => 'TRX-PP-260830-0001',
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->patch(route('admin.finance.update', $entry), cashEntryPayload(['category' => 'Pendapatan Lain']))
+        ->assertSessionHasNoErrors();
+
+    expect($entry->refresh()->reference)->toBe('TRX-PL-260830-0001');
+
+    $this->patch(route('admin.finance.update', $entry), cashEntryPayload([
+        'category' => 'Pendapatan Lain',
+        'entry_date' => '2026-08-29',
+        'entry_time' => '09:00',
+    ]))->assertSessionHasNoErrors();
+
+    expect($entry->refresh()->reference)->toBe('TRX-PL-260829-0001');
+});
+
 test('staff without the extra action records a new cash entry at the current time', function () {
     $staff = financeStaff(['create' => true, 'read' => true]);
 
@@ -1213,7 +1234,7 @@ test('deleting a POS transaction reopens its order and rebuilds later balances',
 
     expect(OrderTransaction::withTrashed()->where('order_id', $order->id)->count())->toBe(3)
         ->and(OrderTransaction::query()->latest('id')->firstOrFail()->reference)
-        ->toBe($order->number.'-TRX-3');
+        ->toBe($order->number.'/TRX3');
 });
 
 test('financial records are mutable through H-30 and locked on H-31', function () {

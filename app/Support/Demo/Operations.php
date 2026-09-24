@@ -25,7 +25,7 @@ class Operations
             $isFinalSettlement = $order['paidAmount'] >= $order['total'];
             $transactions = $order['transactions'] ?? ($order['paidAmount'] > 0
                 ? [[
-                    'id' => $order['invoice'] !== '—' ? $order['invoice'] : $order['orderNo'].'-TRX-1',
+                    'id' => $order['orderNo'].'/TRX1',
                     'orderId' => $order['id'],
                     'date' => $order['date'],
                     'time' => $order['time'],
@@ -42,8 +42,14 @@ class Operations
                 ? ($order['bookingDate'] ?? $transactions[0]['date'] ?? $order['date'])
                 : null;
 
+            $transactions = array_map(fn (array $transaction, int $index): array => [
+                ...$transaction,
+                'id' => $order['orderNo'].'/TRX'.($index + 1),
+            ], $transactions, array_keys($transactions));
+
             return [
                 ...$order,
+                'invoice' => $order['orderNo'],
                 'bookingDate' => $bookingDate,
                 'transactions' => $transactions,
             ];
@@ -189,7 +195,7 @@ class Operations
         return array_values(array_map(fn (array $booking): array => [
             'id' => 900 + $booking['id'],
             'orderNo' => $booking['code'],
-            'invoice' => '—',
+            'invoice' => $booking['code'],
             'date' => $booking['date'],
             'time' => '—',
             'bookingDate' => $booking['bookingDate'],
@@ -224,28 +230,76 @@ class Operations
         return Reports::today()->addDays($daysFromToday)->toDateString();
     }
 
-    /** The "260819" a number carries so it reads as the day it belongs to. */
-    private static function dateCode(int $daysFromToday): string
-    {
-        return Reports::today()->addDays($daysFromToday)->format('ymd');
-    }
-
-    /** Walk-in numbering: ORD-260819 plus the sequence of the day. */
+    /** Keep fixture numbers unique across booking and walk-in orders in a month. */
     private static function orderNo(int $daysFromToday, int $sequence): string
     {
-        return 'ORD-'.self::dateCode($daysFromToday).str_pad((string) $sequence, 2, '0', STR_PAD_LEFT);
+        return self::fixtureNumber("walk-in:{$daysFromToday}:{$sequence}", false);
     }
 
     /** A booking is numbered the same way, with BK marking where it came from. */
     private static function bookingCode(int $daysFromToday, int $sequence): string
     {
-        return 'ORD-BK-'.self::dateCode($daysFromToday).str_pad((string) $sequence, 2, '0', STR_PAD_LEFT);
+        return self::fixtureNumber("booking:{$daysFromToday}:{$sequence}", true);
+    }
+
+    private static function fixtureNumber(string $key, bool $booking): string
+    {
+        /** @var list<array{0: string, 1: int}> $fixtureCreations */
+        $fixtureCreations = [
+            ['booking:-1:6', -2],
+            ['booking:-1:7', -1],
+            ['booking:0:1', -1],
+            ['booking:0:4', -1],
+            ['booking:1:2', -1],
+            ['booking:0:2', 0],
+            ['booking:0:3', 0],
+            ['booking:1:1', 0],
+            ['booking:2:1', 0],
+            ['walk-in:0:4', 0],
+            ['walk-in:0:5', 0],
+            ['walk-in:0:6', 0],
+            ['walk-in:0:7', 0],
+            ['walk-in:0:9', 0],
+            ['walk-in:0:11', 0],
+            ['walk-in:0:12', 0],
+        ];
+        $createdOn = null;
+        $sequence = 0;
+
+        foreach ($fixtureCreations as [$fixtureKey, $daysFromToday]) {
+            $fixtureDate = self::date($daysFromToday);
+
+            if ($fixtureKey === $key) {
+                $createdOn = $fixtureDate;
+                break;
+            }
+        }
+
+        if ($createdOn === null) {
+            throw new \LogicException("Unknown demo order {$key}.");
+        }
+
+        foreach ($fixtureCreations as [$fixtureKey, $daysFromToday]) {
+            if (substr(self::date($daysFromToday), 0, 7) === substr($createdOn, 0, 7)) {
+                $sequence++;
+            }
+
+            if ($fixtureKey === $key) {
+                break;
+            }
+        }
+
+        return str_pad((string) $sequence, 8, '0', STR_PAD_LEFT)
+            .'/ORD/'.($booking ? 'BK/' : '').substr($createdOn, 5, 2).substr($createdOn, 2, 2);
     }
 
     /** Invoices repeat the order's day so a receipt files itself. */
     private static function invoiceNo(int $daysFromToday, int $sequence): string
     {
-        return 'ZW-'.self::dateCode($daysFromToday).str_pad((string) $sequence, 2, '0', STR_PAD_LEFT);
+        $date = self::date($daysFromToday);
+
+        return str_pad((string) $sequence, 8, '0', STR_PAD_LEFT)
+            .'/ORD/'.substr($date, 5, 2).substr($date, 2, 2);
     }
 
     /**

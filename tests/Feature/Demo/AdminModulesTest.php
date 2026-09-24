@@ -17,7 +17,7 @@ dataset('admin modules', [
     'finance' => ['demo.admin.finance', 'admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'dailyBalance', 'dailyBalanceHistory', 'orders']],
     'bookings' => ['demo.admin.bookings', 'admin/Bookings', ['bookings', 'today', 'services', 'customers', 'capabilities']],
     'inventory' => ['demo.admin.inventory', 'admin/Inventory', ['items', 'movements', 'stats', 'itemOptions', 'filters', 'categories', 'suppliers', 'movementTypes', 'capabilities']],
-    'rewards' => ['demo.admin.rewards', 'admin/Rewards', ['rewards', 'redemptions', 'stats', 'stampBalances', 'categories', 'serviceOptions', 'filters', 'capabilities']],
+    'rewards' => ['demo.admin.rewards', 'admin/Rewards', ['rewards', 'redemptions', 'stats', 'stampBalances', 'serviceOptions', 'filters', 'capabilities']],
     'users' => ['demo.admin.users', 'admin/Users', ['staff', 'roles', 'shifts', 'ownerSummary', 'capabilities', 'allModules']],
     'reports' => ['demo.admin.reports', 'admin/Reports', ['trend', 'filters', 'customerBase', 'bookingSummary', 'inventorySummary', 'shifts', 'capabilities']],
     'master services' => ['demo.admin.master.services', 'admin/master/Services', ['services', 'categories', 'capabilities']],

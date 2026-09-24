@@ -186,7 +186,7 @@ test('a booking that has reached settlement leaves the not-arrived booking list'
         'orderNo',
     );
 
-    $budiOrderNumber = 'ORD-BK-'.Reports::today()->format('ymd').'01';
+    $budiOrderNumber = collect(Operations::orders())->firstWhere('id', 10)['orderNo'];
 
     expect($settlementBookingNumbers)->toContain($budiOrderNumber)
         ->and($partialPaymentBookingNumbers)->not->toContain($budiOrderNumber)
@@ -413,7 +413,7 @@ test('payment recap rows reveal their transaction and order details', function (
         ->toContain('showSelectedPaymentRecapTransactionOrder(')
         ->toContain('selectedPaymentRecapTransaction')
         ->toContain('paymentTransactionReference(')
-        ->toContain('`TRX-${categoryCode}-${dateCode}-${stableIdentifier}`')
+        ->toContain('return transaction.id;')
         ->toContain('paymentTransactionReference(detail.transaction, detail.order)')
         ->not->toContain('{{ detail.transaction.id }}')
         ->toContain('md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_8rem]')
@@ -647,7 +647,7 @@ test('waiting and in-progress orders remain unpaid without transactions', functi
     foreach ($activeOrders as $order) {
         expect($order)
             ->toMatchArray([
-                'invoice' => '—',
+                'invoice' => $order['orderNo'],
                 'paidAmount' => 0,
                 'payment' => '—',
                 'paymentStatus' => 'belum bayar',

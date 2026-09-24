@@ -14,7 +14,7 @@ dataset('member pages', [
     'dashboard' => ['demo.member.dashboard', 'member/Dashboard', ['stampHistory', 'rewards', 'promos']],
     'stamps' => ['demo.member.stamps', 'member/Stamps', ['stampHistory', 'washHistory', 'rewards']],
     'services' => ['demo.member.services', 'member/Services', ['services', 'categories']],
-    'rewards' => ['demo.member.rewards', 'member/Rewards', ['rewards', 'categories', 'vouchers']],
+    'rewards' => ['demo.member.rewards', 'member/Rewards', ['rewards', 'vouchers']],
     'profile' => ['demo.member.profile', 'member/Profile', ['washHistory', 'vouchers']],
 ]);
 
@@ -34,14 +34,14 @@ test('each portal page renders with the member and its own props', function (str
         });
 })->with('member pages');
 
-test('the login and register screens are reachable without a session', function () {
+test('the login screen is reachable without a session while self registration is unavailable', function () {
     $this->get(route('demo.member.login'))
         ->assertOk()
         ->assertInertia(fn (AssertableInertia $page) => $page->component('demo/auth/MemberLogin'));
 
-    $this->get(route('demo.member.register'))
-        ->assertOk()
-        ->assertInertia(fn (AssertableInertia $page) => $page->component('demo/auth/MemberRegister'));
+    expect(Route::has('demo.member.register'))->toBeFalse();
+
+    $this->get(route('demo.home').'member/register')->assertNotFound();
 });
 
 test('the portal exposes no mutating routes', function () {

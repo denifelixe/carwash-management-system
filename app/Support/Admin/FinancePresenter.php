@@ -41,11 +41,7 @@ class FinancePresenter
              * row, and can trace it back to its transaction in the order recap. */
             'id' => 'pos-'.$transaction->reference,
             'transactionId' => $transaction->id,
-            'ref' => FinanceReference::make(
-                $transaction->type.' Order',
-                $paidAt->toDateString(),
-                $transaction->reference,
-            ),
+            'ref' => $transaction->reference,
             'date' => $paidAt->toDateString(),
             'time' => $time,
             'category' => $category,

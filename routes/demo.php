@@ -116,7 +116,6 @@ Route::name('demo.')->group(function () {
      */
     Route::prefix('member')->name('member.')->group(function () {
         Route::get('login', [MemberController::class, 'login'])->name('login');
-        Route::get('register', [MemberController::class, 'register'])->name('register');
         Route::get('dashboard', [MemberController::class, 'dashboard'])->name('dashboard');
         Route::get('stamps', [MemberController::class, 'stamps'])->name('stamps');
         Route::get('services', [MemberController::class, 'services'])->name('services');

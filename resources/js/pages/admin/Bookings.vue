@@ -32,7 +32,6 @@ import StatusPill from '@/components/demo/StatusPill.vue';
 import {
     formatCurrency,
     formatDate,
-    formatDateCode,
 } from '@/composables/useCarwashFormat';
 import {
     formatPlate,
@@ -53,6 +52,7 @@ const props = defineProps<{
     mode: 'demo' | 'live';
     brand: CarwashBrand;
     bookings: CarwashBooking[];
+    orderNumbers: string[];
     /** The prototype's fixed "today", ISO formatted, anchoring every day label. */
     today: string;
     services: CarwashService[];
@@ -713,12 +713,17 @@ function saveBooking(): void {
         return;
     }
 
-    const sequence = bookingList.value.length + 1;
+    const monthYear = `${props.today.slice(5, 7)}${props.today.slice(2, 4)}`;
+    const sequence = Math.max(0, ...[
+        ...bookingList.value.map((booking) => booking.code),
+        ...props.orderNumbers,
+    ].filter((number) => number.endsWith(`/${monthYear}`))
+        .map((number) => Number(number.slice(0, 8)) || 0)) + 1;
 
     bookingList.value = [
         {
             id: 1000 + sequence,
-            code: `ORD-BK-${formatDateCode(draft.value.date)}${String(sequence).padStart(2, '0')}`,
+            code: `${String(sequence).padStart(8, '0')}/ORD/BK/${monthYear}`,
             ...bookingFields,
             bookingDate: props.today,
             bookingTime: currentClockTime(),

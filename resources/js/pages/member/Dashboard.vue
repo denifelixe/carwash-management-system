@@ -10,7 +10,6 @@ import {
     X,
 } from '@lucide/vue';
 import { computed, ref } from 'vue';
-import StampProgress from '@/components/demo/StampProgress.vue';
 import { formatCurrency, formatNumber } from '@/composables/useCarwashFormat';
 import { memberPortalUrls } from '@/composables/useMemberPortalRoutes';
 import type {
@@ -41,10 +40,6 @@ const isMemberCardEnabled = false as boolean;
 const isQrOpen = ref<boolean>(false);
 
 const memberRoutes = computed(() => memberPortalUrls(props.mode));
-
-const stampsToReward = computed<number>(() =>
-    Math.max(props.brand.stampTarget - props.member.stamps, 0),
-);
 
 /** Rewards the member already has enough stamps for (BR-04). */
 const unlockedRewards = computed<CarwashReward[]>(() =>
@@ -126,7 +121,7 @@ function activityToneClass(type: string): string {
                         >
                             {{ brand.name }}
                         </p>
-                        <p class="mt-1 text-lg font-bold">Kartu Stempel</p>
+                        <p class="mt-1 text-lg font-bold">Total Stempel</p>
                     </div>
                     <button
                         v-if="isMemberCardEnabled"
@@ -139,39 +134,15 @@ function activityToneClass(type: string): string {
                     </button>
                 </div>
 
-                <div class="mt-5 flex items-end justify-between">
+                <div class="mt-5">
                     <div>
-                        <p class="text-xs text-slate-400">Stempel kamu</p>
+                        <p class="text-xs text-slate-400">Stempel tersedia</p>
                         <p
                             class="text-4xl font-bold tracking-tight tabular-nums"
                         >
                             {{ member.stamps }}
-                            <span class="text-lg font-medium text-slate-400">
-                                / {{ brand.stampTarget }}
-                            </span>
                         </p>
                     </div>
-                    <p
-                        v-if="stampsToReward > 0"
-                        class="max-w-[9rem] text-right text-[11px] text-cyan-200"
-                    >
-                        {{ stampsToReward }} stempel lagi untuk
-                        {{ brand.stampReward }}
-                    </p>
-                    <p
-                        v-else
-                        class="max-w-[9rem] text-right text-[11px] font-semibold text-emerald-300"
-                    >
-                        Reward siap ditukar di kasir!
-                    </p>
-                </div>
-
-                <div class="mt-5">
-                    <StampProgress
-                        :stamps="member.stamps"
-                        :target="brand.stampTarget"
-                        compact
-                    />
                 </div>
 
                 <div
@@ -203,7 +174,7 @@ function activityToneClass(type: string): string {
                 <p class="text-lg font-semibold text-slate-900 tabular-nums">
                     {{ formatNumber(member.lifetimeStamps) }}
                 </p>
-                <p class="text-[11px] text-slate-500">Total stempel</p>
+                <p class="text-[11px] text-slate-500">Total dikumpulkan</p>
             </div>
             <div
                 class="rounded-2xl border border-slate-200 bg-white p-3 text-center"
@@ -212,33 +183,6 @@ function activityToneClass(type: string): string {
                     {{ member.rewardsClaimed }}
                 </p>
                 <p class="text-[11px] text-slate-500">Reward diklaim</p>
-            </div>
-        </section>
-
-        <!-- Full stamp card -->
-        <section class="rounded-2xl border border-slate-200 bg-white p-5">
-            <div class="flex items-start justify-between">
-                <div>
-                    <h2 class="text-sm font-semibold text-slate-900">
-                        Kartu cuci gratis
-                    </h2>
-                    <p class="mt-0.5 text-xs text-slate-500">
-                        {{ stampsToReward }} cuci lagi untuk
-                        {{ brand.stampReward.toLowerCase() }}
-                    </p>
-                </div>
-                <span
-                    class="rounded-full bg-cyan-50 px-2.5 py-1 text-xs font-semibold text-cyan-700"
-                >
-                    {{ member.stamps }}/{{ brand.stampTarget }}
-                </span>
-            </div>
-
-            <div class="mt-4">
-                <StampProgress
-                    :stamps="member.stamps"
-                    :target="brand.stampTarget"
-                />
             </div>
         </section>
 
@@ -461,7 +405,7 @@ function activityToneClass(type: string): string {
                 class="mt-4 flex items-center justify-center gap-1.5 rounded-xl bg-cyan-50 py-2.5 text-sm font-semibold text-cyan-800"
             >
                 <Gift class="h-4 w-4" />
-                {{ member.stamps }}/{{ brand.stampTarget }} stempel
+                {{ member.stamps }} stempel tersedia
             </div>
         </div>
     </div>

@@ -429,7 +429,7 @@ function saveDemoDeposit(): void {
     }));
     const pair = (id: number, method: string): CarwashMoneyEntry => ({
         id,
-        ref: transactionReference(CASH_DEPOSIT, depositForm.entry_date, id),
+        ref: nextDemoCashReference(CASH_DEPOSIT, depositForm.entry_date),
         transferReference,
         date: depositForm.entry_date,
         time: depositForm.entry_time.replace(':', '.'),
@@ -1381,15 +1381,14 @@ function closeOrderRecap(): void {
 }
 
 function orderTransactionReference(
-    order: CarwashOrder,
+    _order: CarwashOrder,
     transaction: CarwashTransaction,
-    transactionIndex: number,
+    _transactionIndex: number,
 ): string {
-    return transactionReference(
-        `${transaction.type} Order`,
-        transaction.date,
-        `${order.orderNo}-TRX-${transactionIndex + 1}`,
-    );
+    void _order;
+    void _transactionIndex;
+
+    return transaction.id;
 }
 
 function transactionTypeLabel(entry: CarwashMoneyEntry): string {
@@ -1467,6 +1466,24 @@ function transactionReference(
             : identifier.toUpperCase().replace(/[^A-Z0-9]+/g, '');
 
     return `TRX-${categoryCode}-${formatDateCode(date)}-${stableIdentifier}`;
+}
+
+const demoCashCounters = new Map<string, number>();
+
+for (const entry of [...props.moneyIn, ...props.moneyOut]) {
+    const match = entry.ref.match(/^TRX-[A-Z0-9]+-(\d{6})-(\d{4})$/);
+
+    if (match) {
+        demoCashCounters.set(match[1], Math.max(demoCashCounters.get(match[1]) ?? 0, Number(match[2])));
+    }
+}
+
+function nextDemoCashReference(category: string, date: string): string {
+    const dateCode = formatDateCode(date);
+    const sequence = (demoCashCounters.get(dateCode) ?? 0) + 1;
+    demoCashCounters.set(dateCode, sequence);
+
+    return transactionReference(category, date, sequence);
 }
 
 function outletClock(): string {
@@ -1598,8 +1615,12 @@ function saveLiveEntry(transactionShiftId: number | null): void {
 function saveDemoEntry(transactionShiftId: number | null): void {
     if (editingEntry.value !== null) {
         const entry = editingEntry.value;
+        const reference = entry.date === entryForm.entry_date
+            ? transactionReference(draft.value.category, entryForm.entry_date, Number(entry.ref.slice(-4)))
+            : nextDemoCashReference(draft.value.category, entryForm.entry_date);
         Object.assign(entry, {
             ...draft.value,
+            ref: reference,
             date: entryForm.entry_date,
             time: entryForm.entry_time.replace(':', '.'),
             shift: correctedShiftName(entry),
@@ -1656,11 +1677,7 @@ function saveDemoEntry(transactionShiftId: number | null): void {
             : props.persona.shift || null;
     const entry: CarwashMoneyEntry = {
         id: sequence,
-        ref: transactionReference(
-            draft.value.category,
-            entryForm.entry_date,
-            sequence,
-        ),
+        ref: nextDemoCashReference(draft.value.category, entryForm.entry_date),
         date: entryForm.entry_date,
         time: entryForm.entry_time.replace(':', '.'),
         category: draft.value.category,

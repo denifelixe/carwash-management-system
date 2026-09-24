@@ -13,7 +13,7 @@ use App\Support\Demo\DateFilter;
 class RewardPresenter
 {
     /**
-     * @return array{id: int, name: string, description: string, requiredStamps: int, applicableVariations: list<array{serviceVariationId: int, quantity: int, discountPercent: int}>, icon: string, category: string, status: string, stock: int, redeemed: int}
+     * @return array{id: int, name: string, description: string, requiredStamps: int, applicableVariations: list<array{serviceVariationId: int, quantity: int, discountPercent: int}>, icon: string, status: string, stock: int, redeemed: int}
      */
     public static function reward(Reward $reward): array
     {
@@ -28,7 +28,6 @@ class RewardPresenter
                 'discountPercent' => (int) $variation->pivot->discount_percent,
             ])->values()->all(),
             'icon' => $reward->icon,
-            'category' => $reward->category,
             'status' => $reward->is_active ? 'aktif' : 'nonaktif',
             'stock' => $reward->stock,
             'redeemed' => (int) ($reward->redemptions_count ?? $reward->redemptions()->count()),

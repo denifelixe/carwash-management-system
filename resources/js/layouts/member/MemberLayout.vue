@@ -26,14 +26,14 @@ const tabs = computed<
     },
     {
         key: 'stamps',
-        label: 'Stempel',
-        icon: Sparkles,
+        label: 'Riwayat',
+        icon: Clock,
         url: urls.value.stamps,
     },
     {
         key: 'services',
         label: 'Layanan',
-        icon: Clock,
+        icon: Sparkles,
         url: urls.value.services,
     },
     { key: 'rewards', label: 'Reward', icon: Gift, url: urls.value.rewards },

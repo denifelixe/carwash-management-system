@@ -18,14 +18,6 @@ class RewardQueries
     public const REDEMPTIONS_PER_PAGE = 10;
 
     /**
-     * Offered in the category field alongside whatever the catalog already
-     * uses, so a new outlet does not start from an empty list.
-     *
-     * @var list<string>
-     */
-    public const DEFAULT_CATEGORIES = ['Add-on', 'Layanan', 'Diskon', 'Merchandise'];
-
-    /**
      * @return array{redemptionPage: int}
      */
     public static function filters(Request $request): array
@@ -67,17 +59,6 @@ class RewardQueries
             ->orderBy('required_stamps')
             ->orderBy('name')
             ->get();
-    }
-
-    /**
-     * @return list<string>
-     */
-    public static function categoryOptions(): array
-    {
-        return array_values(array_unique([
-            ...self::DEFAULT_CATEGORIES,
-            ...Reward::query()->distinct()->orderBy('category')->pluck('category')->all(),
-        ]));
     }
 
     /**

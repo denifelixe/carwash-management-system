@@ -22,6 +22,7 @@ use App\Models\OrderTransaction;
 use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\CashEntryAttachments;
+use App\Support\Admin\DocumentNumbers;
 use App\Support\Admin\FinanceCategories;
 use App\Support\Admin\FinancePresenter;
 use App\Support\Admin\FinanceQueries;
@@ -186,14 +187,11 @@ class FinanceController extends Controller
                     'shift_name' => $shift?->name,
                     'entry_date' => $entryDate,
                     'occurred_at' => $occurredAt,
-                    /* Placeholder: the reference is only stable once the row has an ID. */
-                    'reference' => 'TRX-'.$occurredAt->format('YmdHisu'),
+                    'reference' => DocumentNumbers::cashEntry($data['category'], $entryDate),
                 ]);
 
                 $entry->save();
 
-                $entry->reference = FinanceReference::make($data['category'], $entryDate, $entry->id);
-                $entry->save();
                 $amounts = UpdateDailyBalance::methodAmounts($data['method'], $data['amount']);
                 $updateDailyBalance->handle(
                     $entryDate,
@@ -352,11 +350,9 @@ class FinanceController extends Controller
                     'entry_date' => $entryDate,
                     'occurred_at' => $occurredAt,
                     'updated_by_admin_id' => $admin->getKey(),
-                    'reference' => FinanceReference::make(
-                        $data['category'],
-                        $entryDate,
-                        $cashEntry->id,
-                    ),
+                    'reference' => $dateChanged
+                        ? DocumentNumbers::cashEntry($data['category'], $entryDate)
+                        : FinanceReference::make($data['category'], $entryDate, (int) substr($cashEntry->reference, -4)),
                 ])->save();
 
                 if ($partner !== null) {
@@ -369,7 +365,9 @@ class FinanceController extends Controller
                         'entry_date' => $entryDate,
                         'occurred_at' => $occurredAt,
                         'updated_by_admin_id' => $admin->getKey(),
-                        'reference' => FinanceReference::make($partner->category, $entryDate, $partner->id),
+                        'reference' => $dateChanged
+                            ? DocumentNumbers::cashEntry($partner->category, $entryDate)
+                            : FinanceReference::make($partner->category, $entryDate, (int) substr($partner->reference, -4)),
                     ])->save();
 
                     /* Two entries moved at once: rebuild the balance from the earliest day touched. */

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Auth;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Auth\MemberLoginRequest;
 use App\Models\Member;
+use App\Support\AppSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +22,7 @@ class MemberAuthenticatedSessionController extends Controller
     {
         return Inertia::render('auth/MemberLogin', [
             'status' => $request->session()->get('status'),
+            'whatsapp' => AppSettings::whatsapp(),
         ]);
     }
 

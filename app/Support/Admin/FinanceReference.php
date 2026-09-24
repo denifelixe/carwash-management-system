@@ -5,8 +5,8 @@ namespace App\Support\Admin;
 use Illuminate\Support\Str;
 
 /**
- * The one transaction reference format the finance ledger uses, so a demo row
- * and a live row are read the same way: TRX-{category code}-{YYMMDD}-{id}.
+ * Manual cash entries use TRX-{category code}-{YYMMDD}-{daily sequence}.
+ * POS payments keep their order-based references.
  */
 class FinanceReference
 {

@@ -24,7 +24,6 @@ use Illuminate\Support\Carbon;
  * @property string $name
  * @property string|null $description
  * @property string $icon
- * @property string $category
  * @property int $required_stamps
  * @property int $stock
  * @property bool $is_active
@@ -33,7 +32,7 @@ use Illuminate\Support\Carbon;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  */
-#[Fillable(['name', 'description', 'icon', 'category', 'required_stamps', 'stock', 'is_active'])]
+#[Fillable(['name', 'description', 'icon', 'required_stamps', 'stock', 'is_active'])]
 class Reward extends Model
 {
     /** @use HasFactory<RewardFactory> */

@@ -165,6 +165,8 @@ const state = {
     activeLedger: { value: 'in' },
     draft: { value: { category: 'Penjualan Produk', description: 'Parfum', amount: 50000, method: 'Tunai' } },
     entryForm: { entry_date: '2026-09-05', entry_time: '10:00' },
+    transactionReference(category, date, sequence) { return `TRX-PP-260905-${String(sequence).padStart(4, '0')}`; },
+    nextDemoCashReference() { return 'TRX-PP-260905-0002'; },
     removedAttachmentIds: { value: [] }, pendingAttachments: { value: [] },
 };
 const api = new Function('state', `with (state) { ${code}; return { ${names.join(',')} }; }`)(state);
@@ -181,7 +183,7 @@ for (const [choice, expected] of [[2, 'Shift Sore'], [null, null], ['keep', 'Shi
     assert.equal(state.order.paidAmount, 50000);
     assert.equal(transaction.date, '2026-09-05');
     for (const direction of ['in', 'out']) {
-        const entry = { id: 'manual1', direction, amount: 50000, shift: 'Shift Lama', recordedBy: 'Kasir', date: '2026-09-05', attachments: [] };
+        const entry = { id: 'manual1', ref: 'TRX-PP-260905-0001', direction, amount: 50000, shift: 'Shift Lama', recordedBy: 'Kasir', date: '2026-09-05', attachments: [] };
         state.editingEntry.value = entry;
         api.saveDemoEntry(null);
         assert.equal(state.recentlyUpdatedEntryId.value, entry.id);

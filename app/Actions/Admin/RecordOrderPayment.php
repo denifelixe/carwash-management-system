@@ -19,8 +19,8 @@ use Illuminate\Support\Facades\DB;
  *
  * The cashier may take the bill in instalments, so the order keeps a running
  * `paid_amount` and every hand-over is written as its own transaction. Only a
- * payment that clears the bill on a settlement intent closes the order and
- * issues its invoice; a deposit on a booking leaves the car still to arrive.
+ * payment that clears the bill on a settlement intent closes the order;
+ * a deposit on a booking leaves the car still to arrive.
  */
 class RecordOrderPayment
 {
@@ -76,7 +76,7 @@ class RecordOrderPayment
 
             $transaction = $order->transactions()->create([
                 'recorded_by_admin_id' => $cashier->getKey(),
-                'reference' => $order->number.'-TRX-'.(
+                'reference' => $order->number.'/TRX'.(
                     OrderTransaction::withTrashed()->whereBelongsTo($order)->count() + 1
                 ),
                 'type' => $completesOrder ? 'Pembayaran Lunas' : 'Pembayaran Sebagian',
@@ -103,9 +103,7 @@ class RecordOrderPayment
                 'payment_method' => self::paymentMethodLabel($order, $channels),
                 'reward_name' => $redemption?->reward_name ?? $order->reward_name,
                 'status' => $completesOrder ? 'selesai' : $order->status,
-                'invoice_number' => $completesOrder
-                    ? ($order->invoice_number ?? str_replace('ORD', 'ZW', $order->number))
-                    : $order->invoice_number,
+                'invoice_number' => $order->number,
             ]);
 
             return $transaction;

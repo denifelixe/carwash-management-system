@@ -100,7 +100,7 @@ class OrderPresenter
                     ])->values()->all(),
                 ])->values()->all()
                 : [],
-            'invoice' => $order->invoice_number ?? '—',
+            'invoice' => $order->number,
             'date' => $order->service_date->toDateString(),
             'time' => $order->arrived_at?->format('H.i') ?? '—',
             'arrivalDate' => $order->arrived_at?->toDateString(),
@@ -194,7 +194,7 @@ class OrderPresenter
 
         return [
             'orderNo' => $order->number,
-            'invoice' => $order->invoice_number ?? '—',
+            'invoice' => $order->number,
             'reference' => $transaction->reference,
             'date' => $transaction->paid_at->toDateString(),
             'time' => $transaction->paid_at->format('H.i'),

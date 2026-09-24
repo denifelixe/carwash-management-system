@@ -162,14 +162,14 @@ test('a partial payment leaves the order open and records its channels', functio
         ->paid_amount->toBe(40000)
         ->total->toBe(100000)
         ->status->toBe('pelunasan')
-        ->invoice_number->toBeNull()
+        ->invoice_number->toBe($order->number)
         ->payment_method->toBe('Tunai + Debit · BCA')
         ->and($transaction)
         ->type->toBe('Pembayaran Sebagian')
         ->amount->toBe(40000)
         ->shift_name->toBe('Shift Pagi')
         ->recorded_by_admin_id->toBe($cashier->id)
-        ->reference->toBe($order->number.'-TRX-1')
+        ->reference->toBe($order->number.'/TRX1')
         ->and($transaction->channel_breakdown)->toBe([
             ['label' => 'Tunai', 'amount' => 25000],
             ['label' => 'Debit · BCA', 'amount' => 15000, 'reference' => '99881'],
@@ -337,7 +337,7 @@ test('settling the balance closes the order and issues its invoice', function ()
         ->discount->toBe(10000)
         ->total->toBe(90000)
         ->paid_amount->toBe(90000)
-        ->invoice_number->toBe('ZW-20260829-ABCDEF')
+        ->invoice_number->toBe($order->number)
         ->payment_method->toBe('Tunai + QRIS')
         ->and(OrderTransaction::query()->latest('id')->firstOrFail()->type)
         ->toBe('Pembayaran Lunas');

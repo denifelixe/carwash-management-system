@@ -6,8 +6,8 @@ use App\Models\Admin;
 use App\Models\AdminShift;
 use App\Models\CashEntry;
 use App\Support\Admin\CashEntryAttachments;
+use App\Support\Admin\DocumentNumbers;
 use App\Support\Admin\FinanceCategories;
-use App\Support\Admin\FinanceReference;
 use App\Support\Admin\OrderQueries;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\UploadedFile;
@@ -54,12 +54,9 @@ class RecordCashDeposit
                         'shift_name' => $shift?->name,
                         'entry_date' => $entryDate,
                         'occurred_at' => $occurredAt,
-                        /* Placeholder: the reference is only stable once the row has an ID. */
-                        'reference' => 'TRX-'.$direction.'-'.$occurredAt->format('YmdHisu'),
+                        'reference' => DocumentNumbers::cashEntry(FinanceCategories::CASH_DEPOSIT, $entryDate),
                     ]);
 
-                    $entry->reference = FinanceReference::make(FinanceCategories::CASH_DEPOSIT, $entryDate, $entry->id);
-                    $entry->save();
                     $entries[$direction] = $entry;
                 }
 

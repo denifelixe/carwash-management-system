@@ -30,7 +30,6 @@ class StoreRewardRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string', 'max:500'],
             'icon' => ['required', 'string', 'max:16'],
-            'category' => ['required', 'string', 'max:100'],
             'required_stamps' => ['required', 'integer', 'min:1', 'max:1000'],
             'stock' => ['required', 'integer', 'min:0', 'max:1000000'],
             'is_active' => ['required', 'boolean'],
@@ -47,7 +46,6 @@ class StoreRewardRequest extends FormRequest
         return [
             'name.required' => 'Nama reward wajib diisi.',
             'icon.required' => 'Ikon reward wajib diisi.',
-            'category.required' => 'Kategori wajib diisi.',
             'required_stamps.required' => 'Syarat stempel wajib diisi.',
             'required_stamps.min' => 'Syarat stempel minimal 1.',
             'stock.min' => 'Stok tidak boleh negatif.',
@@ -83,11 +81,11 @@ class StoreRewardRequest extends FormRequest
     }
 
     /**
-     * @return array{name: string, description: string|null, icon: string, category: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>}
+     * @return array{name: string, description: string|null, icon: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>}
      */
     public function reward(): array
     {
-        /** @var array{name: string, description: string|null, icon: string, category: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>} $data */
+        /** @var array{name: string, description: string|null, icon: string, required_stamps: int, stock: int, is_active: bool, variation_discounts: list<array{service_variation_id: int, quantity: int, discount_percent: int}>} $data */
         $data = [
             ...$this->validated(),
             'is_active' => $this->boolean('is_active'),
@@ -104,7 +102,6 @@ class StoreRewardRequest extends FormRequest
         $this->merge([
             'name' => Str::squish((string) $this->input('name', '')),
             'icon' => trim((string) $this->input('icon', '')),
-            'category' => Str::squish((string) $this->input('category', '')),
             'description' => $description === '' ? null : $description,
             'variation_discounts' => $this->input('variation_discounts', []),
         ]);
