@@ -13,6 +13,7 @@ import {
     Plus,
     Search,
     Trash2,
+    TriangleAlert,
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
@@ -163,7 +164,8 @@ const scopedOrders = computed<CarwashOrder[]>(() =>
 );
 
 const search = ref<string>('');
-const statusFilter = ref<string>('menunggu');
+/** The list opens on every order of the day (MoM follow-up), not one stage. */
+const statusFilter = ref<string>('Semua');
 const detailOrderId = ref<number | null>(null);
 const deletingOrder = ref<CarwashOrder | null>(null);
 const isCreateOpen = ref<boolean>(false);
@@ -902,6 +904,7 @@ function closeOrderForm(): void {
     editingOrderId.value = null;
     orderForm.clearErrors();
     resetDraft();
+    clearDuplicateOrderWarning();
 }
 
 function openCreateOrder(): void {
@@ -1005,7 +1008,21 @@ function createOrder(): void {
                 : storeOrder(),
             {
                 preserveScroll: true,
+                onFlash: (flash) => {
+                    const duplicates = flash.duplicateOrders;
+
+                    duplicateOrders.value = Array.isArray(duplicates)
+                        ? (duplicates as DuplicateOrder[])
+                        : [];
+                },
+                onError: (errors) => {
+                    duplicateOrderWarning.value = errors.duplicate ?? null;
+                },
+                onFinish: () => {
+                    orderForm.confirm_duplicate = false;
+                },
                 onSuccess: () => {
+                    clearDuplicateOrderWarning();
                     const createdOrder = editingOrder.value
                         ? null
                         : orderList.value[0];
@@ -1062,6 +1079,17 @@ function createOrder(): void {
 
         return;
     }
+
+    const duplicates = demoSameDayPlateOrders(draft.value.plate);
+
+    if (!orderForm.confirm_duplicate && duplicates.length > 0) {
+        duplicateOrders.value = duplicates;
+        duplicateOrderWarning.value = `Plat ${formatPlate(draft.value.plate)} sudah punya order hari ini. Periksa agar tidak tercatat dua kali.`;
+
+        return;
+    }
+
+    clearDuplicateOrderWarning();
 
     workflow.addOrder({
         id: sequence,
@@ -1126,7 +1154,63 @@ const orderForm = useForm({
     handled_by_admin_id: null as number | null,
     handled_by: null as string | null,
     items: [] as { service_variation_id: number; quantity: number }[],
+    confirm_duplicate: false,
 });
+
+type DuplicateOrder = Pick<
+    CarwashOrder,
+    | 'id'
+    | 'orderNo'
+    | 'date'
+    | 'time'
+    | 'customer'
+    | 'vehicle'
+    | 'plate'
+    | 'items'
+    | 'status'
+    | 'handledBy'
+>;
+
+/**
+ * Orders the same plate already has today. The clerk sees them before a new
+ * order goes through and can still save it (a second visit is legitimate).
+ */
+const duplicateOrderWarning = ref<string | null>(null);
+const duplicateOrders = ref<DuplicateOrder[]>([]);
+
+function clearDuplicateOrderWarning(): void {
+    duplicateOrderWarning.value = null;
+    duplicateOrders.value = [];
+    orderForm.confirm_duplicate = false;
+}
+
+/** Saves the order the warning was raised for, knowing the plate is repeated. */
+function saveOrderDespiteDuplicate(): void {
+    orderForm.confirm_duplicate = true;
+    createOrder();
+}
+
+/** The demo's version of OrderQueries::sameDayPlateOrders. */
+function demoSameDayPlateOrders(plate: string): DuplicateOrder[] {
+    const normalized = normalizePlate(plate);
+
+    return normalized === ''
+        ? []
+        : orderList.value.filter(
+              (order) =>
+                  order.date === props.filters.today &&
+                  order.status !== 'batal' &&
+                  normalizePlate(order.plate) === normalized,
+          );
+}
+
+/** The general error box leaves the same-plate warning to its own panel. */
+const orderFormErrors = computed(() =>
+    Object.entries(orderForm.errors).filter(([field]) => field !== 'duplicate'),
+);
+
+/* A warning belongs to the plate it was raised for; another plate drops it. */
+watch(() => draft.value.plate, clearDuplicateOrderWarning);
 
 const statusForm = useForm({ status: '' });
 const cancellingOrder = ref<CarwashOrder | null>(null);
@@ -2345,10 +2429,10 @@ function removeDeletionPhoto(index: number): void {
     >
         <div class="space-y-5">
             <div
-                v-if="mode === 'live' && orderForm.hasErrors"
+                v-if="mode === 'live' && orderFormErrors.length > 0"
                 class="rounded-xl bg-rose-50 px-4 py-3 text-xs text-rose-700"
             >
-                <p v-for="(message, field) in orderForm.errors" :key="field">
+                <p v-for="[field, message] in orderFormErrors" :key="field">
                     {{ message }}
                 </p>
             </div>
@@ -2932,27 +3016,89 @@ function removeDeletionPhoto(index: number): void {
         </div>
 
         <template #footer>
-            <button
-                type="button"
-                class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
-                @click="closeOrderForm"
-            >
-                Batal
-            </button>
-            <button
-                type="button"
-                class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
-                :disabled="!canSubmitOrder || orderForm.processing"
-                @click="createOrder"
-            >
-                {{
-                    orderForm.processing
-                        ? 'Menyimpan...'
-                        : editingOrder
-                          ? 'Simpan perubahan'
-                          : 'Simpan order'
-                }}
-            </button>
+            <div class="flex w-full flex-col gap-3">
+                <!--
+                    In the pinned footer so the warning sits next to the button
+                    that raised it, however far the form is scrolled.
+                -->
+                <div
+                    v-if="duplicateOrderWarning"
+                    class="rounded-xl bg-amber-50 p-3 text-xs text-amber-900 ring-1 ring-amber-200"
+                    role="alert"
+                    data-duplicate-order-warning
+                >
+                    <p class="flex items-start gap-1.5 font-semibold">
+                        <TriangleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {{ duplicateOrderWarning }}
+                    </p>
+                    <ul
+                        v-if="duplicateOrders.length > 0"
+                        class="mt-2 max-h-40 space-y-1.5 overflow-y-auto"
+                    >
+                        <li
+                            v-for="order in duplicateOrders"
+                            :key="order.id"
+                            class="rounded-lg bg-white/80 px-2.5 py-2 ring-1 ring-amber-100"
+                        >
+                            <p
+                                class="flex items-center justify-between gap-2 font-semibold text-slate-900"
+                            >
+                                <span class="truncate">{{
+                                    order.orderNo
+                                }}</span>
+                                <StatusPill :status="order.status" />
+                            </p>
+                            <p class="mt-0.5 text-[11px] text-slate-600">
+                                {{ formatPlate(order.plate) }} ·
+                                {{ order.vehicle }} · {{ order.customer }}
+                            </p>
+                            <p class="text-[11px] text-slate-500">
+                                {{ formatDate(order.date) }} ·
+                                {{ order.time }} · {{ order.items }} ·
+                                {{ order.handledBy }}
+                            </p>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="flex gap-2">
+                    <button
+                        type="button"
+                        class="flex-1 rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+                        @click="closeOrderForm"
+                    >
+                        Batal
+                    </button>
+                    <button
+                        v-if="duplicateOrderWarning"
+                        type="button"
+                        class="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:bg-slate-300"
+                        :disabled="!canSubmitOrder || orderForm.processing"
+                        @click="saveOrderDespiteDuplicate"
+                    >
+                        {{
+                            orderForm.processing
+                                ? 'Menyimpan...'
+                                : 'Tetap simpan'
+                        }}
+                    </button>
+                    <button
+                        v-else
+                        type="button"
+                        class="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-600 py-2.5 text-sm font-semibold text-white transition hover:from-cyan-600 hover:to-sky-700 disabled:cursor-not-allowed disabled:from-slate-300 disabled:to-slate-300"
+                        :disabled="!canSubmitOrder || orderForm.processing"
+                        @click="createOrder"
+                    >
+                        {{
+                            orderForm.processing
+                                ? 'Menyimpan...'
+                                : editingOrder
+                                  ? 'Simpan perubahan'
+                                  : 'Simpan order'
+                        }}
+                    </button>
+                </div>
+            </div>
         </template>
     </ModalDialog>
 

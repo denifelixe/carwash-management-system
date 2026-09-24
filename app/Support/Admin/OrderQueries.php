@@ -230,6 +230,24 @@ class OrderQueries
     }
 
     /**
+     * Orders the same plate already has on this service day, cancelled ones
+     * aside. A new order for that plate is held back as a possible double
+     * entry until the clerk confirms it; the plate is passed as stored.
+     *
+     * @return Collection<int, Order>
+     */
+    public static function sameDayPlateOrders(string $plate, string $date): Collection
+    {
+        return self::baseQuery()
+            ->where('vehicle_plate', $plate)
+            ->whereDate('service_date', $date)
+            ->where('status', '!=', 'batal')
+            ->latest('arrived_at')
+            ->latest('id')
+            ->get();
+    }
+
+    /**
      * @return Builder<Order>
      */
     private static function baseQuery(): Builder

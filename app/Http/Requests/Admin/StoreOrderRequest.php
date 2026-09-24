@@ -58,6 +58,8 @@ class StoreOrderRequest extends FormRequest
             'customer_phone' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:30'],
             'vehicle_name' => ['nullable', 'required_if:customer_mode,walk-in', 'string', 'max:255'],
             'is_special_plate' => ['sometimes', 'boolean'],
+            /* Set once the clerk has seen the same-plate warning and saves anyway. */
+            'confirm_duplicate' => ['sometimes', 'boolean'],
             'vehicle_plate' => [
                 'nullable',
                 'required_if:customer_mode,walk-in',

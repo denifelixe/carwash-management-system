@@ -24,10 +24,12 @@ use App\Support\Admin\OperationalDataWindow;
 use App\Support\Admin\OrderPresenter;
 use App\Support\Admin\OrderQueries;
 use App\Support\Demo\DateFilter;
+use App\Support\VehiclePlate;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Storage;
@@ -97,6 +99,26 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request, CaptureOrderLead $captureOrderLead): RedirectResponse
     {
         $data = $request->validated();
+
+        if (! $request->boolean('confirm_duplicate')) {
+            $plate = $data['customer_mode'] === 'existing'
+                ? (string) MemberVehicle::query()->whereKey((int) $data['member_vehicle_id'])->value('plate')
+                : (string) ($data['vehicle_plate'] ?? '');
+            $duplicates = $plate === ''
+                ? collect()
+                : OrderQueries::sameDayPlateOrders($plate, now()->toDateString());
+
+            if ($duplicates->isNotEmpty()) {
+                Inertia::flash('duplicateOrders', $duplicates->map(fn (Order $order): array => Arr::only(
+                    OrderPresenter::order($order),
+                    ['id', 'orderNo', 'date', 'time', 'customer', 'vehicle', 'plate', 'items', 'status', 'handledBy'],
+                ))->all());
+
+                return back()->withErrors([
+                    'duplicate' => 'Plat '.VehiclePlate::format($plate).' sudah punya order hari ini. Periksa agar tidak tercatat dua kali.',
+                ]);
+            }
+        }
 
         DB::transaction(function () use ($data, $request, $captureOrderLead): void {
             $quantities = collect($data['items'])->mapWithKeys(

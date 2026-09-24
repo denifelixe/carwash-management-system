@@ -12,7 +12,9 @@ use App\Models\OrderTransaction;
 use App\Models\Service;
 use App\Models\ServiceVariation;
 use App\Support\Admin\OrderQueries;
+use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia;
@@ -756,6 +758,8 @@ test('a walk-in order files a lead and a repeat visit reuses it by plate', funct
             'customer_name' => 'Tamu Walk-In Baru',
             'customer_phone' => '081200002222',
             'vehicle_plate' => 'B9876ABC',
+            /* The same plate twice in a day is a confirmed repeat visit here. */
+            'confirm_duplicate' => true,
         ])
         ->assertSessionHasNoErrors();
 
@@ -869,3 +873,113 @@ test('transaction orders allow metadata edits while preserving financial snapsho
         ->assertSessionHasNoErrors();
     expect($order->refresh()->handled_by)->toBe('Petugas Lain');
 })->with(['proses', 'selesai'])->with([50000, 90000]);
+
+/**
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function walkInOrderPayload(ServiceVariation $variation, array $overrides = []): array
+{
+    return [
+        'customer_mode' => 'walk-in',
+        'member_id' => null,
+        'member_vehicle_id' => null,
+        'customer_name' => 'Tamu Walk In',
+        'customer_phone' => '081234567890',
+        'vehicle_name' => 'Toyota Calya',
+        'vehicle_plate' => 'b 9876 abc',
+        'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ...$overrides,
+    ];
+}
+
+test('a second order for the same plate on the same day is held back until confirmed', function () {
+    $this->travelTo(CarbonImmutable::parse('2026-09-24 09:00:00'));
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $variation = Service::factory()->create(['price' => 45000])->serviceVariations()->firstOrFail();
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), walkInOrderPayload($variation))
+        ->assertSessionHasNoErrors();
+
+    $first = Order::query()->sole();
+    $this->travel(3)->hours();
+
+    $this->from(route('admin.orders.index'))
+        ->post(route('admin.orders.store'), walkInOrderPayload($variation, ['vehicle_plate' => 'B9876ABC']))
+        ->assertRedirect(route('admin.orders.index'))
+        ->assertSessionHasErrors(['duplicate' => 'Plat B 9876 ABC sudah punya order hari ini. Periksa agar tidak tercatat dua kali.'])
+        ->assertInertiaFlash('duplicateOrders.0.orderNo', $first->number)
+        ->assertInertiaFlash('duplicateOrders.0.time', '09.00')
+        ->assertInertiaFlash('duplicateOrders.0.status', 'menunggu')
+        ->assertInertiaFlash('duplicateOrders.0.plate', 'B9876ABC');
+
+    expect(Order::query()->count())->toBe(1);
+
+    $this->post(route('admin.orders.store'), walkInOrderPayload($variation, ['confirm_duplicate' => true]))
+        ->assertSessionHasNoErrors();
+
+    expect(Order::query()->count())->toBe(2);
+});
+
+test('a member vehicle is checked by its own plate', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $member = Member::factory()->create();
+    $vehicle = MemberVehicle::factory()->for($member)->create(['plate' => 'B 1234 XYZ']);
+    $variation = Service::factory()->create()->serviceVariations()->firstOrFail();
+    Order::factory()->create(['vehicle_plate' => 'B1234XYZ', 'service_date' => today(), 'status' => 'proses']);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), [
+            'customer_mode' => 'existing',
+            'member_id' => $member->id,
+            'member_vehicle_id' => $vehicle->id,
+            'items' => [['service_variation_id' => $variation->id, 'quantity' => 1]],
+        ])
+        ->assertSessionHasErrors('duplicate');
+});
+
+test('cancelled orders and other days never count as a same-plate duplicate', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $variation = Service::factory()->create()->serviceVariations()->firstOrFail();
+    Order::factory()->create(['vehicle_plate' => 'B9876ABC', 'service_date' => today(), 'status' => 'batal']);
+    Order::factory()->create(['vehicle_plate' => 'B9876ABC', 'service_date' => today()->subDay(), 'status' => 'selesai']);
+    Order::factory()->create(['vehicle_plate' => 'B1111AAA', 'service_date' => today(), 'status' => 'menunggu']);
+
+    $this->actingAs($owner, 'admin')
+        ->post(route('admin.orders.store'), walkInOrderPayload($variation))
+        ->assertSessionHasNoErrors()
+        ->assertInertiaFlashMissing('duplicateOrders');
+});
+
+test('the demo order form flags the same plates as the live one', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Orders.ts', source, ts.ScriptTarget.Latest, true);
+const code = ts.transpile(ast.statements
+    .filter(node => ts.isFunctionDeclaration(node) && node.name?.text === 'demoSameDayPlateOrders')
+    .map(node => node.getText(ast))
+    .join('\n'));
+const normalizePlate = value => value.replace(/\s+/g, '').toUpperCase();
+const props = { filters: { today: '2026-09-24' } };
+const order = (id, plate, date = '2026-09-24', status = 'menunggu') => ({ id, plate, date, status });
+const orderList = { value: [
+    order(1, 'B9876ABC'),
+    order(2, 'B9876ABC', '2026-09-23'),
+    order(3, 'B9876ABC', '2026-09-24', 'batal'),
+    order(4, 'B1111AAA'),
+    order(5, 'B9876ABC', '2026-09-24', 'selesai'),
+] };
+eval(code + `
+assert.deepEqual(demoSameDayPlateOrders('b 9876 abc').map(item => item.id), [1, 5]);
+assert.deepEqual(demoSameDayPlateOrders(''), []);
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});

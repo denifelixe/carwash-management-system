@@ -243,8 +243,8 @@ test('the order list tracks a single status and leaves money to the cashier', fu
         // The booking chip uses the full status label.
         ->toContain("status === 'booking' ? bookingStatusLabel : status")
         ->toContain('@filter="applyStatusFilter"')
-        // The list lands on the queue that still needs a crew.
-        ->toContain("const statusFilter = ref<string>('menunggu');")
+        // The list lands on every order of the day, the Total Order card.
+        ->toContain("const statusFilter = ref<string>('Semua');")
         // The status column shows the stage on its own, without a bay.
         ->toContain(':status="displayedStatus(order)"')
         ->not->toContain('{{ order.bay }}')
