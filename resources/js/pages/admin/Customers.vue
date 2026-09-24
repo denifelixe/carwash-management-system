@@ -2,6 +2,10 @@
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
     Car,
+    Check,
+    Copy,
+    ExternalLink,
+    Info,
     Mail,
     Phone,
     Pencil,
@@ -60,8 +64,22 @@ const props = defineProps<{
     accountFilters: string[];
     vehicleTypes: string[];
     rewards: CarwashReward[];
+    memberPortal: { url: string; enabled: boolean };
     capabilities: { create: boolean; update: boolean };
 }>();
+
+const isPortalUrlCopied = ref<boolean>(false);
+
+/** Copies the member portal login link so staff can share it with members. */
+async function copyPortalUrl(): Promise<void> {
+    try {
+        await navigator.clipboard.writeText(props.memberPortal.url);
+        isPortalUrlCopied.value = true;
+        window.setTimeout(() => (isPortalUrlCopied.value = false), 2000);
+    } catch {
+        isPortalUrlCopied.value = false;
+    }
+}
 
 const workflow = useCarwashWorkflow();
 
@@ -486,6 +504,50 @@ function stampToneClass(type: string): string {
     <Head :title="`${brand.name} — Member`" />
 
     <div class="space-y-4">
+        <section
+            class="flex flex-col gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-4 sm:flex-row sm:items-center"
+            aria-label="Informasi portal member"
+        >
+            <div
+                class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-sky-100 text-sky-600"
+            >
+                <Info class="h-4 w-4" />
+            </div>
+            <div class="min-w-0 flex-1">
+                <p class="text-sm font-semibold text-sky-900">Portal member</p>
+                <p class="mt-0.5 text-xs text-sky-800">
+                    Member yang punya akun portal (email &amp; password diatur
+                    di form member) dapat login melalui link berikut untuk
+                    melihat stempel, riwayat servis, dan reward.
+                </p>
+                <a
+                    :href="memberPortal.url"
+                    target="_blank"
+                    rel="noopener"
+                    class="mt-1 inline-flex max-w-full items-center gap-1 text-xs font-medium break-all text-sky-700 underline-offset-2 hover:underline"
+                >
+                    {{ memberPortal.url }}
+                    <ExternalLink class="h-3 w-3 shrink-0" />
+                </a>
+                <p
+                    v-if="!memberPortal.enabled"
+                    class="mt-1 text-xs font-medium text-amber-700"
+                >
+                    Portal member sedang ditutup, link belum bisa dipakai
+                    member.
+                </p>
+            </div>
+            <button
+                type="button"
+                class="flex shrink-0 items-center justify-center gap-2 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
+                @click="copyPortalUrl"
+            >
+                <Check v-if="isPortalUrlCopied" class="h-3.5 w-3.5" />
+                <Copy v-else class="h-3.5 w-3.5" />
+                {{ isPortalUrlCopied ? 'Tersalin' : 'Salin link' }}
+            </button>
+        </section>
+
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             <StatCard
                 label="Total member"

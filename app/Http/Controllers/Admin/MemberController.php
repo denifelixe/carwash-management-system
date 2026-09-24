@@ -48,6 +48,10 @@ class MemberController extends Controller
             'rewards' => fn (): array => RewardQueries::activeCatalog()
                 ->map(fn (Reward $reward): array => RewardPresenter::reward($reward))
                 ->all(),
+            'memberPortal' => [
+                'url' => route('member.login'),
+                'enabled' => (bool) config('app.member_portal_enabled'),
+            ],
             'capabilities' => [
                 'create' => Gate::allows('admin.members.create'),
                 'update' => Gate::allows('admin.members.update'),

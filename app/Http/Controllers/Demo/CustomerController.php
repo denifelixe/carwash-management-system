@@ -30,6 +30,7 @@ class CustomerController extends AdminController
             'accountFilters' => MemberQueries::ACCOUNT_FILTERS,
             'vehicleTypes' => MemberQueries::VEHICLE_TYPES,
             'rewards' => Catalog::rewards(),
+            'memberPortal' => ['url' => route('demo.member.login'), 'enabled' => true],
             'capabilities' => ['create' => true, 'update' => true],
         ]);
     }

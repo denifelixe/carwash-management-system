@@ -13,7 +13,7 @@ dataset('admin modules', [
     'dashboard' => ['demo.admin.dashboard', 'admin/Dashboard', ['stats', 'filters', 'shifts', 'cashSummary', 'orderSummary']],
     'orders' => ['demo.admin.orders', 'admin/Orders', ['orders', 'filters', 'orderStatuses', 'upcoming', 'services', 'customers', 'crew']],
     'pos' => ['demo.admin.pos', 'admin/Pos', ['orders', 'filters', 'services', 'customers', 'rewards', 'paymentMethods']],
-    'members' => ['demo.admin.members', 'admin/Customers', ['members', 'stats', 'filters', 'capabilities']],
+    'members' => ['demo.admin.members', 'admin/Customers', ['members', 'stats', 'filters', 'memberPortal', 'capabilities']],
     'finance' => ['demo.admin.finance', 'admin/Finance', ['moneyIn', 'moneyOut', 'filters', 'incomeCategories', 'expenseCategories', 'cashSummary', 'dailyBalance', 'dailyBalanceHistory', 'orders']],
     'bookings' => ['demo.admin.bookings', 'admin/Bookings', ['bookings', 'today', 'services', 'customers', 'capabilities']],
     'inventory' => ['demo.admin.inventory', 'admin/Inventory', ['items', 'movements', 'stats', 'itemOptions', 'filters', 'categories', 'suppliers', 'movementTypes', 'capabilities']],

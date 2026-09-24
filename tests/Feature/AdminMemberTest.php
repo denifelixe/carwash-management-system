@@ -76,6 +76,8 @@ test('an owner sees the live paginated member module and sidebar wiring', functi
                 ->where('mode', 'live')
                 ->where('capabilities.create', true)
                 ->where('capabilities.update', true)
+                ->where('memberPortal.url', route('member.login'))
+                ->where('memberPortal.enabled', false)
                 ->where('members.meta.perPage', 15)
                 ->where('filters.status', 'Semua')
                 ->where('filters.account', 'Semua')
