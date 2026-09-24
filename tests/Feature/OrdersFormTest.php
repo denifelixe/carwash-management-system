@@ -546,7 +546,7 @@ test('new orders separate members and non-members without registering members', 
     expect($ordersPage)
         ->toContain("{ key: 'existing', label: 'Member' },")
         ->toContain("{ key: 'walk-in', label: 'Non-Member' },")
-        ->toContain('class="mt-2 grid grid-cols-2 gap-1')
+        ->toContain('class="mt-3 grid grid-cols-2 gap-1')
         ->toContain('for="order-customer-name"')
         ->toContain('for="order-customer-phone"')
         ->toContain('for="order-vehicle-plate"')
@@ -778,4 +778,80 @@ test('the order and booking forms drop their services label on phones so the pic
         expect(file_get_contents(resource_path("js/pages/admin/{$page}.vue")))
             ->toContain('class="mb-2 hidden text-[11px] font-medium tracking-wider text-slate-400 uppercase sm:block"');
     }
+});
+
+test('one lookup above the tabs finds members, leads, or a new non-member plate', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { ref, computed } = require('vue');
+const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Orders.ts', source, ts.ScriptTarget.Latest, true);
+const names = ['customerLookupQuery', 'customerSuggestions', 'visibleCustomerOptions'];
+const functions = ['searchCustomersAndLeads', 'applyCustomerSuggestion', 'normalizeCustomerSearch', 'pickCustomer', 'pickLead', 'clearCustomer', 'selectCustomerMode'];
+const code = ts.transpile(ast.statements
+    .filter(node => (ts.isVariableStatement(node) && names.includes(node.declarationList.declarations[0].name.getText(ast)))
+        || (ts.isFunctionDeclaration(node) && functions.includes(node.name?.text)))
+    .map(node => node.getText(ast))
+    .join('\n'), { target: ts.ScriptTarget.ES2020 });
+const normalizePlate = value => value.replace(/\s+/g, '').toUpperCase();
+const isSpecialPlate = () => false;
+const props = { mode: 'live' };
+let leadSearches = [];
+const searchLeads = query => leadSearches.push(query);
+let leadSearchTimer;
+const isLeadSearching = ref(false);
+const customerQuery = ref('');
+const customerMode = ref('existing');
+const selectedCustomerOption = ref(null);
+const draft = ref({ customerId: null, walkInName: '', customerPhone: '', vehicle: '', plate: '', isSpecialPlate: false });
+const member = { id: 7, name: 'Deni', phone: '0815', vehicles: [] };
+const customerOptions = ref([{ key: 'customer-7-vehicle-0', label: 'Deni', customer: member, vehicle: { name: 'Civic', plate: 'B8120DS' } }]);
+const leadOptions = ref([]);
+eval(code + `
+searchCustomersAndLeads('b 8120');
+assert.deepEqual(leadSearches, ['b 8120']);
+assert.deepEqual(customerSuggestions.value.map(item => item.kind), ['member', 'new'], 'a partial plate still offers a new entry');
+leadOptions.value = [{ id: 3, name: 'Putri', phone: '0899', vehicleName: 'Brio', vehiclePlate: 'B8120DS' }];
+searchCustomersAndLeads('b 8120 ds');
+assert.deepEqual(customerSuggestions.value.map(item => item.kind), ['member', 'lead'], 'a plate someone owns offers no new entry');
+const [memberHit, leadHit] = customerSuggestions.value;
+
+applyCustomerSuggestion(memberHit);
+assert.equal(customerMode.value, 'existing');
+assert.equal(draft.value.customerId, 7);
+assert.equal(draft.value.plate, 'B8120DS');
+
+applyCustomerSuggestion(leadHit);
+assert.equal(customerMode.value, 'walk-in');
+assert.equal(draft.value.customerId, null);
+assert.equal(draft.value.walkInName, 'Putri');
+assert.equal(draft.value.plate, 'B8120DS');
+
+leadOptions.value = [];
+searchCustomersAndLeads('d 1 abc');
+const fresh = customerSuggestions.value.at(-1);
+assert.deepEqual([fresh.kind, fresh.plate, fresh.name], ['new', 'D1ABC', '']);
+applyCustomerSuggestion(fresh);
+assert.equal(customerMode.value, 'walk-in');
+assert.deepEqual([draft.value.plate, draft.value.walkInName, draft.value.vehicle], ['D1ABC', '', '']);
+
+searchCustomersAndLeads('Pak Budi');
+const named = customerSuggestions.value.at(-1);
+assert.deepEqual([named.kind, named.plate, named.name], ['new', '', 'Pak Budi'], 'a name is not a plate');
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+
+    $ordersPage = file_get_contents(resource_path('js/pages/admin/Orders.vue'));
+
+    expect(mb_strpos($ordersPage, 'id="order-customer"'))
+        ->toBeLessThan(mb_strpos($ordersPage, 'role="tablist"'))
+        ->and($ordersPage)
+        ->not->toContain('id="order-lead"')
+        ->toContain('@select="applyCustomerSuggestion"');
 });

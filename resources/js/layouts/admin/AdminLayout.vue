@@ -582,7 +582,7 @@ function closeSidebar(module: CarwashAdminModule): void {
                 class="sticky top-0 z-30 border-b border-slate-200 bg-white/85 backdrop-blur-xl"
             >
                 <div
-                    class="flex items-center gap-3 px-4 py-3.5 sm:px-6 lg:px-8"
+                    class="flex items-center gap-3 px-4 py-3.5 max-[420px]:flex-wrap max-[420px]:gap-y-2.5 sm:px-6 lg:px-8"
                 >
                     <button
                         type="button"
@@ -642,13 +642,15 @@ function closeSidebar(module: CarwashAdminModule): void {
                     </div>
 
                     <div
-                        class="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-2.5 py-1.5 text-slate-600 shadow-sm sm:px-3"
+                        class="flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white/70 px-2.5 py-1.5 text-slate-600 shadow-sm max-[420px]:order-last max-[420px]:basis-full max-[420px]:py-2 sm:px-3"
                         :title="`${timezone.id} · ${page.props.transactionShift.caption}`"
                     >
                         <Clock3
-                            class="hidden h-[18px] w-[18px] text-cyan-600 sm:block"
+                            class="hidden h-[18px] w-[18px] shrink-0 text-cyan-600 max-[420px]:block max-[420px]:h-4 max-[420px]:w-4 sm:block"
                         />
-                        <div class="leading-none">
+                        <div
+                            class="leading-none max-[420px]:flex max-[420px]:min-w-0 max-[420px]:flex-1 max-[420px]:items-center max-[420px]:justify-between max-[420px]:gap-3"
+                        >
                             <p
                                 class="flex items-center gap-1.5 text-xs font-semibold text-slate-900 sm:text-sm"
                             >
@@ -671,7 +673,7 @@ function closeSidebar(module: CarwashAdminModule): void {
                                 </time>
                             </p>
                             <p
-                                class="mt-1 flex max-w-32 items-center gap-1 text-[10px] font-medium text-slate-500 sm:max-w-48 sm:text-[11px]"
+                                class="mt-1 flex max-w-32 items-center gap-1 text-[10px] font-medium text-slate-500 max-[420px]:mt-0 max-[420px]:max-w-48 max-[420px]:text-[11px] sm:max-w-48 sm:text-[11px]"
                             >
                                 <span class="text-cyan-700">{{
                                     timezone.code

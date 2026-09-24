@@ -175,7 +175,6 @@ const createdOrderAlert = ref<CreatedOrderAlert | null>(null);
 const customerQuery = ref<string>('');
 const customerMode = ref<CustomerMode>('existing');
 const selectedCustomerOption = ref<CustomerOption | null>(null);
-const selectedLead = ref<CarwashLeadOption | null>(null);
 const isLeadSearching = ref<boolean>(false);
 
 let leadSearchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -585,6 +584,90 @@ const canSubmitOrder = computed<boolean>(() => {
     );
 });
 
+/**
+ * One lookup above the Member / Non-Member tabs (MoM 17 Sep 2026). A member's
+ * vehicle, a lead who came before, or — when neither matches — the typed plate
+ * as a new non-member; picking one switches to the right tab and fills it.
+ */
+type CustomerSuggestion =
+    | { key: string; kind: 'member'; option: CustomerOption }
+    | { key: string; kind: 'lead'; lead: CarwashLeadOption }
+    | { key: string; kind: 'new'; plate: string; name: string };
+
+const customerLookupQuery = ref<string>('');
+
+const customerSuggestions = computed<CustomerSuggestion[]>(() => {
+    const members: CustomerSuggestion[] = visibleCustomerOptions.value.map(
+        (option) => ({ key: `member-${option.key}`, kind: 'member', option }),
+    );
+    const query = customerLookupQuery.value.trim();
+
+    if (query === '') {
+        return members;
+    }
+
+    const leads: CustomerSuggestion[] = leadOptions.value.map((lead) => ({
+        key: `lead-${lead.id}`,
+        kind: 'lead',
+        lead,
+    }));
+    const plate = normalizePlate(query);
+    const isKnownPlate =
+        visibleCustomerOptions.value.some(
+            ({ vehicle }) => normalizePlate(vehicle.plate) === plate,
+        ) ||
+        leadOptions.value.some(
+            (lead) => normalizePlate(lead.vehiclePlate) === plate,
+        );
+
+    if (isKnownPlate) {
+        return [...members, ...leads];
+    }
+
+    /* A plate fills the plate boxes; anything else is taken as the name. */
+    const looksLikePlate = /^[A-Z]{1,2}\d{1,4}[A-Z]{0,3}$/.test(plate);
+
+    return [
+        ...members,
+        ...leads,
+        {
+            key: `new-${plate}`,
+            kind: 'new',
+            plate: looksLikePlate ? plate : '',
+            name: looksLikePlate ? '' : query,
+        },
+    ];
+});
+
+function searchCustomersAndLeads(query: string): void {
+    customerLookupQuery.value = query;
+    customerQuery.value = query;
+
+    if (props.mode === 'live') {
+        searchLeads(query);
+    }
+}
+
+function applyCustomerSuggestion(suggestion: CustomerSuggestion): void {
+    if (suggestion.kind === 'member') {
+        selectCustomerMode('existing');
+        pickCustomer(suggestion.option);
+    } else {
+        customerMode.value = 'walk-in';
+        clearCustomer();
+
+        if (suggestion.kind === 'lead') {
+            pickLead(suggestion.lead);
+        } else {
+            draft.value.plate = suggestion.plate;
+            draft.value.walkInName = suggestion.name;
+        }
+    }
+
+    customerLookupQuery.value = '';
+    customerQuery.value = '';
+}
+
 function normalizeCustomerSearch(value: string): string {
     return value.toLocaleLowerCase('id-ID').replace(/[^a-z0-9]/g, '');
 }
@@ -818,17 +901,12 @@ function pickCustomer(option: CustomerOption): void {
     draft.value.isSpecialPlate = isSpecialPlate(option.vehicle.plate);
 }
 
-function updateCustomerQuery(query: string): void {
-    customerQuery.value = query;
-}
-
 /**
  * Prefill only. The order still travels as a plain walk-in: the server files
  * the lead by plate, so a cashier who types the details out by hand and one who
  * picks a row here land on the same lead.
  */
 function pickLead(option: CarwashLeadOption): void {
-    selectedLead.value = option;
     draft.value.plate = option.vehiclePlate;
     draft.value.isSpecialPlate = isSpecialPlate(option.vehiclePlate);
     draft.value.vehicle = option.vehicleName;
@@ -862,7 +940,6 @@ function clearCustomer(): void {
     clearTimeout(leadSearchTimer);
     customerQuery.value = '';
     selectedCustomerOption.value = null;
-    selectedLead.value = null;
     isLeadSearching.value = false;
     draft.value.customerId = null;
     draft.value.walkInName = '';
@@ -2446,8 +2523,135 @@ function removeDeletionPhoto(index: number): void {
                     Customer
                 </label>
 
+                <!--
+                    One search for members and non-members alike. `.multiselect--active`
+                    gets `z-index: 50`, so the icon sits above that or the
+                    focused input's white background paints over it.
+                -->
+                <div class="relative mt-2">
+                    <Search
+                        class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
+                    />
+                    <Multiselect
+                        id="order-customer"
+                        :model-value="null"
+                        class="customer-search"
+                        :options="customerSuggestions"
+                        :internal-search="false"
+                        :show-labels="false"
+                        :loading="isLeadSearching"
+                        :max-height="300"
+                        track-by="key"
+                        label="key"
+                        placeholder="Cari plat nomor, nama, atau telepon"
+                        @search-change="searchCustomersAndLeads"
+                        @select="applyCustomerSuggestion"
+                    >
+                        <template #option="{ option }">
+                            <div
+                                v-if="option.kind === 'member'"
+                                class="flex items-center justify-between gap-3 px-3 py-2.5"
+                            >
+                                <div class="min-w-0 shrink-0">
+                                    <p
+                                        class="text-base font-bold tracking-wide text-slate-950"
+                                    >
+                                        {{
+                                            formatPlate(
+                                                option.option.vehicle.plate,
+                                            )
+                                        }}
+                                    </p>
+                                    <p
+                                        class="truncate text-xs font-medium text-slate-600"
+                                    >
+                                        {{ option.option.vehicle.name }}
+                                    </p>
+                                </div>
+                                <div class="min-w-0 text-right">
+                                    <p
+                                        class="truncate text-sm font-medium text-slate-800"
+                                    >
+                                        {{ option.option.customer.name }}
+                                    </p>
+                                    <p class="truncate text-xs text-slate-500">
+                                        <span
+                                            class="rounded bg-cyan-100 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-700"
+                                            >Member</span
+                                        >
+                                        {{ option.option.customer.phone }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div
+                                v-else-if="option.kind === 'lead'"
+                                class="flex items-center justify-between gap-3 px-3 py-2.5"
+                            >
+                                <div class="min-w-0 shrink-0">
+                                    <p
+                                        class="text-base font-bold tracking-wide text-slate-950"
+                                    >
+                                        {{
+                                            formatPlate(
+                                                option.lead.vehiclePlate,
+                                            )
+                                        }}
+                                    </p>
+                                    <p
+                                        class="truncate text-xs font-medium text-slate-600"
+                                    >
+                                        {{ option.lead.vehicleName || '—' }}
+                                    </p>
+                                </div>
+                                <div class="min-w-0 text-right">
+                                    <p
+                                        class="truncate text-sm font-medium text-slate-800"
+                                    >
+                                        {{ option.lead.name }}
+                                    </p>
+                                    <p class="truncate text-xs text-slate-500">
+                                        <span
+                                            class="rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600"
+                                            >Non-Member</span
+                                        >
+                                        {{ option.lead.phone }}
+                                    </p>
+                                </div>
+                            </div>
+                            <div v-else class="px-3 py-2.5">
+                                <p class="text-sm font-semibold text-slate-800">
+                                    <template v-if="option.plate">
+                                        Pelanggan baru (Non-Member) ·
+                                        {{ formatPlate(option.plate) }}
+                                    </template>
+                                    <template v-else>
+                                        Pelanggan baru (Non-Member) ·
+                                        {{ option.name }}
+                                    </template>
+                                </p>
+                                <p class="text-xs text-slate-500">
+                                    Member dan lead tidak ditemukan. Lanjut isi
+                                    data Non-Member.
+                                </p>
+                            </div>
+                        </template>
+                        <template #noResult>
+                            <p class="px-3 py-3 text-sm text-slate-500">
+                                Member tidak ditemukan. Ketik plat nomor untuk
+                                lanjut sebagai Non-Member.
+                            </p>
+                        </template>
+                        <template #noOptions>
+                            <p class="px-3 py-3 text-sm text-slate-500">
+                                Belum ada member. Ketik plat nomor untuk lanjut
+                                sebagai Non-Member.
+                            </p>
+                        </template>
+                    </Multiselect>
+                </div>
+
                 <div
-                    class="mt-2 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
+                    class="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1"
                     role="tablist"
                 >
                     <button
@@ -2468,86 +2672,14 @@ function removeDeletionPhoto(index: number): void {
                     </button>
                 </div>
 
-                <div
+                <p
                     v-if="
                         customerMode === 'existing' && !selectedCustomerOption
                     "
-                    class="relative mt-3"
+                    class="mt-3 rounded-xl border border-dashed border-slate-200 px-3 py-3 text-xs text-slate-500"
                 >
-                    <!--
-                        `.multiselect--active` gets `z-index: 50`, so the icon
-                        must sit above that or the focused input's white
-                        background paints over it.
-                    -->
-                    <Search
-                        class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
-                    />
-                    <Multiselect
-                        id="order-customer"
-                        v-model="selectedCustomerOption"
-                        class="customer-search"
-                        :options="visibleCustomerOptions"
-                        :internal-search="false"
-                        :allow-empty="false"
-                        :show-labels="false"
-                        :max-height="260"
-                        track-by="key"
-                        label="label"
-                        placeholder="Cari plat nomor, nama, atau telepon"
-                        @search-change="updateCustomerQuery"
-                        @select="pickCustomer"
-                    >
-                        <template #singleLabel="{ option }">
-                            <span class="block truncate text-sm text-slate-700">
-                                <span
-                                    class="font-bold tracking-wide text-slate-950"
-                                >
-                                    {{ formatPlate(option.vehicle.plate) }}
-                                </span>
-                                · {{ option.vehicle.name }} —
-                                {{ option.customer.name }}
-                            </span>
-                        </template>
-                        <template #option="{ option }">
-                            <div
-                                class="flex items-center justify-between gap-3 px-3 py-2.5"
-                            >
-                                <div class="min-w-0 shrink-0">
-                                    <p
-                                        class="text-base font-bold tracking-wide text-slate-950"
-                                    >
-                                        {{ formatPlate(option.vehicle.plate) }}
-                                    </p>
-                                    <p
-                                        class="truncate text-xs font-medium text-slate-600"
-                                    >
-                                        {{ option.vehicle.name }}
-                                    </p>
-                                </div>
-                                <div class="min-w-0 text-right">
-                                    <p
-                                        class="truncate text-sm font-medium text-slate-800"
-                                    >
-                                        {{ option.customer.name }}
-                                    </p>
-                                    <p class="truncate text-xs text-slate-500">
-                                        {{ option.customer.phone }}
-                                    </p>
-                                </div>
-                            </div>
-                        </template>
-                        <template #noResult>
-                            <p class="px-3 py-3 text-sm text-slate-500">
-                                Member tidak ditemukan. Daftarkan terlebih
-                                dahulu di modul
-                                <span class="font-medium text-slate-700">
-                                    Customer
-                                </span>
-                                atau pilih Non-Member.
-                            </p>
-                        </template>
-                    </Multiselect>
-                </div>
+                    Cari member lewat kotak di atas, atau pilih Non-Member.
+                </p>
 
                 <div
                     v-else-if="
@@ -2617,88 +2749,6 @@ function removeDeletionPhoto(index: number): void {
                     </div>
                 </div>
                 <div v-else class="mt-3 space-y-3">
-                    <!--
-                        Leads are searched against the server, so the box only
-                        offers rows once the cashier has typed something.
-                    -->
-                    <div v-if="mode === 'live'" class="relative">
-                        <Search
-                            class="pointer-events-none absolute top-3.5 left-3 z-[60] h-4 w-4 text-slate-400"
-                        />
-                        <Multiselect
-                            id="order-lead"
-                            v-model="selectedLead"
-                            class="customer-search"
-                            :options="leadOptions"
-                            :internal-search="false"
-                            :allow-empty="false"
-                            :show-labels="false"
-                            :loading="isLeadSearching"
-                            :max-height="260"
-                            track-by="id"
-                            label="name"
-                            placeholder="Cari lead lama: plat, nama, atau telepon"
-                            @search-change="searchLeads"
-                            @select="pickLead"
-                        >
-                            <template #singleLabel="{ option }">
-                                <span
-                                    class="block truncate text-sm text-slate-700"
-                                >
-                                    <span
-                                        class="font-bold tracking-wide text-slate-950"
-                                    >
-                                        {{ formatPlate(option.vehiclePlate) }}
-                                    </span>
-                                    · {{ option.name }}
-                                </span>
-                            </template>
-                            <template #option="{ option }">
-                                <div
-                                    class="flex items-center justify-between gap-3 px-3 py-2.5"
-                                >
-                                    <div class="min-w-0 shrink-0">
-                                        <p
-                                            class="text-base font-bold tracking-wide text-slate-950"
-                                        >
-                                            {{
-                                                formatPlate(option.vehiclePlate)
-                                            }}
-                                        </p>
-                                        <p
-                                            class="truncate text-xs font-medium text-slate-600"
-                                        >
-                                            {{ option.vehicleName || '—' }}
-                                        </p>
-                                    </div>
-                                    <div class="min-w-0 text-right">
-                                        <p
-                                            class="truncate text-sm font-medium text-slate-800"
-                                        >
-                                            {{ option.name }}
-                                        </p>
-                                        <p
-                                            class="truncate text-xs text-slate-500"
-                                        >
-                                            {{ option.phone }}
-                                        </p>
-                                    </div>
-                                </div>
-                            </template>
-                            <template #noResult>
-                                <p class="px-3 py-3 text-sm text-slate-500">
-                                    Lead belum ada. Isi datanya di bawah — lead
-                                    baru otomatis dibuat saat order disimpan.
-                                </p>
-                            </template>
-                            <template #noOptions>
-                                <p class="px-3 py-3 text-sm text-slate-500">
-                                    Ketik plat, nama, atau telepon untuk mencari
-                                    lead yang pernah datang.
-                                </p>
-                            </template>
-                        </Multiselect>
-                    </div>
                     <div class="grid gap-3">
                         <div class="space-y-1.5">
                             <label

@@ -37,6 +37,18 @@ test('the admin header always shows the outlet clock timezone and current user s
         );
 });
 
+test('the admin header moves the clock into a full-width strip on narrow phones so the page title stays visible', function () {
+    $layout = file_get_contents(
+        resource_path('js/layouts/admin/AdminLayout.vue'),
+    );
+
+    expect($layout)
+        ->toContain('max-[420px]:flex-wrap')
+        ->toContain('<div class="flex min-w-0 flex-1 items-center gap-2">')
+        ->toContain('shadow-sm max-[420px]:order-last max-[420px]:basis-full')
+        ->toContain('max-[420px]:justify-between');
+});
+
 test('the admin header refreshes data in place instead of reloading the page', function () {
     $layout = file_get_contents(
         resource_path('js/layouts/admin/AdminLayout.vue'),
