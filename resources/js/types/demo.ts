@@ -659,6 +659,29 @@ export interface CarwashDailySales {
     total: Omit<CarwashDailySalesRow, 'date'>;
 }
 
+/** One service line of the Penjualan per Layanan report. */
+export interface CarwashItemSalesItem {
+    /** The name it was sold under, with its variation. */
+    name: string;
+    category: string;
+    quantity: number;
+    total: number;
+}
+
+export interface CarwashItemSalesGroup {
+    /** Category group (Cuci, Coating, …). */
+    group: string;
+    items: CarwashItemSalesItem[];
+    quantity: number;
+    total: number;
+}
+
+export interface CarwashItemSales {
+    groups: CarwashItemSalesGroup[];
+    quantity: number;
+    total: number;
+}
+
 export interface CarwashReportFilters {
     from: string;
     to: string;

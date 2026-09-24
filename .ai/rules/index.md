@@ -12,6 +12,7 @@ Before planning or editing, find the row whose globs match the file's path and r
 | {app/Http/Controllers/Admin/**,app/Http/Controllers/Demo/**,resources/js/pages/admin/**} | .ai/rules/admin.md |
 | app/Support/Admin/** | .ai/rules/app-support-admin.md |
 | resources/js/components/admin/ServiceCartPicker.vue | .ai/rules/components-admin.md |
+| resources/js/components/demo/{ModalDialog,SlideOver}.vue | .ai/rules/components-demo.md |
 | {app/Models/Lead.php,app/Actions/Admin/CaptureOrderLead.php,app/Actions/Admin/MarkLeadConverted.php,app/Support/Admin/LeadQueries.php,app/Http/Controllers/Admin/LeadController.php} | .ai/rules/controllers-admin.md |
 | {app/Support/Admin/OrderLogCsv.php,app/Http/Controllers/Admin/ReportController.php,app/Http/Controllers/Demo/ReportController.php} | .ai/rules/controllers-demo.md |
 | {app/Support/Admin/Finance*.php,app/Support/Demo/Finance.php,resources/js/pages/admin/Finance.vue}, {app/Support/Admin/ReportQueries.php,app/Support/Demo/Reports.php,resources/js/pages/admin/Reports.vue} | .ai/rules/demo-js-pages-admin.md |

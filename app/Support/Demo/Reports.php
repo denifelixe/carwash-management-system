@@ -436,6 +436,47 @@ class Reports
     }
 
     /**
+     * The demo's Penjualan per Layanan: the catalog under its category groups,
+     * each service sold a fixed number of times per 30 days at its lowest
+     * price, scaled to the range like the other flow figures.
+     *
+     * @return array{groups: list<array{group: string, items: list<array{name: string, category: string, quantity: int, total: int}>, quantity: int, total: int}>, quantity: int, total: int}
+     */
+    public static function itemSales(float $scale = 1.0): array
+    {
+        $monthlyQuantities = [1 => 294, 2 => 74, 3 => 56, 4 => 25, 5 => 22, 6 => 10, 7 => 4, 8 => 9, 9 => 18, 10 => 6, 11 => 20, 12 => 31, 13 => 5];
+        $groups = [];
+
+        foreach (Catalog::services() as $service) {
+            $quantity = self::scaleFlow($monthlyQuantities[$service['id']] ?? 3, $scale);
+            $price = min(array_column($service['serviceVariations'], 'price'));
+            $group = $service['categoryGroup'];
+
+            $groups[$group] ??= ['group' => $group, 'items' => [], 'quantity' => 0, 'total' => 0];
+            $groups[$group]['items'][] = [
+                'name' => $service['name'],
+                'category' => $service['category'],
+                'quantity' => $quantity,
+                'total' => $quantity * $price,
+            ];
+            $groups[$group]['quantity'] += $quantity;
+            $groups[$group]['total'] += $quantity * $price;
+        }
+
+        $groups = array_values(array_map(static function (array $group): array {
+            usort($group['items'], static fn (array $first, array $second): int => $second['total'] <=> $first['total']);
+
+            return $group;
+        }, $groups));
+
+        return [
+            'groups' => $groups,
+            'quantity' => array_sum(array_column($groups, 'quantity')),
+            'total' => array_sum(array_column($groups, 'total')),
+        ];
+    }
+
+    /**
      * How the customer base moved over the range. Flow figures grow with the
      * range; distinct-people and current-state figures do not scale linearly,
      * so they are damped or left alone.

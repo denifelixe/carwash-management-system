@@ -15,11 +15,11 @@ const emit = defineEmits<{
 <template>
     <div
         v-if="open"
-        class="fixed inset-0 z-50 flex justify-end bg-slate-950/40 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex justify-end overscroll-none bg-slate-950/40 sm:backdrop-blur-sm"
         @click.self="emit('close')"
     >
         <div
-            class="flex h-full w-full max-w-md flex-col overflow-y-auto bg-white shadow-2xl"
+            class="flex h-full w-full max-w-md transform-gpu flex-col overflow-y-auto overscroll-contain bg-white shadow-2xl"
         >
             <div
                 class="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-6 py-4"
@@ -52,7 +52,7 @@ const emit = defineEmits<{
 
             <div
                 v-if="$slots.footer"
-                class="sticky bottom-0 flex gap-2 border-t border-slate-100 bg-white p-4"
+                class="sticky bottom-0 flex gap-2 border-t border-slate-100 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
             >
                 <slot name="footer" />
             </div>

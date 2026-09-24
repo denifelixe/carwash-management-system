@@ -101,6 +101,7 @@ Route::domain((string) config('domains.admin'))
             Route::get('laporan/order.csv', [ReportController::class, 'exportOrders'])->name('reports.orders.export');
             Route::get('laporan/keuangan.csv', [ReportController::class, 'exportFinance'])->name('reports.finance.export');
             Route::get('laporan/penjualan-harian.csv', [ReportController::class, 'exportDailySales'])->name('reports.daily-sales.export');
+            Route::get('laporan/penjualan-layanan.csv', [ReportController::class, 'exportItemSales'])->name('reports.item-sales.export');
             Route::get('users', [AdminUserController::class, 'index'])->name('users.index');
             Route::get('users/{adminUser}/photo', [AdminUserController::class, 'photo'])->name('users.photo');
             Route::post('users', [AdminUserController::class, 'store'])->name('users.store');

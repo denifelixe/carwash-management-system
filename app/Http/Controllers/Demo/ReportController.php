@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Demo;
 use App\Support\Admin\DailySalesCsv;
 use App\Support\Admin\FinanceLogCsv;
 use App\Support\Admin\FinanceReportQueries;
+use App\Support\Admin\ItemSalesCsv;
 use App\Support\Admin\OrderLogCsv;
 use App\Support\Demo\Reports;
 use Illuminate\Http\Request;
@@ -31,6 +32,7 @@ class ReportController extends AdminController
             'filters' => Reports::rangeMeta($from, $to),
             'financeSummary' => fn (): array => Reports::financeSummary($from, $to),
             'dailySales' => fn (): array => Reports::dailySales($from, $to),
+            'itemSales' => fn (): array => Reports::itemSales($scale),
             'financeLog' => Inertia::optional(fn (): array => Reports::financeLog(
                 $from,
                 $to,
@@ -78,6 +80,19 @@ class ReportController extends AdminController
         return DailySalesCsv::download(
             Reports::dailySales($from, $to),
             DailySalesCsv::fileName($from, $to),
+        );
+    }
+
+    public function exportItemSales(Request $request): StreamedResponse
+    {
+        ['from' => $from, 'to' => $to] = Reports::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+
+        return ItemSalesCsv::download(
+            Reports::itemSales(Reports::rangeScale($from, $to)),
+            ItemSalesCsv::fileName($from, $to),
         );
     }
 

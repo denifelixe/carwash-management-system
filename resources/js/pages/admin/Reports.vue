@@ -12,6 +12,7 @@ import { computed, ref } from 'vue';
 import {
     exportDailySales,
     exportFinance,
+    exportItemSales,
     exportOrders,
     index as indexReports,
 } from '@/actions/App/Http/Controllers/Admin/ReportController';
@@ -34,6 +35,7 @@ import type {
     CarwashBrand,
     CarwashCustomerBase,
     CarwashDailySales,
+    CarwashItemSales,
     CarwashInventorySummary,
     CarwashMoneyEntry,
     CarwashPaginated,
@@ -57,6 +59,7 @@ const props = defineProps<{
     /** Only present once the contribution card has been opened. */
     orderLog?: CarwashPaginated<CarwashReportOrder>;
     dailySales: CarwashDailySales;
+    itemSales: CarwashItemSales;
     financeSummary: {
         moneyIn: number;
         moneyOut: number;
@@ -96,6 +99,7 @@ function applyRange(range: { from: string; to: string }): void {
                 'shifts',
                 'financeSummary',
                 'dailySales',
+                'itemSales',
             ],
             onStart: () => {
                 isLoading.value = true;
@@ -259,6 +263,14 @@ const dailySalesDownloadUrl = computed<string>(() => {
     return props.mode === 'demo'
         ? admin.reports.dailySales.export.url({ query })
         : exportDailySales.url({ query });
+});
+
+const itemSalesDownloadUrl = computed<string>(() => {
+    const query = { from: props.filters.from, to: props.filters.to };
+
+    return props.mode === 'demo'
+        ? admin.reports.itemSales.export.url({ query })
+        : exportItemSales.url({ query });
 });
 
 const financeLogDownloadUrl = computed(() => {
@@ -585,6 +597,113 @@ const financeLogDownloadUrl = computed(() => {
                         </tr>
                     </tfoot>
                 </table>
+            </div>
+        </SectionCard>
+
+        <!--
+            Penjualan per Layanan (MoM 17 Sep 2026), after the outlet's old
+            "daftar penjualan per item per merek": a block per category group,
+            a subtotal under each, and a grand total.
+        -->
+        <SectionCard
+            title="Penjualan per Layanan"
+            :caption="`Order lunas · ${filters.label} · ${formatNumber(itemSales.quantity)} qty · harga layanan sebelum diskon`"
+            :padded="false"
+        >
+            <template #actions>
+                <a
+                    :href="itemSalesDownloadUrl"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
+                    download
+                >
+                    <Download class="h-3.5 w-3.5" />
+                    Unduh Excel
+                </a>
+            </template>
+            <div
+                v-if="itemSales.groups.length > 0"
+                class="max-h-[32rem] overflow-auto rounded-b-2xl"
+            >
+                <table
+                    class="w-full min-w-[36rem] text-xs tabular-nums"
+                    data-item-sales
+                >
+                    <thead
+                        class="sticky top-0 z-10 bg-slate-50 text-[11px] font-semibold text-slate-600"
+                    >
+                        <tr>
+                            <th class="px-4 py-2.5 text-left">Layanan</th>
+                            <th class="px-3 py-2.5 text-left">Kategori</th>
+                            <th class="px-3 py-2.5 text-right">Qty</th>
+                            <th class="px-4 py-2.5 text-right">Total Harga</th>
+                        </tr>
+                    </thead>
+                    <tbody
+                        v-for="group in itemSales.groups"
+                        :key="group.group"
+                        class="text-slate-700"
+                    >
+                        <tr>
+                            <th
+                                colspan="4"
+                                class="border-t border-slate-200 px-4 pt-3 pb-1.5 text-left text-[11px] font-semibold tracking-wide text-cyan-700 uppercase"
+                            >
+                                {{ group.group }}
+                            </th>
+                        </tr>
+                        <tr
+                            v-for="item in group.items"
+                            :key="item.name"
+                            class="border-t border-slate-100"
+                        >
+                            <td class="px-4 py-2 text-left">{{ item.name }}</td>
+                            <td class="px-3 py-2 text-left text-slate-500">
+                                {{ item.category }}
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                {{ formatNumber(item.quantity) }}
+                            </td>
+                            <td class="px-4 py-2 text-right">
+                                {{ formatCurrency(item.total) }}
+                            </td>
+                        </tr>
+                        <tr
+                            class="border-t border-slate-200 bg-slate-50/60 font-semibold text-slate-900"
+                        >
+                            <td colspan="2" class="px-4 py-2 text-left">
+                                Total {{ group.group }}
+                            </td>
+                            <td class="px-3 py-2 text-right">
+                                {{ formatNumber(group.quantity) }}
+                            </td>
+                            <td class="px-4 py-2 text-right">
+                                {{ formatCurrency(group.total) }}
+                            </td>
+                        </tr>
+                    </tbody>
+                    <tfoot
+                        class="sticky bottom-0 bg-slate-50 font-semibold text-slate-900 shadow-[0_-1px_0_0_var(--color-slate-300)]"
+                    >
+                        <tr>
+                            <td colspan="2" class="px-4 py-3.5 text-left">
+                                TOTAL
+                            </td>
+                            <td class="px-3 py-3.5 text-right">
+                                {{ formatNumber(itemSales.quantity) }}
+                            </td>
+                            <td class="px-4 py-3.5 text-right">
+                                {{ formatCurrency(itemSales.total) }}
+                            </td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+            <div v-else class="p-5">
+                <EmptyState
+                    :icon="ListOrdered"
+                    title="Belum ada layanan terjual"
+                    caption="Layanan dari order yang lunas pada periode ini akan tampil di sini."
+                />
             </div>
         </SectionCard>
 

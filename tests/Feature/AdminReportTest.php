@@ -809,3 +809,102 @@ test('the demo report serves the same daily sales shape and download', function 
     $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
         ->get(route('demo.admin.reports.daily-sales.export'))->assertOk();
 });
+
+/**
+ * An order settled on the given day, carrying the given service lines.
+ *
+ * @param  list<array{0: Service, 1: int, 2?: array<string, string>|null}>  $lines  service, quantity, variation values
+ */
+function settledOrderWith(string $paidAt, array $lines, string $status = 'selesai'): Order
+{
+    $order = Order::factory()->create(['status' => $status, 'service_date' => substr($paidAt, 0, 10)]);
+
+    foreach ($lines as $line) {
+        [$service, $quantity] = $line;
+        $variation = $service->serviceVariations()->firstOrFail();
+        $order->serviceVariations()->attach($variation, [
+            'service_name' => $service->name,
+            'variations' => isset($line[2]) ? json_encode($line[2]) : null,
+            'unit_price' => $variation->price,
+            'quantity' => $quantity,
+            'total_price' => $variation->price * $quantity,
+            'stamps' => 0,
+        ]);
+    }
+
+    reportPayment($paidAt, 1, ['order_id' => $order->id, 'type' => 'Pembayaran Lunas']);
+
+    return $order;
+}
+
+test('services sold are listed per category group with subtotals and a grand total', function (): void {
+    $regular = Service::factory()->create(['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'category_group' => 'Cuci', 'price' => 60000, 'sort_order' => 1]);
+    $motor = Service::factory()->create(['name' => 'Wash Motor', 'category' => 'Cuci Motor', 'category_group' => 'Cuci', 'price' => 25000, 'sort_order' => 2]);
+    $coating = Service::factory()->create(['name' => 'Coating Kaca', 'category' => 'Coating Mobil', 'category_group' => 'Coating', 'price' => 250000, 'sort_order' => 3]);
+
+    settledOrderWith('2026-08-28 10:00:00', [[$regular, 2], [$coating, 1, ['Ukuran' => 'Large']]]);
+    settledOrderWith('2026-08-29 10:00:00', [[$regular, 1], [$motor, 3]]);
+    /* Outside the range, not yet settled, or cancelled: none of these count. */
+    settledOrderWith('2026-08-20 10:00:00', [[$regular, 9]]);
+    $unsettled = Order::factory()->create(['status' => 'pelunasan']);
+    reportPayment('2026-08-29 11:00:00', 1, ['order_id' => $unsettled->id, 'type' => 'Pembayaran Sebagian']);
+    settledOrderWith('2026-08-29 12:00:00', [[$motor, 5]], 'batal');
+
+    $report = openReport(Admin::factory()->create(['is_owner' => true]), ['from' => '2026-08-24', 'to' => '2026-08-30'])['itemSales'];
+
+    expect($report['groups'])->toBe([
+        [
+            'group' => 'Cuci',
+            'items' => [
+                ['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'quantity' => 3, 'total' => 180000],
+                ['name' => 'Wash Motor', 'category' => 'Cuci Motor', 'quantity' => 3, 'total' => 75000],
+            ],
+            'quantity' => 6,
+            'total' => 255000,
+        ],
+        [
+            'group' => 'Coating',
+            'items' => [
+                ['name' => 'Coating Kaca (Ukuran: Large)', 'category' => 'Coating Mobil', 'quantity' => 1, 'total' => 250000],
+            ],
+            'quantity' => 1,
+            'total' => 250000,
+        ],
+    ])
+        ->and($report['quantity'])->toBe(7)
+        ->and($report['total'])->toBe(505000);
+});
+
+test('the per-service report downloads as a spreadsheet with group and grand totals', function (): void {
+    $regular = Service::factory()->create(['name' => 'Regular Wash', 'category' => 'Cuci Mobil', 'category_group' => 'Cuci', 'price' => 60000]);
+    settledOrderWith('2026-08-29 10:00:00', [[$regular, 2]]);
+
+    $csv = $this->actingAs(Admin::factory()->create(['is_owner' => true]), 'admin')
+        ->get(route('admin.reports.item-sales.export', ['from' => '2026-08-29', 'to' => '2026-08-30']))
+        ->assertOk()
+        ->assertDownload('laporan-penjualan-per-layanan-2026-08-29-sd-2026-08-30.csv')
+        ->streamedContent();
+    expect($csv)->toStartWith("\u{FEFF}");
+    /* The BOM sits in front of a quoted field, so it is set aside before parsing. */
+    $rows = array_map(fn (string $line): array => str_getcsv($line, ';', '"', ''), array_filter(explode("\r\n", substr($csv, 3))));
+
+    expect($rows)->toBe([
+        ['Grup Kategori', 'Layanan', 'Kategori', 'Qty', 'Total Harga'],
+        ['Cuci', 'Regular Wash', 'Cuci Mobil', '2', '120000'],
+        ['Total Cuci', '', '', '2', '120000'],
+        ['TOTAL', '', '', '2', '120000'],
+    ]);
+});
+
+test('the demo report serves the per-service list in the same shape', function (): void {
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.reports'))
+        ->assertOk()
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('itemSales.groups.0.group', 'Cuci')
+            ->where('itemSales.total', fn (int $total): bool => $total > 0));
+
+    $this->withSession([RoleAccess::SESSION_KEY => 'owner'])
+        ->get(route('demo.admin.reports.item-sales.export'))
+        ->assertOk();
+});

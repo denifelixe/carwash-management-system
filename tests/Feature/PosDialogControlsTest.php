@@ -79,6 +79,9 @@ const listeners = new Set();
 globalThis.window = {
     addEventListener: (type, listener) => listeners.add(listener),
     removeEventListener: (type, listener) => listeners.delete(listener),
+    /* The iOS-safe scroll lock pins the body and restores this offset. */
+    scrollY: 0,
+    scrollTo: () => undefined,
 };
 globalThis.document = { body: { style: {} } };
 const closed = [];

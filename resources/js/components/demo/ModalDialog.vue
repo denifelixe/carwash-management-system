@@ -1,6 +1,39 @@
 <script lang="ts">
 let openModalCount = 0;
 
+/** Window scroll offset captured when the first dialog locked the page. */
+let lockedScrollY = 0;
+
+/*
+ * iOS Safari ignores `overflow: hidden` on the body for touch scrolling, so
+ * the page behind kept scrolling, the toolbar collapsed, and the viewport
+ * resize made the dialog footer flicker. Pinning the body with
+ * `position: fixed` is the lock iOS actually honours.
+ */
+function lockPageScroll(): void {
+    lockedScrollY = window.scrollY;
+
+    Object.assign(document.body.style, {
+        position: 'fixed',
+        top: `-${lockedScrollY}px`,
+        left: '0',
+        right: '0',
+        overflow: 'hidden',
+    });
+}
+
+function unlockPageScroll(): void {
+    Object.assign(document.body.style, {
+        position: '',
+        top: '',
+        left: '',
+        right: '',
+        overflow: '',
+    });
+
+    window.scrollTo(0, lockedScrollY);
+}
+
 /** Close requests of the open dialogs, newest last, so Escape only reaches the top one. */
 const openDialogClosers: Array<() => void> = [];
 
@@ -85,6 +118,11 @@ function syncPageScrollLock(locked: boolean): void {
     if (locked && !ownsPageScrollLock) {
         openModalCount += 1;
         ownsPageScrollLock = true;
+
+        if (openModalCount === 1) {
+            lockPageScroll();
+        }
+
         openDialogClosers.push(requestClose);
 
         if (openDialogClosers.length === 1) {
@@ -93,14 +131,17 @@ function syncPageScrollLock(locked: boolean): void {
     } else if (!locked && ownsPageScrollLock) {
         openModalCount = Math.max(openModalCount - 1, 0);
         ownsPageScrollLock = false;
+
+        if (openModalCount === 0) {
+            unlockPageScroll();
+        }
+
         openDialogClosers.splice(openDialogClosers.indexOf(requestClose), 1);
 
         if (openDialogClosers.length === 0) {
             window.removeEventListener('keydown', closeTopDialog);
         }
     }
-
-    document.body.style.overflow = openModalCount > 0 ? 'hidden' : '';
 }
 
 onMounted(() => {
@@ -115,13 +156,13 @@ onBeforeUnmount(() => syncPageScrollLock(false));
     <Teleport v-if="canTeleport" to="body">
         <div
             v-if="open"
-            class="fixed inset-0 flex items-end justify-center bg-slate-950/50 p-0 backdrop-blur-sm sm:items-center sm:p-4"
+            class="fixed inset-0 flex items-end justify-center overscroll-none bg-slate-950/50 p-0 sm:items-center sm:p-4 sm:backdrop-blur-sm"
             :class="layers[layer ?? 'default']"
             @pointerdown.self="pressedBackdrop = true"
             @click.self="closeFromBackdrop"
         >
             <div
-                class="relative flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
+                class="relative flex max-h-[92svh] w-full transform-gpu flex-col overflow-hidden rounded-t-3xl bg-white shadow-2xl sm:rounded-3xl"
                 :class="widths[size ?? 'md']"
             >
                 <!-- Untitled dialogs have no header row, so their close button floats. -->
@@ -168,14 +209,14 @@ onBeforeUnmount(() => syncPageScrollLock(false));
                 </div>
 
                 <div
-                    class="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto p-6"
+                    class="min-h-0 flex-1 [scrollbar-gutter:stable] overflow-y-auto overscroll-contain p-6"
                 >
                     <slot />
                 </div>
 
                 <div
                     v-if="$slots.footer"
-                    class="flex shrink-0 gap-2 border-t border-slate-100 p-4"
+                    class="flex shrink-0 gap-2 border-t border-slate-100 bg-white p-4 pb-[max(1rem,env(safe-area-inset-bottom))]"
                 >
                     <slot name="footer" />
                 </div>

@@ -440,6 +440,89 @@ class ReportQueries
     }
 
     /**
+     * Penjualan per Layanan (MoM 17 Sep 2026, "daftar penjualan per item"):
+     * every service sold, with its quantity and value, under its category
+     * group, subtotalled per group.
+     *
+     * An order counts once, in the period its settling payment (Pembayaran
+     * Lunas) landed in, so a month's list never repeats an order paid off in
+     * instalments across months. Figures are the order_services snapshot at
+     * list price, before any order discount; the service name is the one it
+     * was sold under. Group and category come from the service as it stands,
+     * and a line whose service has since gone falls under "Lainnya".
+     *
+     * @return array{groups: list<array{group: string, items: list<array{name: string, category: string, quantity: int, total: int}>, quantity: int, total: int}>, quantity: int, total: int}
+     */
+    public static function itemSales(CarbonImmutable $from, CarbonImmutable $to): array
+    {
+        $settledOrders = OrderTransaction::query()
+            ->select('order_id')
+            ->where('type', 'Pembayaran Lunas')
+            ->where('paid_at', '>=', $from->startOfDay())
+            ->where('paid_at', '<', $to->startOfDay()->addDay());
+
+        $lines = DB::table('order_services')
+            ->join('orders', 'orders.id', '=', 'order_services.order_id')
+            ->leftJoin('service_variations', 'service_variations.id', '=', 'order_services.service_variation_id')
+            ->leftJoin('services', 'services.id', '=', 'service_variations.service_id')
+            ->whereNull('orders.deleted_at')
+            ->where('orders.status', 'selesai')
+            ->whereIn('order_services.order_id', $settledOrders)
+            ->select([
+                'order_services.service_name',
+                'order_services.variations',
+                'order_services.quantity',
+                'order_services.total_price',
+                'services.category',
+                'services.category_group',
+                'services.sort_order',
+            ])
+            ->get();
+
+        $groups = [];
+
+        foreach ($lines as $line) {
+            $group = $line->category_group ?: ServiceCategoryGroups::FALLBACK;
+            $variations = is_string($line->variations)
+                ? json_decode($line->variations, true, flags: JSON_THROW_ON_ERROR)
+                : null;
+            $variationLabel = collect($variations ?? [])->map(
+                fn (string $value, string $attribute): string => "$attribute: $value",
+            )->join(', ');
+            $name = $variationLabel === '' ? $line->service_name : "{$line->service_name} ($variationLabel)";
+
+            $groups[$group] ??= ['group' => $group, 'order' => PHP_INT_MAX, 'items' => [], 'quantity' => 0, 'total' => 0];
+            $groups[$group]['order'] = min($groups[$group]['order'], (int) ($line->sort_order ?? PHP_INT_MAX));
+            $groups[$group]['items'][$name] ??= [
+                'name' => $name,
+                'category' => $line->category ?? ServiceCategoryGroups::FALLBACK,
+                'quantity' => 0,
+                'total' => 0,
+            ];
+            $groups[$group]['items'][$name]['quantity'] += (int) $line->quantity;
+            $groups[$group]['items'][$name]['total'] += (int) $line->total_price;
+            $groups[$group]['quantity'] += (int) $line->quantity;
+            $groups[$group]['total'] += (int) $line->total_price;
+        }
+
+        /* Groups in catalog order (Master > Layanan), best sellers first inside each. */
+        uasort($groups, fn (array $first, array $second): int => [$first['order'], $first['group']] <=> [$second['order'], $second['group']]);
+
+        $groups = array_values(array_map(function (array $group): array {
+            $items = array_values($group['items']);
+            usort($items, fn (array $first, array $second): int => [$second['total'], $first['name']] <=> [$first['total'], $second['name']]);
+
+            return ['group' => $group['group'], 'items' => $items, 'quantity' => $group['quantity'], 'total' => $group['total']];
+        }, $groups));
+
+        return [
+            'groups' => $groups,
+            'quantity' => array_sum(array_column($groups, 'quantity')),
+            'total' => array_sum(array_column($groups, 'total')),
+        ];
+    }
+
+    /**
      * Shift performance across the range.
      *
      * Rows are filed by the shift stamped on them when they were written, never

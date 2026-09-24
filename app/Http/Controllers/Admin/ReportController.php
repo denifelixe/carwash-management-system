@@ -8,6 +8,7 @@ use App\Support\Admin\AdminShell;
 use App\Support\Admin\DailySalesCsv;
 use App\Support\Admin\FinanceLogCsv;
 use App\Support\Admin\FinanceReportQueries;
+use App\Support\Admin\ItemSalesCsv;
 use App\Support\Admin\OrderLogCsv;
 use App\Support\Admin\ReportQueries;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ class ReportController extends Controller
             'filters' => ReportQueries::rangeMeta($from, $to),
             'financeSummary' => fn (): array => FinanceReportQueries::summary($from, $to),
             'dailySales' => fn (): array => ReportQueries::dailySales($from, $to),
+            'itemSales' => fn (): array => ReportQueries::itemSales($from, $to),
             'financeLog' => Inertia::optional(fn (): array => FinanceReportQueries::log(
                 $from,
                 $to,
@@ -102,6 +104,21 @@ class ReportController extends Controller
         return DailySalesCsv::download(
             ReportQueries::dailySales($from, $to),
             DailySalesCsv::fileName($from, $to),
+        );
+    }
+
+    public function exportItemSales(Request $request): StreamedResponse
+    {
+        Gate::authorize('admin.reports.read');
+
+        ['from' => $from, 'to' => $to] = ReportQueries::resolveRange(
+            $request->query('from'),
+            $request->query('to'),
+        );
+
+        return ItemSalesCsv::download(
+            ReportQueries::itemSales($from, $to),
+            ItemSalesCsv::fileName($from, $to),
         );
     }
 

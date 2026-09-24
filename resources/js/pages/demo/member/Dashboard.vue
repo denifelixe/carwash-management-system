@@ -418,7 +418,7 @@ function activityToneClass(type: string): string {
     <!-- QR modal -->
     <div
         v-if="isMemberCardEnabled && isQrOpen"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6 backdrop-blur-sm"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-6 sm:backdrop-blur-sm"
         @click.self="isQrOpen = false"
     >
         <div class="w-full max-w-xs rounded-3xl bg-white p-6 text-center">
