@@ -84,7 +84,7 @@ test('visible vehicle plates use the shared display formatter', function (string
 })->with([
     'orders' => ['js/pages/admin/Orders.vue', 11],
     'cashier' => ['js/pages/admin/Pos.vue', 7],
-    'bookings' => ['js/pages/admin/Bookings.vue', 5],
+    'bookings' => ['js/pages/admin/Bookings.vue', 6],
     'members' => ['js/pages/admin/Customers.vue', 2],
     'finance' => ['js/pages/admin/Finance.vue', 3],
     'member profile' => ['js/pages/demo/member/Profile.vue', 1],

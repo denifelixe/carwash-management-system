@@ -3,6 +3,7 @@
 use App\Support\Demo\Operations;
 use App\Support\Demo\Reports;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
 
 test('the booking board keeps only the two schedule counters', function () {
@@ -30,7 +31,7 @@ test('the booking board stacks today, upcoming, and finished schedules', functio
         ->toContain("title: 'Booking hari ini',")
         ->toContain("title: 'Booking mendatang',")
         ->toContain("title: 'Booking sebelumnya',")
-        ->toContain("emptyCaption: 'Booking yang sudah lewat jadwalnya akan tampil di sini.',");
+        ->toContain("'Booking yang sudah lewat jadwalnya akan tampil di sini.'");
 
     // The order of the boards on the page: today, upcoming, then what is past.
     expect(mb_strpos($bookingsPage, "key: 'today',"))
@@ -47,7 +48,8 @@ test('the boards replace the booking history table', function () {
     expect($bookingsPage)
         ->not->toContain('Riwayat booking')
         ->not->toContain('filteredBookings')
-        ->not->toContain('DataToolbar')
+        // One search box above the boards narrows all three (MoM 17 Sep 2026).
+        ->toContain('v-model:search="bookingSearch"')
         // Creating a booking survives the table it used to sit on.
         ->toContain('Buat Booking')
         ->toContain('@click="openCreateBooking"');
@@ -361,4 +363,49 @@ test('a new booking is saved on the date that was picked', function () {
         ->toContain('date: draft.value.date,')
         ->toContain('bookingDate: props.today,')
         ->toContain("orderStatus: 'booking',");
+});
+
+test('one search narrows today, upcoming and past bookings alike', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { ref, computed } = require('vue');
+const source = fs.readFileSync('resources/js/pages/admin/Bookings.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Bookings.ts', source, ts.ScriptTarget.Latest, true);
+const code = ts.transpile(ast.statements
+    .filter(node => (ts.isVariableStatement(node) && ['bookingSearch', 'isSearchingBookings'].includes(node.declarationList.declarations[0].name.getText(ast)))
+        || (ts.isFunctionDeclaration(node) && ['matchesBookingSearch', 'searchedBookings', 'boardBadge'].includes(node.name?.text)))
+    .map(node => node.getText(ast))
+    .join('\n'), { target: ts.ScriptTarget.ES2020 });
+const normalizePlate = value => value.replace(/\s+/g, '').toUpperCase();
+const formatPlate = value => value.replace(/^([A-Z]{1,2})(\d{1,4})([A-Z]{0,3})$/, '$1 $2 $3').trim();
+const booking = (id, plate, customer, phone, code) => ({ id, plate, customer, phone, code, vehicle: 'Civic', service: 'Express Wash' });
+const today = [booking(1, 'B8120DS', 'Deni', '081234', 'BK-001')];
+const upcoming = [booking(2, 'A1234', 'Putri', '089999', 'BK-002')];
+const past = [booking(3, 'B8120DS', 'Deni', '081234', 'BK-003'), booking(4, 'D55', 'Rizki', '087777', 'BK-004')];
+const ids = list => searchedBookings(list).map(item => item.id);
+eval(code + `
+assert.deepEqual([ids(today), ids(upcoming), ids(past)], [[1], [2], [3, 4]]);
+assert.equal(boardBadge(past, past, 'riwayat'), '2 riwayat');
+for (const [query, expected] of [
+    ['b 8120', [[1], [], [3]]],
+    ['b8120ds', [[1], [], [3]]],
+    ['putri', [[], [2], []]],
+    ['0877', [[], [], [4]]],
+    ['bk-003', [[], [], [3]]],
+    ['civic express', [[1], [2], [3, 4]]],
+    ['tidak ada', [[], [], []]],
+]) {
+    bookingSearch.value = query;
+    assert.deepEqual([ids(today), ids(upcoming), ids(past)], expected, query);
+}
+bookingSearch.value = 'deni';
+assert.equal(boardBadge(searchedBookings(past), past, 'riwayat'), '1 dari 2 riwayat');
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
 });

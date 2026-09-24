@@ -23,6 +23,7 @@ import {
 } from '@/actions/App/Http/Controllers/Admin/BookingController';
 import PlateInput from '@/components/admin/PlateInput.vue';
 import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
+import DataToolbar from '@/components/demo/DataToolbar.vue';
 import EmptyState from '@/components/demo/EmptyState.vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
@@ -33,7 +34,11 @@ import {
     formatDate,
     formatDateCode,
 } from '@/composables/useCarwashFormat';
-import { formatPlate, isSpecialPlate } from '@/lib/vehiclePlate';
+import {
+    formatPlate,
+    isSpecialPlate,
+    normalizePlate,
+} from '@/lib/vehiclePlate';
 import type {
     CarwashBooking,
     CarwashBrand,
@@ -139,6 +144,59 @@ const pastBookings = computed<CarwashBooking[]>(() =>
     bookingList.value.filter((booking) => daysFromToday(booking.date) < 0),
 );
 
+/**
+ * One search over every board (hari ini, mendatang, sebelumnya): plate with or
+ * without spaces, customer, phone, vehicle, booking code or service.
+ */
+const bookingSearch = ref<string>('');
+
+const isSearchingBookings = computed<boolean>(
+    () => bookingSearch.value.trim() !== '',
+);
+
+function matchesBookingSearch(booking: CarwashBooking): boolean {
+    const tokens = bookingSearch.value
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+    const haystack = [
+        booking.plate,
+        formatPlate(booking.plate),
+        booking.customer,
+        booking.phone,
+        booking.vehicle,
+        booking.code,
+        booking.service,
+    ]
+        .join(' ')
+        .toLowerCase();
+    const compactHaystack = normalizePlate(haystack);
+
+    return tokens.every(
+        (token) =>
+            haystack.includes(token) ||
+            compactHaystack.includes(normalizePlate(token)),
+    );
+}
+
+/** A board's bookings narrowed to the search, or all of them without one. */
+function searchedBookings(bookings: CarwashBooking[]): CarwashBooking[] {
+    return isSearchingBookings.value
+        ? bookings.filter(matchesBookingSearch)
+        : bookings;
+}
+
+/** "3 antre", or "1 dari 3 antre" while a search narrows the board. */
+function boardBadge(
+    shown: CarwashBooking[],
+    all: CarwashBooking[],
+    noun: string,
+): string {
+    return isSearchingBookings.value
+        ? `${shown.length} dari ${all.length} ${noun}`
+        : `${all.length} ${noun}`;
+}
+
 const todayBookings = computed<CarwashBooking[]>(() =>
     bookingList.value.filter((booking) => daysFromToday(booking.date) === 0),
 );
@@ -174,42 +232,64 @@ type BookingBoard = {
     bookings: CarwashBooking[];
 };
 
+const searchEmptyTitle = 'Booking tidak ditemukan';
+const searchEmptyCaption =
+    'Coba cari dengan plat, nama, nomor HP, atau kode booking lain.';
+
 /** The three stages a booking passes through, stacked the way crew reads them. */
-const bookingBoards = computed<BookingBoard[]>(() => [
-    {
-        key: 'today',
-        title: 'Booking hari ini',
-        caption: 'Kedatangan yang harus disiapkan crew hari ini',
-        badge: `${todayBookings.value.length} antre`,
-        badgeTone: 'bg-cyan-50 text-cyan-700',
-        icon: CalendarClock,
-        emptyTitle: 'Belum ada booking hari ini',
-        emptyCaption: 'Booking untuk hari ini akan tampil di sini.',
-        bookings: todayBookings.value,
-    },
-    {
-        key: 'upcoming',
-        title: 'Booking mendatang',
-        caption: 'Jadwal untuk hari-hari berikutnya',
-        badge: `${upcomingBookings.value.length} terjadwal`,
-        badgeTone: 'bg-amber-50 text-amber-700',
-        icon: CalendarClock,
-        emptyTitle: 'Belum ada booking mendatang',
-        emptyCaption: 'Booking baru akan tampil di sini.',
-        bookings: upcomingBookings.value,
-    },
-    {
-        key: 'past',
-        title: 'Booking sebelumnya',
-        caption: 'Booking yang sudah lewat jadwalnya',
-        badge: `${pastBookings.value.length} riwayat`,
-        badgeTone: 'bg-slate-100 text-slate-600',
-        icon: CalendarCheck,
-        emptyTitle: 'Belum ada booking yang lewat',
-        emptyCaption: 'Booking yang sudah lewat jadwalnya akan tampil di sini.',
-        bookings: pastBookings.value,
-    },
-]);
+const bookingBoards = computed<BookingBoard[]>(() => {
+    const today = searchedBookings(todayBookings.value);
+    const upcoming = searchedBookings(upcomingBookings.value);
+    const past = searchedBookings(pastBookings.value);
+
+    return [
+        {
+            key: 'today',
+            title: 'Booking hari ini',
+            caption: 'Kedatangan yang harus disiapkan crew hari ini',
+            badge: boardBadge(today, todayBookings.value, 'antre'),
+            badgeTone: 'bg-cyan-50 text-cyan-700',
+            icon: CalendarClock,
+            emptyTitle: isSearchingBookings.value
+                ? searchEmptyTitle
+                : 'Belum ada booking hari ini',
+            emptyCaption: isSearchingBookings.value
+                ? searchEmptyCaption
+                : 'Booking untuk hari ini akan tampil di sini.',
+            bookings: today,
+        },
+        {
+            key: 'upcoming',
+            title: 'Booking mendatang',
+            caption: 'Jadwal untuk hari-hari berikutnya',
+            badge: boardBadge(upcoming, upcomingBookings.value, 'terjadwal'),
+            badgeTone: 'bg-amber-50 text-amber-700',
+            icon: CalendarClock,
+            emptyTitle: isSearchingBookings.value
+                ? searchEmptyTitle
+                : 'Belum ada booking mendatang',
+            emptyCaption: isSearchingBookings.value
+                ? searchEmptyCaption
+                : 'Booking baru akan tampil di sini.',
+            bookings: upcoming,
+        },
+        {
+            key: 'past',
+            title: 'Booking sebelumnya',
+            caption: 'Booking yang sudah lewat jadwalnya',
+            badge: boardBadge(past, pastBookings.value, 'riwayat'),
+            badgeTone: 'bg-slate-100 text-slate-600',
+            icon: CalendarCheck,
+            emptyTitle: isSearchingBookings.value
+                ? searchEmptyTitle
+                : 'Belum ada booking yang lewat',
+            emptyCaption: isSearchingBookings.value
+                ? searchEmptyCaption
+                : 'Booking yang sudah lewat jadwalnya akan tampil di sini.',
+            bookings: past,
+        },
+    ];
+});
 
 const detailBooking = computed<CarwashBooking | null>(
     () =>
@@ -655,6 +735,14 @@ function saveBooking(): void {
                 tone="amber"
             />
         </section>
+
+        <!-- One search narrows every board below it. -->
+        <DataToolbar
+            v-if="bookingList.length > 0"
+            v-model:search="bookingSearch"
+            placeholder="Cari plat, nama, HP, atau kode booking"
+            wide-search
+        />
 
         <!-- Booking boards: hari ini, mendatang, lalu yang sudah lewat -->
         <section
