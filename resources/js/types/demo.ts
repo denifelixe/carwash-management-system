@@ -262,6 +262,8 @@ export interface CarwashLeadFilters {
     q: string;
     status: string;
     conversion: string;
+    sort: string;
+    direction: string;
     page: number;
 }
 

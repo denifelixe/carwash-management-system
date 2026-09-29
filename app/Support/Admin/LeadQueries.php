@@ -25,32 +25,45 @@ class LeadQueries
     /** @var list<string> */
     public const CONVERSION_FILTERS = ['Semua', 'Belum jadi member', 'Sudah jadi member'];
 
+    /** @var array<string, string> */
+    private const SORT_COLUMNS = [
+        'name' => 'name',
+        'vehicle' => 'vehicle_plate',
+        'visits' => 'orders_count',
+        'spend' => 'orders_sum_total',
+        'status' => 'is_active',
+    ];
+
     /**
      * The working list is the leads still worth following up, so the module
      * opens on the un-converted ones rather than on everything ever recorded.
      *
-     * @return array{q: string, status: string, conversion: string, page: int}
+     * @return array{q: string, status: string, conversion: string, sort: string, direction: string, page: int}
      */
     public static function filters(Request $request): array
     {
         $status = $request->string('status')->toString();
         $conversion = $request->string('conversion')->toString();
+        $sort = $request->string('sort')->toString();
+        $direction = $request->string('direction')->toString();
 
         return [
             'q' => $request->string('q')->squish()->toString(),
             'status' => in_array($status, self::STATUS_FILTERS, true) ? $status : 'Semua',
             'conversion' => in_array($conversion, self::CONVERSION_FILTERS, true) ? $conversion : 'Belum jadi member',
+            'sort' => array_key_exists($sort, self::SORT_COLUMNS) ? $sort : '',
+            'direction' => in_array($direction, ['asc', 'desc'], true) ? $direction : 'desc',
             'page' => max(1, $request->integer('page', 1)),
         ];
     }
 
     /**
-     * @param  array{q: string, status: string, conversion: string, page: int}  $filters
+     * @param  array{q: string, status: string, conversion: string, sort: string, direction: string, page: int}  $filters
      * @return LengthAwarePaginator<int, Lead>
      */
     public static function page(array $filters): LengthAwarePaginator
     {
-        return self::withLeadAggregates(Lead::query())
+        $query = self::withLeadAggregates(Lead::query())
             ->when($filters['status'] !== 'Semua', fn ($query) => $query->where('is_active', $filters['status'] === 'aktif'))
             ->when(
                 $filters['conversion'] !== 'Semua',
@@ -58,10 +71,15 @@ class LeadQueries
                     ? $query->whereNotNull('converted_member_id')
                     : $query->whereNull('converted_member_id'),
             )
-            ->when($filters['q'] !== '', fn ($query) => self::applySearch($query, $filters['q']))
-            ->orderByDesc('updated_at')
-            ->orderByDesc('id')
-            ->paginate(self::PER_PAGE, page: $filters['page']);
+            ->when($filters['q'] !== '', fn ($query) => self::applySearch($query, $filters['q']));
+
+        if ($filters['sort'] !== '') {
+            $query->orderBy(self::SORT_COLUMNS[$filters['sort']], $filters['direction']);
+        } else {
+            $query->orderByDesc('updated_at');
+        }
+
+        return $query->orderByDesc('id')->paginate(self::PER_PAGE, page: $filters['page']);
     }
 
     /**

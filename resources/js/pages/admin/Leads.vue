@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { Head, router, useForm } from '@inertiajs/vue3';
 import {
+    ArrowDown,
+    ArrowUp,
+    ArrowUpDown,
     Car,
     Pencil,
     Phone,
@@ -25,10 +28,7 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
-import {
-    formatCurrency,
-    formatShortCurrency,
-} from '@/composables/useCarwashFormat';
+import { formatCurrency } from '@/composables/useCarwashFormat';
 import { formatPlate, isSpecialPlate } from '@/lib/vehiclePlate';
 import type {
     CarwashBrand,
@@ -129,11 +129,27 @@ function visit(overrides: Partial<CarwashLeadFilters> = {}): void {
             q: search.value,
             status: statusFilter.value,
             conversion: conversionFilter.value,
+            sort: props.filters.sort,
+            direction: props.filters.direction,
             page: props.filters.page,
             ...overrides,
         },
         { preserveState: true, preserveScroll: true, replace: true },
     );
+}
+
+function sortBy(column: string): void {
+    const direction =
+        props.filters.sort === column && props.filters.direction === 'asc'
+            ? 'desc'
+            : props.filters.sort === column ||
+                column === 'name' ||
+                column === 'vehicle' ||
+                column === 'status'
+              ? 'asc'
+              : 'desc';
+
+    visit({ sort: column, direction, page: 1 });
 }
 
 function toggleStatusFilter(status: string): void {
@@ -335,11 +351,48 @@ function toggleStatus(lead: CarwashLead): void {
                         <tr
                             class="border-b border-slate-100 text-left text-[11px] font-medium tracking-wider text-slate-400 uppercase"
                         >
-                            <th class="px-5 py-3">Calon pelanggan</th>
-                            <th class="px-5 py-3">Kendaraan</th>
-                            <th class="px-5 py-3">Kunjungan</th>
-                            <th class="px-5 py-3">Belanja</th>
-                            <th class="px-5 py-3">Status</th>
+                            <th
+                                v-for="column in [
+                                    { key: 'name', label: 'Calon pelanggan' },
+                                    { key: 'vehicle', label: 'Kendaraan' },
+                                    { key: 'visits', label: 'Kunjungan' },
+                                    { key: 'spend', label: 'Belanja' },
+                                    { key: 'status', label: 'Status' },
+                                ]"
+                                :key="column.key"
+                                class="px-5 py-3"
+                                scope="col"
+                                :aria-sort="
+                                    filters.sort === column.key
+                                        ? filters.direction === 'asc'
+                                            ? 'ascending'
+                                            : 'descending'
+                                        : undefined
+                                "
+                            >
+                                <button
+                                    type="button"
+                                    class="inline-flex items-center gap-1.5 text-left hover:text-slate-700"
+                                    @click="sortBy(column.key)"
+                                >
+                                    {{ column.label }}
+                                    <ArrowUp
+                                        v-if="
+                                            filters.sort === column.key &&
+                                            filters.direction === 'asc'
+                                        "
+                                        class="h-3.5 w-3.5"
+                                    />
+                                    <ArrowDown
+                                        v-else-if="filters.sort === column.key"
+                                        class="h-3.5 w-3.5"
+                                    />
+                                    <ArrowUpDown
+                                        v-else
+                                        class="h-3.5 w-3.5 opacity-50"
+                                    />
+                                </button>
+                            </th>
                             <th class="px-5 py-3"></th>
                         </tr>
                     </thead>
@@ -386,7 +439,7 @@ function toggleStatus(lead: CarwashLead): void {
                                 <p
                                     class="font-medium text-slate-900 tabular-nums"
                                 >
-                                    {{ formatShortCurrency(lead.spend) }}
+                                    {{ formatCurrency(lead.spend) }}
                                 </p>
                             </td>
                             <td class="px-5 py-3.5">
@@ -454,9 +507,9 @@ function toggleStatus(lead: CarwashLead): void {
                 <div class="rounded-xl bg-slate-50 p-3">
                     <p class="text-[11px] text-slate-500">Total belanja</p>
                     <p
-                        class="mt-0.5 text-lg font-semibold text-slate-900 tabular-nums"
+                        class="mt-0.5 text-sm font-semibold text-slate-900 tabular-nums"
                     >
-                        {{ formatShortCurrency(detailLead.spend) }}
+                        {{ formatCurrency(detailLead.spend) }}
                     </p>
                 </div>
                 <div class="rounded-xl bg-slate-50 p-3">

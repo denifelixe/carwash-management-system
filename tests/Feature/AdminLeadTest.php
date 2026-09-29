@@ -180,6 +180,54 @@ test('the lead list paginates fifteen rows at a time', function () {
         );
 });
 
+test('lead columns sort the full list in either direction', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $alpha = Lead::factory()->create(['name' => 'Alpha', 'vehicle_plate' => 'B3000CC', 'is_active' => false]);
+    $beta = Lead::factory()->create(['name' => 'Beta', 'vehicle_plate' => 'B1000AA']);
+    $gamma = Lead::factory()->create(['name' => 'Gamma', 'vehicle_plate' => 'B2000BB']);
+
+    Order::factory()->for($alpha)->create(['status' => 'selesai', 'total' => 30000]);
+    Order::factory()->for($alpha)->create(['status' => 'selesai', 'total' => 20000]);
+    Order::factory()->for($alpha)->create(['status' => 'batal', 'total' => 1000000]);
+    Order::factory()->for($beta)->create(['status' => 'selesai', 'total' => 90000]);
+
+    foreach ([
+        ['name', 'asc', [$alpha->id, $beta->id, $gamma->id]],
+        ['name', 'desc', [$gamma->id, $beta->id, $alpha->id]],
+        ['vehicle', 'asc', [$beta->id, $gamma->id, $alpha->id]],
+        ['vehicle', 'desc', [$alpha->id, $gamma->id, $beta->id]],
+        ['visits', 'asc', [$gamma->id, $beta->id, $alpha->id]],
+        ['visits', 'desc', [$alpha->id, $beta->id, $gamma->id]],
+        ['spend', 'asc', [$gamma->id, $alpha->id, $beta->id]],
+        ['spend', 'desc', [$beta->id, $alpha->id, $gamma->id]],
+        ['status', 'asc', [$alpha->id, $gamma->id, $beta->id]],
+        ['status', 'desc', [$gamma->id, $beta->id, $alpha->id]],
+    ] as [$sort, $direction, $expectedIds]) {
+        $this->actingAs($owner, 'admin')
+            ->get(route('admin.leads.index', compact('sort', 'direction')))
+            ->assertInertia(fn (AssertableInertia $page) => $page
+                ->where('filters.sort', $sort)
+                ->where('filters.direction', $direction)
+                ->where('leads.data.0.id', $expectedIds[0])
+                ->where('leads.data.1.id', $expectedIds[1])
+                ->where('leads.data.2.id', $expectedIds[2]));
+    }
+});
+
+test('unknown lead sort options fall back to the latest leads', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $older = Lead::factory()->create(['updated_at' => '2026-09-01 10:00:00']);
+    $newer = Lead::factory()->create(['updated_at' => '2026-09-02 10:00:00']);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.leads.index', ['sort' => 'name; drop table leads', 'direction' => 'sideways']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('filters.sort', '')
+            ->where('filters.direction', 'desc')
+            ->where('leads.data.0.id', $newer->id)
+            ->where('leads.data.1.id', $older->id));
+});
+
 test('an owner can create edit and toggle a lead', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
 
