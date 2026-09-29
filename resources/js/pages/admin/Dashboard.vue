@@ -9,10 +9,13 @@ import {
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
+import { index as indexOrder } from '@/actions/App/Http/Controllers/Admin/OrderController';
+import ServiceOverview from '@/components/admin/ServiceOverview.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
+import demoAdmin from '@/routes/demo/admin';
 import type {
     CarwashBrand,
     CarwashCashSummary,
@@ -20,10 +23,12 @@ import type {
     CarwashOrderSummary,
     CarwashPersona,
     CarwashShift,
+    CarwashServiceOverviewGroup,
     CarwashStat,
 } from '@/types/demo';
 
 const props = defineProps<{
+    mode: 'demo' | 'live';
     brand: CarwashBrand;
     persona: CarwashPersona;
     filterUrl: string;
@@ -31,6 +36,7 @@ const props = defineProps<{
     filters: CarwashDateFilter;
     shifts: CarwashShift[];
     orderSummary: CarwashOrderSummary;
+    serviceOverview: CarwashServiceOverviewGroup[];
     cashSummary: CarwashCashSummary;
 }>();
 
@@ -49,6 +55,15 @@ function applyDate(date: string): void {
             preserveScroll: true,
             replace: true,
         },
+    );
+}
+
+function openOrder(orderId: number): void {
+    const options = { query: { date: props.filters.date, order: orderId } };
+    router.get(
+        props.mode === 'demo'
+            ? demoAdmin.orders.url(options)
+            : indexOrder.url(options),
     );
 }
 </script>
@@ -86,6 +101,8 @@ function applyDate(date: string): void {
                 </div>
             </div>
         </section>
+
+        <ServiceOverview :groups="serviceOverview" @select-order="openOrder" />
 
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard

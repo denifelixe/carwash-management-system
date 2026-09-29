@@ -25,6 +25,7 @@ class DashboardController extends AdminController
             'filters' => DateFilter::meta($date),
             'shifts' => Finance::shiftSummary($date),
             'orderSummary' => Operations::orderSummary($date),
+            'serviceOverview' => Operations::serviceOverview($date),
             'cashSummary' => Finance::summary($date),
         ]);
     }

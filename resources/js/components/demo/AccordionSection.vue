@@ -74,7 +74,7 @@ const styles = computed<ToneStyle>(() => toneStyles[props.tone]);
         <div class="flex flex-wrap items-center justify-between gap-3">
             <button
                 type="button"
-                class="flex min-w-0 flex-1 items-center gap-3 text-left"
+                class="flex min-w-[min(100%,16rem)] flex-1 items-center gap-3 text-left"
                 :aria-expanded="isOpen"
                 :aria-controls="contentId"
                 @click="isOpen = !isOpen"

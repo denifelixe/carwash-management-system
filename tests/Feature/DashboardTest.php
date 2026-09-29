@@ -6,6 +6,7 @@ use App\Models\AdminRole;
 use App\Models\CashEntry;
 use App\Models\Member;
 use App\Models\Order;
+use App\Models\Service;
 use Carbon\CarbonImmutable;
 use Inertia\Testing\AssertableInertia;
 
@@ -143,6 +144,75 @@ test('the vehicle card counts served orders and leaves out cancelled ones', func
                 ->where('stats.1.value', '2')
                 ->where('stats.1.caption', 'dari 3 order kendaraan'),
         );
+});
+
+test('dashboard and order page show the same daily vehicle counts by service group and category', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $date = '2026-08-30';
+    $carWash = Service::factory()->create(['category' => 'Cuci Mobil', 'category_group' => 'Cuci']);
+    $otherCarWash = Service::factory()->create(['category' => 'Cuci Mobil', 'category_group' => 'Cuci']);
+    $motorWash = Service::factory()->create(['category' => 'Cuci Motor', 'category_group' => 'Cuci']);
+    $coating = Service::factory()->create(['category' => 'Coating Mobil', 'category_group' => 'Coating']);
+
+    $attachServices = function (Order $order, array $services): void {
+        foreach ($services as $service) {
+            $variation = $service->serviceVariations()->firstOrFail();
+            $order->serviceVariations()->attach($variation, [
+                'service_name' => $service->name,
+                'unit_price' => $service->price,
+                'quantity' => 1,
+                'total_price' => $service->price,
+                'stamps' => $service->stamps,
+            ]);
+        }
+    };
+
+    $carOrder = Order::factory()->create(['service_date' => $date, 'status' => 'selesai']);
+    $motorOrder = Order::factory()->create(['service_date' => $date, 'status' => 'proses']);
+    $attachServices($carOrder, [$carWash, $otherCarWash, $coating]);
+    $attachServices($motorOrder, [$motorWash]);
+    $attachServices(Order::factory()->create(['service_date' => $date, 'status' => 'batal']), [$carWash]);
+    $attachServices(Order::factory()->create(['service_date' => '2026-08-29']), [$motorWash]);
+
+    $expected = [
+        ['name' => 'Coating', 'count' => 1, 'categories' => [['name' => 'Coating Mobil', 'count' => 1, 'orders' => [[
+            'id' => $carOrder->id,
+            'orderNo' => $carOrder->number,
+            'plate' => $carOrder->vehicle_plate,
+            'vehicle' => $carOrder->vehicle_name,
+            'customer' => $carOrder->customer_name,
+            'status' => 'selesai',
+        ]]]]],
+        ['name' => 'Cuci', 'count' => 2, 'categories' => [
+            ['name' => 'Cuci Mobil', 'count' => 1, 'orders' => [[
+                'id' => $carOrder->id,
+                'orderNo' => $carOrder->number,
+                'plate' => $carOrder->vehicle_plate,
+                'vehicle' => $carOrder->vehicle_name,
+                'customer' => $carOrder->customer_name,
+                'status' => 'selesai',
+            ]]],
+            ['name' => 'Cuci Motor', 'count' => 1, 'orders' => [[
+                'id' => $motorOrder->id,
+                'orderNo' => $motorOrder->number,
+                'plate' => $motorOrder->vehicle_plate,
+                'vehicle' => $motorOrder->vehicle_name,
+                'customer' => $motorOrder->customer_name,
+                'status' => 'proses',
+            ]]],
+        ]],
+    ];
+
+    $this->actingAs($owner, 'admin');
+
+    expect($this->get(route('admin.dashboard', ['date' => $date]))->inertiaProps('serviceOverview'))
+        ->toBe($expected);
+    expect($this->get(route('admin.orders.index', ['date' => $date]))->inertiaProps('serviceOverview'))
+        ->toBe($expected);
+
+    $this->get(route('admin.orders.index', ['date' => $date, 'order' => $carOrder->id]))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('focusedOrderId', $carOrder->id));
 });
 
 test('a takings card compares the day against the one before it', function () {

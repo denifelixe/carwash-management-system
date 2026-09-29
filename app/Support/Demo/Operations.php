@@ -10,6 +10,54 @@ use App\Support\Admin\PaymentChannelBreakdown;
 class Operations
 {
     /**
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string}>}>}>
+     */
+    public static function serviceOverview(string $date): array
+    {
+        $services = collect(Catalog::services())->keyBy('id');
+        $rows = collect(self::orders())
+            ->filter(fn (array $order): bool => $order['date'] === $date && $order['status'] !== 'batal')
+            ->flatMap(fn (array $order) => collect($order['serviceIds'])
+                ->map(function (int $serviceId) use ($order, $services): ?array {
+                    $service = $services->get($serviceId);
+
+                    return $service === null ? null : [
+                        'orderId' => $order['id'],
+                        'group' => $service['categoryGroup'],
+                        'category' => $service['category'],
+                        'orderNo' => $order['orderNo'],
+                        'plate' => $order['plate'],
+                        'vehicle' => $order['vehicle'],
+                        'customer' => $order['customer'],
+                        'status' => $order['status'],
+                    ];
+                })->filter())
+            ->unique(fn (array $row): string => $row['orderId'].'|'.$row['category']);
+
+        return $rows->groupBy('group')
+            ->map(fn ($group, string $name): array => [
+                'name' => $name,
+                'count' => $group->unique('orderId')->count(),
+                'categories' => $group->groupBy('category')
+                    ->map(fn ($category, string $categoryName): array => [
+                        'name' => $categoryName,
+                        'count' => $category->unique('orderId')->count(),
+                        'orders' => $category->unique('orderId')->sortByDesc('orderId')
+                            ->map(fn (array $row): array => [
+                                'id' => $row['orderId'],
+                                'orderNo' => $row['orderNo'],
+                                'plate' => $row['plate'],
+                                'vehicle' => $row['vehicle'],
+                                'customer' => $row['customer'],
+                                'status' => $row['status'],
+                            ])->values()->all(),
+                    ])
+                    ->sortKeys()->values()->all(),
+            ])
+            ->sortKeys()->values()->all();
+    }
+
+    /**
      * `paidAmount` is the rupiah already collected at the cashier, so the three
      * payment states stay derivable: 0 is `belum bayar`, anything between 0 and
      * `total` is `sebagian`, and `total` is `lunas`.

@@ -8,7 +8,7 @@ import {
     Users,
     Wallet,
 } from '@lucide/vue';
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import {
     exportDailySales,
     exportFinance,
@@ -36,6 +36,7 @@ import type {
     CarwashCustomerBase,
     CarwashDailySales,
     CarwashItemSales,
+    CarwashItemSalesGroup,
     CarwashInventorySummary,
     CarwashMoneyEntry,
     CarwashPaginated,
@@ -272,6 +273,69 @@ const itemSalesDownloadUrl = computed<string>(() => {
         ? admin.reports.itemSales.export.url({ query })
         : exportItemSales.url({ query });
 });
+
+const itemSalesFilterStyle = ref<'chips' | 'dropdown'>('chips');
+const selectedItemSalesGroups = ref<string[]>([]);
+const selectedItemSalesGroup = ref('');
+
+watch(
+    () => props.itemSales.groups,
+    (groups) => {
+        const availableGroups = new Set(groups.map((group) => group.group));
+        selectedItemSalesGroups.value = selectedItemSalesGroups.value.filter(
+            (group) => availableGroups.has(group),
+        );
+
+        if (!availableGroups.has(selectedItemSalesGroup.value)) {
+            selectedItemSalesGroup.value = '';
+        }
+    },
+);
+
+/** An empty selection means every group is visible in either preview. */
+const visibleItemSalesGroups = computed<CarwashItemSalesGroup[]>(() => {
+    if (itemSalesFilterStyle.value === 'dropdown') {
+        return selectedItemSalesGroup.value === ''
+            ? props.itemSales.groups
+            : props.itemSales.groups.filter(
+                  (group) => group.group === selectedItemSalesGroup.value,
+              );
+    }
+
+    return selectedItemSalesGroups.value.length === 0
+        ? props.itemSales.groups
+        : props.itemSales.groups.filter((group) =>
+              selectedItemSalesGroups.value.includes(group.group),
+          );
+});
+
+const visibleItemSalesQuantity = computed<number>(() =>
+    visibleItemSalesGroups.value.reduce(
+        (quantity, group) => quantity + group.quantity,
+        0,
+    ),
+);
+
+const visibleItemSalesTotal = computed<number>(() =>
+    visibleItemSalesGroups.value.reduce(
+        (total, group) => total + group.total,
+        0,
+    ),
+);
+
+const isItemSalesFiltered = computed<boolean>(() =>
+    itemSalesFilterStyle.value === 'dropdown'
+        ? selectedItemSalesGroup.value !== ''
+        : selectedItemSalesGroups.value.length > 0,
+);
+
+function toggleItemSalesGroup(groupName: string): void {
+    selectedItemSalesGroups.value = selectedItemSalesGroups.value.includes(
+        groupName,
+    )
+        ? selectedItemSalesGroups.value.filter((name) => name !== groupName)
+        : [...selectedItemSalesGroups.value, groupName];
+}
 
 const financeLogDownloadUrl = computed(() => {
     const query = {
@@ -607,12 +671,13 @@ const financeLogDownloadUrl = computed(() => {
         -->
         <SectionCard
             title="Penjualan per Layanan"
-            :caption="`Order lunas · ${filters.label} · ${formatNumber(itemSales.quantity)} qty · harga layanan sebelum diskon`"
+            :caption="`Order lunas · ${filters.label} · ${formatNumber(visibleItemSalesQuantity)} qty · harga layanan sebelum diskon`"
             :padded="false"
         >
             <template #actions>
                 <a
                     :href="itemSalesDownloadUrl"
+                    title="Unduh semua layanan pada periode ini"
                     class="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition hover:bg-slate-50"
                     download
                 >
@@ -620,8 +685,105 @@ const financeLogDownloadUrl = computed(() => {
                     Unduh Excel
                 </a>
             </template>
+            <div class="border-b border-slate-100 px-4 py-3">
+                <fieldset class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <legend class="mb-2 text-[11px] font-medium text-slate-500">
+                        Pilih tampilan filter
+                    </legend>
+                    <label
+                        class="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-700"
+                    >
+                        <input
+                            v-model="itemSalesFilterStyle"
+                            type="radio"
+                            name="item-sales-filter-style"
+                            value="chips"
+                            class="accent-cyan-700"
+                        />
+                        Chip (pilih beberapa)
+                    </label>
+                    <label
+                        class="inline-flex cursor-pointer items-center gap-2 text-xs text-slate-700"
+                    >
+                        <input
+                            v-model="itemSalesFilterStyle"
+                            type="radio"
+                            name="item-sales-filter-style"
+                            value="dropdown"
+                            class="accent-cyan-700"
+                        />
+                        Dropdown (pilih satu)
+                    </label>
+                </fieldset>
+                <div v-if="itemSales.groups.length > 0" class="mt-3">
+                    <div
+                        v-if="itemSalesFilterStyle === 'chips'"
+                        class="flex flex-wrap gap-2"
+                        aria-label="Filter kelompok layanan"
+                    >
+                        <button
+                            type="button"
+                            :aria-pressed="selectedItemSalesGroups.length === 0"
+                            class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                            :class="
+                                selectedItemSalesGroups.length === 0
+                                    ? 'border-cyan-700 bg-cyan-700 text-white'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            "
+                            @click="selectedItemSalesGroups = []"
+                        >
+                            Semua
+                        </button>
+                        <button
+                            v-for="group in itemSales.groups"
+                            :key="group.group"
+                            type="button"
+                            :aria-pressed="
+                                selectedItemSalesGroups.includes(group.group)
+                            "
+                            class="rounded-full border px-3 py-1.5 text-xs font-medium transition"
+                            :class="
+                                selectedItemSalesGroups.includes(group.group)
+                                    ? 'border-cyan-700 bg-cyan-700 text-white'
+                                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                            "
+                            @click="toggleItemSalesGroup(group.group)"
+                        >
+                            {{ group.group }}
+                        </button>
+                    </div>
+                    <div v-else class="flex flex-wrap items-center gap-2">
+                        <label
+                            for="item-sales-group"
+                            class="text-xs font-medium text-slate-600"
+                        >
+                            Kelompok layanan
+                        </label>
+                        <select
+                            id="item-sales-group"
+                            v-model="selectedItemSalesGroup"
+                            class="min-w-44 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 focus:border-cyan-600 focus:outline-none"
+                        >
+                            <option value="">Semua layanan</option>
+                            <option
+                                v-for="group in itemSales.groups"
+                                :key="group.group"
+                                :value="group.group"
+                            >
+                                {{ group.group }}
+                            </option>
+                        </select>
+                    </div>
+                    <p
+                        v-if="isItemSalesFiltered"
+                        class="mt-2 text-[11px] text-slate-500"
+                    >
+                        Unduh Excel tetap memuat semua layanan pada periode ini.
+                    </p>
+                </div>
+            </div>
             <div
-                v-if="itemSales.groups.length > 0"
+                v-if="visibleItemSalesGroups.length > 0"
                 class="max-h-[32rem] overflow-auto rounded-b-2xl"
             >
                 <table
@@ -639,7 +801,7 @@ const financeLogDownloadUrl = computed(() => {
                         </tr>
                     </thead>
                     <tbody
-                        v-for="group in itemSales.groups"
+                        v-for="group in visibleItemSalesGroups"
                         :key="group.group"
                         class="text-slate-700"
                     >
@@ -689,10 +851,10 @@ const financeLogDownloadUrl = computed(() => {
                                 TOTAL
                             </td>
                             <td class="px-3 py-3.5 text-right">
-                                {{ formatNumber(itemSales.quantity) }}
+                                {{ formatNumber(visibleItemSalesQuantity) }}
                             </td>
                             <td class="px-4 py-3.5 text-right">
-                                {{ formatCurrency(itemSales.total) }}
+                                {{ formatCurrency(visibleItemSalesTotal) }}
                             </td>
                         </tr>
                     </tfoot>
@@ -701,8 +863,16 @@ const financeLogDownloadUrl = computed(() => {
             <div v-else class="p-5">
                 <EmptyState
                     :icon="ListOrdered"
-                    title="Belum ada layanan terjual"
-                    caption="Layanan dari order yang lunas pada periode ini akan tampil di sini."
+                    :title="
+                        isItemSalesFiltered
+                            ? 'Tidak ada layanan yang cocok'
+                            : 'Belum ada layanan terjual'
+                    "
+                    :caption="
+                        isItemSalesFiltered
+                            ? 'Pilih kelompok layanan lain untuk melihat penjualan.'
+                            : 'Layanan dari order yang lunas pada periode ini akan tampil di sini.'
+                    "
                 />
             </div>
         </SectionCard>

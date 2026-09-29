@@ -16,6 +16,7 @@ import {
     LayoutDashboard,
     LogOut,
     Menu,
+    Package,
     PanelLeftClose,
     PanelLeftOpen,
     ReceiptText,
@@ -43,7 +44,41 @@ const page = usePage<CarwashAdminShellProps>();
 
 const brand = computed(() => page.props.brand);
 const role = computed(() => page.props.role);
-const modules = computed(() => page.props.modules);
+const modules = computed<CarwashAdminModule[]>(() =>
+    page.props.modules.flatMap((module) => {
+        if (module.key !== 'orders') {
+            return [module];
+        }
+
+        return [
+            {
+                ...module,
+                href: null,
+                children: [
+                    module,
+                    {
+                        key: 'orders_carwash_coating',
+                        label: 'Order (Carwash & Coating)',
+                        caption: 'Segera hadir',
+                        icon: 'orders',
+                        href: null,
+                        enabled: false,
+                        active: false,
+                    },
+                ],
+            },
+            {
+                key: 'products',
+                label: 'Produk',
+                caption: 'Segera hadir',
+                icon: 'products',
+                href: null,
+                enabled: false,
+                active: false,
+            },
+        ];
+    }),
+);
 const persona = computed(() => page.props.persona);
 const timezone = computed(() => page.props.timezone);
 const profileHref = computed(() => page.props.profileHref);
@@ -53,6 +88,7 @@ const exitAction = computed(() => page.props.exitAction);
 const moduleIcons: Record<string, LucideIcon> = {
     dashboard: LayoutDashboard,
     orders: ClipboardList,
+    products: Package,
     pos: ScanLine,
     members: Users,
     leads: UserPlus,
@@ -429,12 +465,22 @@ function closeSidebar(module: CarwashAdminModule): void {
                                     class="h-4 w-4 shrink-0"
                                 />
                                 <span
-                                    class="min-w-0 flex-1 truncate text-[13px] font-medium"
+                                    class="min-w-0 flex-1 leading-tight"
                                     :class="
                                         isSidebarCollapsed ? 'lg:hidden' : ''
                                     "
                                 >
-                                    {{ child.label }}
+                                    <span
+                                        class="block truncate text-[13px] font-medium"
+                                    >
+                                        {{ child.label }}
+                                    </span>
+                                    <span
+                                        v-if="!child.enabled"
+                                        class="mt-1 inline-block rounded-full bg-white/5 px-1.5 py-0.5 text-[9px] font-medium text-slate-500"
+                                    >
+                                        Segera hadir
+                                    </span>
                                 </span>
                             </component>
                         </div>

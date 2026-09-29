@@ -65,6 +65,8 @@ class OrderController extends Controller
             'orders' => $orders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'previousOrders' => $previousOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'filters' => OrderQueries::filters($selectedDate, $today),
+            'serviceOverview' => OrderQueries::serviceOverviewForDate($selectedDate),
+            'focusedOrderId' => $request->integer('order') ?: null,
             'orderStatuses' => self::STATUSES,
             'editableOrderStatuses' => self::EDITABLE_STATUSES,
             'upcoming' => [],

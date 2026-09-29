@@ -81,6 +81,23 @@ export interface CarwashService {
     isActive: boolean;
 }
 
+export interface CarwashServiceOverviewGroup {
+    name: string;
+    count: number;
+    categories: {
+        name: string;
+        count: number;
+        orders: {
+            id: number;
+            orderNo: string;
+            plate: string;
+            vehicle: string;
+            customer: string;
+            status: string;
+        }[];
+    }[];
+}
+
 export interface CarwashServiceVariation {
     id: number;
     variations: Record<string, string> | null;

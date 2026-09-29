@@ -40,6 +40,7 @@ class DashboardController extends Controller
             'stats' => DashboardStats::forDate($date, $moneyIn),
             'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $date, withUnassigned: true),
             'orderSummary' => OrderQueries::summaryForDate($date),
+            'serviceOverview' => OrderQueries::serviceOverviewForDate($date),
             'cashSummary' => FinanceQueries::cashSummary($moneyIn, $moneyOut),
         ]);
     }

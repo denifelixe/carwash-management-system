@@ -30,6 +30,7 @@ import {
 } from '@/actions/App/Http/Controllers/Admin/OrderController';
 import PlateInput from '@/components/admin/PlateInput.vue';
 import ServiceCartPicker from '@/components/admin/ServiceCartPicker.vue';
+import ServiceOverview from '@/components/admin/ServiceOverview.vue';
 import CollapsibleSummary from '@/components/demo/CollapsibleSummary.vue';
 import DataToolbar from '@/components/demo/DataToolbar.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
@@ -38,10 +39,7 @@ import ModalDialog from '@/components/demo/ModalDialog.vue';
 import SlideOver from '@/components/demo/SlideOver.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
-import {
-    formatCurrency,
-    formatDate,
-} from '@/composables/useCarwashFormat';
+import { formatCurrency, formatDate } from '@/composables/useCarwashFormat';
 import { useCarwashWorkflow } from '@/composables/useCarwashWorkflow';
 import {
     formatPlate,
@@ -60,6 +58,7 @@ import type {
     CarwashOrder,
     CarwashPersona,
     CarwashService,
+    CarwashServiceOverviewGroup,
     CarwashServiceItem,
     CarwashVehicle,
 } from '@/types/demo';
@@ -76,6 +75,8 @@ const props = defineProps<{
     upcoming: CarwashBooking[];
     services: CarwashService[];
     serviceCategories: string[];
+    serviceOverview: CarwashServiceOverviewGroup[];
+    focusedOrderId: number | null;
     customers: CarwashCustomer[];
     crew: CarwashCrewMember[];
     /**
@@ -165,7 +166,13 @@ const scopedOrders = computed<CarwashOrder[]>(() =>
 const search = ref<string>('');
 /** The list opens on every order of the day (MoM follow-up), not one stage. */
 const statusFilter = ref<string>('Semua');
-const detailOrderId = ref<number | null>(null);
+const detailOrderId = ref<number | null>(props.focusedOrderId);
+watch(
+    () => props.focusedOrderId,
+    (orderId) => {
+        detailOrderId.value = orderId;
+    },
+);
 const deletingOrder = ref<CarwashOrder | null>(null);
 const isCreateOpen = ref<boolean>(false);
 const editingOrderId = ref<number | null>(null);
@@ -1147,9 +1154,13 @@ function createOrder(): void {
     }
 
     const monthYear = `${props.filters.today.slice(5, 7)}${props.filters.today.slice(2, 4)}`;
-    const sequence = Math.max(0, ...orderList.value
-        .filter((order) => order.orderNo.endsWith(`/${monthYear}`))
-        .map((order) => Number(order.orderNo.slice(0, 8)) || 0)) + 1;
+    const sequence =
+        Math.max(
+            0,
+            ...orderList.value
+                .filter((order) => order.orderNo.endsWith(`/${monthYear}`))
+                .map((order) => Number(order.orderNo.slice(0, 8)) || 0),
+        ) + 1;
     const orderNo = `${String(sequence).padStart(8, '0')}/ORD/${monthYear}`;
     const walkInLabel = customerMode.value === 'walk-in' ? ' (non-member)' : '';
     const customerName =
@@ -1635,6 +1646,12 @@ function removeDeletionPhoto(index: number): void {
                 @click="statusFilter = card.status"
             />
         </CollapsibleSummary>
+
+        <ServiceOverview
+            :groups="serviceOverview"
+            collapsible
+            @select-order="(orderId) => (detailOrderId = orderId)"
+        />
 
         <!-- Order table -->
         <section

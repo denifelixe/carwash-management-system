@@ -30,6 +30,8 @@ class OrderController extends AdminController
                 ->sortBy([['date', 'asc'], ['id', 'asc']])
                 ->values()->all(),
             'filters' => DateFilter::meta($date),
+            'serviceOverview' => Operations::serviceOverview($date),
+            'focusedOrderId' => $request->integer('order') ?: null,
             'orderStatuses' => Operations::orderStatuses(),
             'editableOrderStatuses' => Operations::editableOrderStatuses(),
             'upcoming' => Operations::bookings(),

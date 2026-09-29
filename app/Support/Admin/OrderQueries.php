@@ -11,6 +11,7 @@ use App\Support\Demo\DateFilter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Reads the live order modules share, so the order floor and the cashier see
@@ -171,6 +172,48 @@ class OrderQueries
             'served' => $statuses->reject(fn (string $status): bool => $status === 'booking')->count(),
             'awaitingBooking' => $statuses->filter(fn (string $status): bool => $status === 'booking')->count(),
         ];
+    }
+
+    /**
+     * Vehicles are counted once per category and group, even when an order
+     * contains several services or variations from the same category.
+     *
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string}>}>}>
+     */
+    public static function serviceOverviewForDate(string $date): array
+    {
+        $rows = DB::table('orders')
+            ->join('order_services', 'order_services.order_id', '=', 'orders.id')
+            ->join('service_variations', 'service_variations.id', '=', 'order_services.service_variation_id')
+            ->join('services', 'services.id', '=', 'service_variations.service_id')
+            ->whereDate('orders.service_date', $date)
+            ->where('orders.status', '!=', 'batal')
+            ->whereNull('orders.deleted_at')
+            ->select('orders.id as order_id', 'orders.number', 'orders.vehicle_plate', 'orders.vehicle_name', 'orders.customer_name', 'orders.status', 'services.category_group', 'services.category')
+            ->distinct()
+            ->get();
+
+        return $rows->groupBy('category_group')
+            ->map(fn ($group, string $name): array => [
+                'name' => $name,
+                'count' => $group->unique('order_id')->count(),
+                'categories' => $group->groupBy('category')
+                    ->map(fn ($category, string $categoryName): array => [
+                        'name' => $categoryName,
+                        'count' => $category->unique('order_id')->count(),
+                        'orders' => $category->unique('order_id')->sortByDesc('order_id')
+                            ->map(fn ($row): array => [
+                                'id' => $row->order_id,
+                                'orderNo' => $row->number,
+                                'plate' => $row->vehicle_plate,
+                                'vehicle' => $row->vehicle_name,
+                                'customer' => $row->customer_name,
+                                'status' => $row->status,
+                            ])->values()->all(),
+                    ])
+                    ->sortKeys()->values()->all(),
+            ])
+            ->sortKeys()->values()->all();
     }
 
     /**
