@@ -23,14 +23,16 @@ class OrderController extends AdminController
         $date = DateFilter::fromRequest($request) ?: Reports::todayDate();
 
         return $this->page($request, 'admin/Orders', [
-            'orders' => DateFilter::apply(Operations::orders(), $date),
+            'orders' => collect(Operations::orders())
+                ->filter(fn (array $order): bool => ($order['arrivalDate'] ?? $order['date']) === $date)
+                ->values()->all(),
             'previousOrders' => collect(Operations::orders())
-                ->filter(fn (array $order): bool => $order['date'] < $date
+                ->filter(fn (array $order): bool => ($order['arrivalDate'] ?? $order['date']) < $date
                     && in_array($order['status'], ['booking', 'menunggu', 'proses', 'pelunasan'], true))
-                ->sortBy([['date', 'asc'], ['id', 'asc']])
+                ->sort(fn (array $first, array $second): int => strcmp($first['arrivalDate'] ?? $first['date'], $second['arrivalDate'] ?? $second['date']) ?: $first['id'] <=> $second['id'])
                 ->values()->all(),
             'filters' => DateFilter::meta($date),
-            'serviceOverview' => Operations::serviceOverview($date),
+            'serviceOverview' => Operations::serviceOverview($date, useArrivalDate: true),
             'focusedOrderId' => $request->integer('order') ?: null,
             'orderStatuses' => Operations::orderStatuses(),
             'editableOrderStatuses' => Operations::editableOrderStatuses(),

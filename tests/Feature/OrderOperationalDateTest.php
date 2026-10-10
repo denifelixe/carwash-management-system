@@ -1,0 +1,125 @@
+<?php
+
+use App\Models\Admin;
+use App\Models\Order;
+use App\Models\Service;
+use App\Support\Admin\OrderQueries;
+use Illuminate\Support\Facades\Process;
+use Inertia\Testing\AssertableInertia;
+
+test('the order board uses arrival day with the schedule as a fallback', function (string $source, string $status, ?string $arrival, string $expectedDate) {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'source' => $source,
+        'status' => $status,
+        'service_date' => '2026-09-04',
+        'booking_date' => $source === 'booking' ? '2026-09-03' : null,
+        'arrived_at' => $arrival,
+    ]);
+
+    $this->actingAs($owner, 'admin')
+        ->get(route('admin.orders.index', ['date' => $expectedDate]))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('orders', 1)
+            ->where('orders.0.id', $order->id)
+            ->where('orders.0.date', '2026-09-04')
+            ->where('orders.0.arrivalDate', $arrival === null ? null : substr($arrival, 0, 10))
+            ->where('filters.earliest', $expectedDate)
+            ->has('previousOrders', 0));
+
+    $otherDate = $expectedDate === '2026-09-04' ? '2026-09-06' : '2026-09-04';
+    $this->get(route('admin.orders.index', ['date' => $otherDate]))
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('orders', 0));
+})->with([
+    'unarrived booking' => ['booking', 'booking', null, '2026-09-04'],
+    'legacy missing arrival' => ['booking', 'proses', null, '2026-09-04'],
+    'late booking' => ['booking', 'menunggu', '2026-09-06 23:21:00', '2026-09-06'],
+    'completed booking' => ['booking', 'selesai', '2026-09-06 23:21:00', '2026-09-06'],
+    'cancelled after arrival' => ['booking', 'batal', '2026-09-06 23:21:00', '2026-09-06'],
+    'cancelled before arrival' => ['booking', 'batal', null, '2026-09-04'],
+    'walk-in' => ['walk-in', 'proses', '2026-09-06 23:21:00', '2026-09-06'],
+    'just before midnight' => ['booking', 'proses', '2026-09-05 23:59:59', '2026-09-05'],
+    'at midnight' => ['booking', 'proses', '2026-09-06 00:00:00', '2026-09-06'],
+    'early arrival' => ['booking', 'proses', '2026-09-03 10:00:00', '2026-09-03'],
+]);
+
+test('previous unfinished orders use operational dates and never duplicate the daily list', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $unarrived = Order::factory()->create(['service_date' => '2026-09-03', 'source' => 'booking', 'status' => 'booking', 'arrived_at' => null]);
+    $earlierArrival = Order::factory()->create(['service_date' => '2026-09-01', 'arrived_at' => '2026-09-05 23:00:00']);
+    $sameDay = Order::factory()->create(['service_date' => '2026-09-04', 'arrived_at' => '2026-09-06 00:00:00']);
+    Order::factory()->create(['service_date' => '2026-09-02', 'arrived_at' => '2026-09-07 00:00:00']);
+    Order::factory()->create(['service_date' => '2026-09-01', 'status' => 'selesai', 'arrived_at' => '2026-09-05 10:00:00']);
+    Order::factory()->create(['service_date' => '2026-09-01', 'status' => 'batal', 'arrived_at' => null]);
+
+    $this->actingAs($owner, 'admin')->get(route('admin.orders.index', ['date' => '2026-09-06']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('orders', fn ($orders): bool => collect($orders)->pluck('id')->all() === [$sameDay->id])
+            ->where('previousOrders', fn ($orders): bool => collect($orders)->pluck('id')->all() === [$unarrived->id, $earlierArrival->id]));
+});
+
+test('order service counts move to arrival day while shared schedule reads keep their existing dates', function () {
+    $owner = Admin::factory()->create(['is_owner' => true]);
+    $service = Service::factory()->create(['category_group' => 'Cuci', 'category' => 'Mobil']);
+    $variation = $service->serviceVariations()->firstOrFail();
+    $order = Order::factory()->create(['service_date' => '2026-09-04', 'arrived_at' => '2026-09-06 23:21:00']);
+    $order->serviceVariations()->attach($variation, ['service_name' => $service->name, 'unit_price' => $variation->price, 'total_price' => $variation->price, 'quantity' => 1, 'stamps' => 0]);
+
+    $this->actingAs($owner, 'admin')->get(route('admin.orders.index', ['date' => '2026-09-06']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('serviceOverview.0.count', 1)
+            ->where('serviceOverview.0.categories.0.orders.0.id', $order->id));
+    $this->get(route('admin.orders.index', ['date' => '2026-09-04']))
+        ->assertInertia(fn (AssertableInertia $page) => $page->has('serviceOverview', 0));
+
+    expect(OrderQueries::forDate('2026-09-04')->modelKeys())->toBe([$order->id])
+        ->and(OrderQueries::forDate('2026-09-06')->modelKeys())->toBe([])
+        ->and(OrderQueries::summaryForDate('2026-09-04')['total'])->toBe(1)
+        ->and(OrderQueries::summaryForDate('2026-09-06')['total'])->toBe(0)
+        ->and(OrderQueries::serviceOverviewForDate('2026-09-04')[0]['count'])->toBe(1)
+        ->and(OrderQueries::serviceOverviewForDate('2026-09-06'))->toBe([]);
+});
+
+test('demo arrival moves daily membership and reactive service counts without changing the schedule', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Orders.ts', source, ts.ScriptTarget.Latest, true);
+const names = ['operationalOrderDate', 'buildOrderServiceOverview', 'setStatus', 'canEditStatus'];
+const values = ['scopedOrders', 'unfinishedPreviousOrders', 'displayedServiceOverview'];
+const code = ts.transpile(ast.statements.filter(node =>
+    ts.isFunctionDeclaration(node) && names.includes(node.name.text)
+    || ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => values.includes(declaration.name.text))
+).map(node => node.getText(ast)).join('\n'), { target: ts.ScriptTarget.ES2020 });
+const props = { mode: 'demo', capabilities: { update: true }, filters: { date: '2026-09-04', today: '2026-09-06', timezone: 'Asia/Jakarta' }, services: [
+    { id: 1, categoryGroup: 'Cuci', category: 'Mobil' },
+    { id: 2, categoryGroup: 'Cuci', category: 'Mobil' },
+] };
+const booking = { id: 1, source: 'booking', status: 'booking', date: '2026-09-04', time: '—', serviceIds: [1, 2], plate: 'B8120DS', orderNo: 'BK1', customer: 'Member', vehicle: 'Civic' };
+const orderList = { value: [booking] };
+const computed = fn => ({ get value() { return fn(); } });
+const clock = class extends Date { constructor() { super('2026-09-06T16:21:00Z'); } };
+const { scopedOrders, unfinishedPreviousOrders, displayedServiceOverview, setStatus } = new Function('props', 'orderList', 'computed', 'Date', 'closedStatuses', `${code}; return { scopedOrders, unfinishedPreviousOrders, displayedServiceOverview, setStatus };`)(props, orderList, computed, clock, ['selesai', 'batal']);
+assert.equal(scopedOrders.value.length, 1);
+assert.equal(displayedServiceOverview.value[0].count, 1);
+assert.equal(displayedServiceOverview.value[0].categories[0].count, 1);
+setStatus(booking, 'menunggu');
+assert.equal(booking.date, '2026-09-04');
+assert.equal(booking.arrivalDate, '2026-09-06');
+assert.equal(scopedOrders.value.length, 0);
+assert.deepEqual(displayedServiceOverview.value, []);
+props.filters.date = '2026-09-06';
+assert.deepEqual(scopedOrders.value.map(order => order.id), [1]);
+assert.deepEqual(unfinishedPreviousOrders.value, []);
+assert.equal(displayedServiceOverview.value[0].categories[0].orders[0].date, '2026-09-06');
+props.filters.date = '2026-09-07';
+assert.deepEqual(scopedOrders.value, []);
+assert.deepEqual(unfinishedPreviousOrders.value.map(order => order.id), [1]);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});

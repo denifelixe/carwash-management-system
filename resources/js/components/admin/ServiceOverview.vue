@@ -13,6 +13,7 @@ import type { LucideIcon } from '@lucide/vue';
 import { ref, useId } from 'vue';
 import ModalDialog from '@/components/demo/ModalDialog.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
+import { formatDate } from '@/composables/useCarwashFormat';
 import { formatPlate } from '@/lib/vehiclePlate';
 import type { CarwashServiceOverviewGroup } from '@/types/demo';
 
@@ -20,8 +21,10 @@ withDefaults(
     defineProps<{
         groups: CarwashServiceOverviewGroup[];
         collapsible?: boolean;
+        embedded?: boolean;
+        dialogLayer?: 'default' | 'nested';
     }>(),
-    { collapsible: false },
+    { collapsible: false, embedded: false, dialogLayer: 'default' },
 );
 
 const contentId = useId();
@@ -49,7 +52,11 @@ const groupIcons: Record<string, LucideIcon> = {
 <template>
     <div>
         <section
-            class="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm"
+            :class="
+                embedded
+                    ? ''
+                    : 'rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm'
+            "
         >
             <button
                 v-if="collapsible"
@@ -72,7 +79,7 @@ const groupIcons: Record<string, LucideIcon> = {
                     :class="isOpen ? 'rotate-180' : ''"
                 />
             </button>
-            <div v-else>
+            <div v-else-if="!embedded">
                 <h3 class="text-sm font-semibold text-slate-900">
                     Overview layanan
                 </h3>
@@ -83,7 +90,9 @@ const groupIcons: Record<string, LucideIcon> = {
 
             <div
                 :id="contentId"
-                :class="collapsible && !isOpen ? 'hidden' : 'mt-4'"
+                :class="
+                    collapsible && !isOpen ? 'hidden' : embedded ? '' : 'mt-4'
+                "
             >
                 <p
                     v-if="groups.length === 0"
@@ -173,6 +182,7 @@ const groupIcons: Record<string, LucideIcon> = {
             :title="selectedCategory?.name"
             :caption="`${selectedCategory?.count ?? 0} kendaraan pada tanggal terpilih`"
             size="lg"
+            :layer="dialogLayer"
             @close="selectedCategory = null"
         >
             <div class="space-y-2">
@@ -191,6 +201,10 @@ const groupIcons: Record<string, LucideIcon> = {
                         <span class="mt-1 block text-xs text-slate-500"
                             >{{ order.orderNo }} · {{ order.customer }}</span
                         >
+                        <span class="mt-1 block text-xs text-slate-500">
+                            {{ formatDate(order.date) }} ·
+                            {{ order.time ?? 'Jam kedatangan belum tercatat' }}
+                        </span>
                     </span>
                     <span class="flex items-center gap-2">
                         <StatusPill :status="order.status" />

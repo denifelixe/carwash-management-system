@@ -271,15 +271,15 @@ test('order cards lead with the plate and classify the customer source', functio
         ->toBe(3);
 });
 
-test('the cashier summary only shows settlement balance and received payments', function () {
+test('the cashier summary shows settlement balance, received money and completed order value', function () {
     $posPage = file_get_contents(
         resource_path('js/pages/admin/Pos.vue'),
     );
 
     expect($posPage)
-        ->toContain('<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">')
+        ->toContain('<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">')
         ->toContain('label="Order Berjalan"')
-        ->toContain('label="Pembayaran diterima"')
+        ->toContain('label="Uang diterima"')
         ->not->toContain('label="Order menggantung"')
         ->not->toContain('depositCount')
         ->not->toContain('CollapsibleSummary')
@@ -326,7 +326,7 @@ test('the received payment card opens a payment recap', function () {
     expect($posPage)
         ->toContain(':active="isPaymentRecapOpen"')
         ->toContain('@click="isPaymentRecapOpen = true"')
-        ->toContain('title="Rekap Pembayaran Diterima"')
+        ->toContain('title="Rekap Uang Diterima"')
         ->toContain('paymentRecapTransactions')
         ->toContain('paymentRecapByType')
         ->toContain('paymentRecapByChannel')

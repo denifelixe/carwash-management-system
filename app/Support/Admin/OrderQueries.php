@@ -11,6 +11,7 @@ use App\Support\Demo\DateFilter;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -63,6 +64,40 @@ class OrderQueries
             ->whereDate('service_date', $date)
             ->latest('arrived_at')
             ->latest('id')
+            ->get();
+    }
+
+    /** @return Collection<int, Order> */
+    public static function forOperationalDate(string $date): Collection
+    {
+        return self::baseQuery()
+            ->tap(fn (Builder $query) => self::whereOperationalDate($query, $date))
+            ->latest('arrived_at')
+            ->latest('id')
+            ->get();
+    }
+
+    /** @return Collection<int, Order> */
+    public static function unfinishedBeforeOperationalDate(string $date): Collection
+    {
+        return self::baseQuery()
+            ->tap(fn (Builder $query) => self::whereOperationalDate($query, $date, before: true))
+            ->whereIn('status', ['booking', 'menunggu', 'proses', 'pelunasan'])
+            ->orderByRaw('COALESCE(DATE(arrived_at), DATE(service_date))')
+            ->orderBy('id')
+            ->get();
+    }
+
+    /** @return Collection<int, Order> */
+    public static function paymentRecapOrdersForDate(string $date): Collection
+    {
+        $start = CarbonImmutable::parse($date)->startOfDay();
+
+        return self::baseQuery()
+            ->whereHas('transactions', fn (Builder $transactions) => $transactions
+                ->where('paid_at', '>=', $start)
+                ->where('paid_at', '<', $start->addDay()))
+            ->orderBy('id')
             ->get();
     }
 
@@ -178,18 +213,24 @@ class OrderQueries
      * Vehicles are counted once per category and group, even when an order
      * contains several services or variations from the same category.
      *
-     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string}>}>}>
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string, date: string, time: string|null}>}>}>
      */
-    public static function serviceOverviewForDate(string $date): array
+    public static function serviceOverviewForDate(string $date, bool $useArrivalDate = false): array
     {
         $rows = DB::table('orders')
             ->join('order_services', 'order_services.order_id', '=', 'orders.id')
             ->join('service_variations', 'service_variations.id', '=', 'order_services.service_variation_id')
             ->join('services', 'services.id', '=', 'service_variations.service_id')
-            ->whereDate('orders.service_date', $date)
+            ->tap(function (QueryBuilder $query) use ($date, $useArrivalDate): void {
+                if ($useArrivalDate) {
+                    self::whereOperationalDate($query, $date);
+                } else {
+                    $query->whereDate('orders.service_date', $date);
+                }
+            })
             ->where('orders.status', '!=', 'batal')
             ->whereNull('orders.deleted_at')
-            ->select('orders.id as order_id', 'orders.number', 'orders.vehicle_plate', 'orders.vehicle_name', 'orders.customer_name', 'orders.status', 'services.category_group', 'services.category')
+            ->select('orders.id as order_id', 'orders.number', 'orders.vehicle_plate', 'orders.vehicle_name', 'orders.customer_name', 'orders.status', 'orders.service_date', 'orders.arrived_at', 'services.category_group', 'services.category')
             ->distinct()
             ->get();
 
@@ -209,6 +250,12 @@ class OrderQueries
                                 'vehicle' => $row->vehicle_name,
                                 'customer' => $row->customer_name,
                                 'status' => $row->status,
+                                'date' => $row->arrived_at === null
+                                    ? CarbonImmutable::parse($row->service_date)->toDateString()
+                                    : CarbonImmutable::parse($row->arrived_at)->toDateString(),
+                                'time' => $row->arrived_at === null
+                                    ? null
+                                    : CarbonImmutable::parse($row->arrived_at)->format('H.i'),
                             ])->values()->all(),
                     ])
                     ->sortKeys()->values()->all(),
@@ -261,9 +308,11 @@ class OrderQueries
     /**
      * @return array{date: string, today: string, earliest: string, latest: string, label: string, timezone: string}
      */
-    public static function filters(string $selectedDate, CarbonImmutable $today): array
+    public static function filters(string $selectedDate, CarbonImmutable $today, bool $useArrivalDate = false): array
     {
-        $earliest = Order::query()->min('service_date');
+        $earliest = $useArrivalDate
+            ? Order::query()->selectRaw('MIN(COALESCE(DATE(arrived_at), DATE(service_date))) as earliest')->value('earliest')
+            : Order::query()->min('service_date');
 
         return [
             'date' => $selectedDate,
@@ -293,9 +342,26 @@ class OrderQueries
             ->get();
     }
 
-    /**
-     * @return Builder<Order>
-     */
+    /** @param Builder<Order>|QueryBuilder $query */
+    private static function whereOperationalDate(Builder|QueryBuilder $query, string $date, bool $before = false): void
+    {
+        $start = CarbonImmutable::parse($date)->startOfDay();
+
+        $query->where(function (Builder|QueryBuilder $query) use ($date, $start, $before): void {
+            $query->where(function (Builder|QueryBuilder $arrival) use ($start, $before): void {
+                if ($before) {
+                    $arrival->where('orders.arrived_at', '<', $start);
+                } else {
+                    $arrival->where('orders.arrived_at', '>=', $start)
+                        ->where('orders.arrived_at', '<', $start->addDay());
+                }
+            })->orWhere(fn (Builder|QueryBuilder $scheduled) => $scheduled
+                ->whereNull('orders.arrived_at')
+                ->whereDate('orders.service_date', $before ? '<' : '=', $date));
+        });
+    }
+
+    /** @return Builder<Order> */
     private static function baseQuery(): Builder
     {
         return Order::query()->with([

@@ -153,14 +153,104 @@ const orderList = computed<CarwashOrder[]>(() =>
         : [...props.orders, ...props.previousOrders],
 );
 
+function operationalOrderDate(order: CarwashOrder): string {
+    return order.arrivalDate ?? order.date;
+}
+
 /** Orders belonging to the date selected on this page. Other modules may load
  * future bookings into the shared workflow store, but they must not inflate
  * this page's daily summary. */
 const scopedOrders = computed<CarwashOrder[]>(() =>
     orderList.value.filter(
         (order) =>
-            props.filters.date === '' || order.date === props.filters.date,
+            props.filters.date === '' ||
+            operationalOrderDate(order) === props.filters.date,
     ),
+);
+
+function buildOrderServiceOverview(
+    orders: CarwashOrder[],
+    services: CarwashService[],
+): CarwashServiceOverviewGroup[] {
+    const groups: CarwashServiceOverviewGroup[] = [];
+    const servicesById = new Map(
+        services.map((service) => [service.id, service]),
+    );
+
+    for (const order of orders) {
+        if (order.status === 'batal') {
+            continue;
+        }
+
+        for (const serviceId of order.serviceIds) {
+            const service = servicesById.get(serviceId);
+
+            if (!service) {
+                continue;
+            }
+
+            let group = groups.find(
+                (group) => group.name === service.categoryGroup,
+            );
+
+            if (!group) {
+                group = {
+                    name: service.categoryGroup,
+                    count: 0,
+                    categories: [],
+                };
+                groups.push(group);
+            }
+
+            let category = group.categories.find(
+                (category) => category.name === service.category,
+            );
+
+            if (!category) {
+                category = { name: service.category, count: 0, orders: [] };
+                group.categories.push(category);
+            }
+
+            if (!category.orders.some((entry) => entry.id === order.id)) {
+                category.orders.push({
+                    id: order.id,
+                    orderNo: order.orderNo,
+                    plate: order.plate,
+                    vehicle: order.vehicle,
+                    customer: order.customer,
+                    status: order.status,
+                    date: operationalOrderDate(order),
+                    time: order.time === '—' ? null : order.time,
+                });
+                category.count = category.orders.length;
+            }
+        }
+    }
+
+    for (const group of groups) {
+        group.count = new Set(
+            group.categories.flatMap((category) =>
+                category.orders.map((order) => order.id),
+            ),
+        ).size;
+        group.categories.sort((first, second) =>
+            first.name.localeCompare(second.name),
+        );
+
+        for (const category of group.categories) {
+            category.orders.sort((first, second) => second.id - first.id);
+        }
+    }
+
+    return groups.sort((first, second) =>
+        first.name.localeCompare(second.name),
+    );
+}
+
+const displayedServiceOverview = computed<CarwashServiceOverviewGroup[]>(() =>
+    props.mode === 'demo'
+        ? buildOrderServiceOverview(scopedOrders.value, props.services)
+        : props.serviceOverview,
 );
 
 const search = ref<string>('');
@@ -272,12 +362,12 @@ function transactionCaption(type: string): string {
 function orderArrivalLabel(order: CarwashOrder): string {
     if (order.time === '—') {
         if (order.status === 'booking') {
-            return `Jadwal: ${formatDate(order.date)} · Belum masuk`;
+            return 'Belum datang';
         }
 
         return order.status === 'batal'
-            ? `${formatDate(order.date)} · Dibatalkan`
-            : `${formatDate(order.date)} · Jam kedatangan belum tercatat`;
+            ? 'Tidak tercatat (dibatalkan)'
+            : 'Belum tercatat';
     }
 
     return `${formatDate(order.arrivalDate ?? order.date)} · ${order.time}`;
@@ -334,12 +424,14 @@ const unfinishedPreviousOrders = computed<CarwashOrder[]>(() =>
     orderList.value
         .filter(
             (order) =>
-                order.date < props.filters.date &&
+                operationalOrderDate(order) < props.filters.date &&
                 !closedStatuses.includes(order.status),
         )
         .sort(
             (first, second) =>
-                first.date.localeCompare(second.date) || first.id - second.id,
+                operationalOrderDate(first).localeCompare(
+                    operationalOrderDate(second),
+                ) || first.id - second.id,
         ),
 );
 
@@ -1648,7 +1740,7 @@ function removeDeletionPhoto(index: number): void {
         </CollapsibleSummary>
 
         <ServiceOverview
-            :groups="serviceOverview"
+            :groups="displayedServiceOverview"
             collapsible
             @select-order="(orderId) => (detailOrderId = orderId)"
         />
@@ -1758,7 +1850,29 @@ function removeDeletionPhoto(index: number): void {
                                 <div
                                     class="mt-1.5 flex flex-col gap-0.5 text-[11px] text-slate-500"
                                 >
-                                    <span>{{ orderArrivalLabel(order) }}</span>
+                                    <template v-if="order.source === 'booking'">
+                                        <span class="font-bold text-sky-700">
+                                            Booking dibuat pada:
+                                            {{
+                                                order.bookingDate
+                                                    ? formatDate(
+                                                          order.bookingDate,
+                                                      )
+                                                    : '—'
+                                            }}
+                                            <template v-if="order.bookingTime">
+                                                · {{ order.bookingTime }}
+                                            </template>
+                                        </span>
+                                        <span class="font-bold text-violet-700">
+                                            Untuk layanan tanggal:
+                                            {{ formatDate(order.date) }}
+                                        </span>
+                                    </template>
+                                    <span class="font-bold text-emerald-700">
+                                        Waktu kedatangan:
+                                        {{ orderArrivalLabel(order) }}
+                                    </span>
                                     <span>{{ orderSourceLabel(order) }}</span>
                                     <span>{{ order.orderNo }}</span>
                                 </div>

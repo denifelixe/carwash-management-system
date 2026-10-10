@@ -41,15 +41,20 @@ test('earlier unfinished orders are separate from the selected day and sorted ol
         $expected[] = Order::factory()->create([
             'status' => $status,
             'service_date' => $date->copy()->subDays(4 - $index),
+            'arrived_at' => $status === 'booking' ? null : $date->copy()->subDays(4 - $index)->setTime(10, 0),
         ])->id;
     }
 
     foreach (['selesai', 'batal'] as $status) {
-        Order::factory()->create(['status' => $status, 'service_date' => $date->copy()->subDays(5)]);
+        Order::factory()->create([
+            'status' => $status,
+            'service_date' => $date->copy()->subDays(5),
+            'arrived_at' => $date->copy()->subDays(5)->setTime(10, 0),
+        ]);
     }
 
-    $selected = Order::factory()->create(['service_date' => $date]);
-    Order::factory()->create(['service_date' => $date->copy()->addDay()]);
+    $selected = Order::factory()->create(['service_date' => $date, 'arrived_at' => $date->copy()->setTime(10, 0)]);
+    Order::factory()->create(['service_date' => $date->copy()->addDay(), 'arrived_at' => null]);
 
     $this->actingAs($owner, 'admin')
         ->get(route('admin.orders.index', $daysAgo === 0 ? [] : ['date' => $date->toDateString()]))

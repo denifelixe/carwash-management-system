@@ -14,6 +14,91 @@ use App\Models\Service;
 use App\Support\Admin\FinanceQueries;
 use Inertia\Testing\AssertableInertia;
 
+test('the cashier keeps historical booking payments after the order leaves the booking queue', function () {
+    $this->travelTo(now()->setDate(2026, 10, 3)->setTime(12, 0));
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'source' => 'booking',
+        'status' => 'selesai',
+        'booking_date' => '2026-10-01',
+        'created_at' => '2026-10-01 09:15:00',
+        'notes' => 'Hubungi pelanggan sebelum layanan dimulai.',
+        'service_date' => '2026-10-03',
+        'total' => 2000000,
+        'paid_amount' => 2000000,
+    ]);
+    OrderTransaction::factory()->for($order)->create([
+        'amount' => 500000,
+        'paid_at' => '2026-10-01 23:59:59',
+    ]);
+    OrderTransaction::factory()->for($order)->create([
+        'type' => 'Pembayaran Lunas',
+        'amount' => 1500000,
+        'paid_at' => '2026-10-03 10:00:00',
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->get(route('admin.pos.index', ['date' => '2026-10-01']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('dailyOrders', 0)
+            ->has('previousOrders', 0)
+            ->has('partialPaymentBookings', 0)
+            ->has('paymentRecapOrders', 1)
+            ->where('paymentRecapOrders.0.id', $order->id)
+            ->where('paymentRecapOrders.0.total', 2000000)
+            ->where('paymentRecapOrders.0.bookingDate', '2026-10-01')
+            ->where('paymentRecapOrders.0.bookingTime', '09.15')
+            ->where('paymentRecapOrders.0.notes', 'Hubungi pelanggan sebelum layanan dimulai.')
+            ->has('paymentRecapOrders.0.transactions', 2)
+            ->where('paymentRecapOrders.0.transactions.0.amount', 500000)
+            ->where('paymentRecapOrders.0.transactions.0.date', '2026-10-01')
+            ->where('paymentRecapOrders.0.transactions.1.date', '2026-10-03'));
+});
+
+test('the cashier recap includes only active payments within the outlet day', function () {
+    $this->travelTo(now()->setDate(2026, 10, 3)->setTime(12, 0));
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $start = OrderTransaction::factory()->create(['paid_at' => '2026-10-01 00:00:00']);
+    $end = OrderTransaction::factory()->create(['paid_at' => '2026-10-01 23:59:59']);
+    OrderTransaction::factory()->create(['paid_at' => '2026-09-30 23:59:59']);
+    OrderTransaction::factory()->create(['paid_at' => '2026-10-02 00:00:00']);
+    OrderTransaction::factory()->create(['paid_at' => '2026-10-01 10:00:00'])->delete();
+    $deletedOrderPayment = OrderTransaction::factory()->create(['paid_at' => '2026-10-01 10:00:00']);
+    $deletedOrderPayment->order->delete();
+
+    $this->actingAs($cashier, 'admin')
+        ->get(route('admin.pos.index', ['date' => '2026-10-01']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->where('paymentRecapOrders', fn ($orders): bool => collect($orders)->pluck('id')->all() === [$start->order_id, $end->order_id]));
+});
+
+test('the cashier recap retains fully prepaid bookings and excludes their cash change', function () {
+    $this->travelTo(now()->setDate(2026, 10, 1)->setTime(10, 0));
+    $cashier = Admin::factory()->create(['is_owner' => true]);
+    $order = Order::factory()->create([
+        'source' => 'booking', 'status' => 'booking', 'service_date' => '2026-10-03',
+        'subtotal' => 2000000, 'total' => 2000000,
+    ]);
+
+    $this->actingAs($cashier, 'admin')
+        ->post(route('admin.pos.payments.store', $order), [
+            'intent' => 'partial', 'discount' => 200000, 'amount' => 1800000,
+            'channels' => [['method' => 'Tunai', 'amount' => 2000000, 'provider' => '', 'reference' => '']],
+        ])->assertSessionHasNoErrors();
+
+    expect($order->refresh())->status->toBe('booking')->total->toBe(1800000)->paid_amount->toBe(1800000);
+
+    $this->get(route('admin.pos.index', ['date' => '2026-10-01']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('paymentRecapOrders', 1)
+            ->where('paymentRecapOrders.0.status', 'booking')
+            ->where('paymentRecapOrders.0.total', 1800000)
+            ->has('paymentRecapOrders.0.transactions', 1)
+            ->where('paymentRecapOrders.0.transactions.0.amount', 1800000)
+            ->where('paymentRecapOrders.0.transactions.0.changeAmount', 200000)
+            ->where('paymentRecapOrders.0.transactions.0.date', '2026-10-01'));
+});
+
 test('guests cannot open the live cashier module', function () {
     $this->get(route('admin.pos.index'))
         ->assertRedirect(route('admin.login'));

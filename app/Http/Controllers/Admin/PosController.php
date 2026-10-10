@@ -58,6 +58,8 @@ class PosController extends Controller
                 ->values()
                 ->all(),
             'dailyOrders' => $dailyOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
+            'paymentRecapOrders' => OrderQueries::paymentRecapOrdersForDate($selectedDate)
+                ->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'previousOrders' => $previousOrders->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'partialPaymentBookings' => $bookings->map(fn (Order $order): array => OrderPresenter::order($order))->all(),
             'filters' => OrderQueries::filters($selectedDate, $today),

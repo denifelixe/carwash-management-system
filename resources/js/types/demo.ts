@@ -94,6 +94,8 @@ export interface CarwashServiceOverviewGroup {
             vehicle: string;
             customer: string;
             status: string;
+            date: string;
+            time: string | null;
         }[];
     }[];
 }
@@ -420,6 +422,8 @@ export interface CarwashOrder {
     settlementEnteredAt?: number | null;
     /** ISO day the booking was first recorded; null for walk-in orders. */
     bookingDate: string | null;
+    bookingTime?: string | null;
+    notes?: string | null;
     customerId: number | null;
     customer: string;
     phone: string;

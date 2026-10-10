@@ -146,7 +146,7 @@ test('the vehicle card counts served orders and leaves out cancelled ones', func
         );
 });
 
-test('dashboard and order page show the same daily vehicle counts by service group and category', function () {
+test('dashboard keeps schedule counts while the order page follows arrival day by service category', function () {
     $owner = Admin::factory()->create(['is_owner' => true]);
     $date = '2026-08-30';
     $carWash = Service::factory()->create(['category' => 'Cuci Mobil', 'category_group' => 'Cuci']);
@@ -167,12 +167,12 @@ test('dashboard and order page show the same daily vehicle counts by service gro
         }
     };
 
-    $carOrder = Order::factory()->create(['service_date' => $date, 'status' => 'selesai']);
-    $motorOrder = Order::factory()->create(['service_date' => $date, 'status' => 'proses']);
+    $carOrder = Order::factory()->create(['service_date' => $date, 'status' => 'selesai', 'arrived_at' => '2026-08-31 09:15:00']);
+    $motorOrder = Order::factory()->create(['service_date' => $date, 'status' => 'proses', 'arrived_at' => null]);
     $attachServices($carOrder, [$carWash, $otherCarWash, $coating]);
     $attachServices($motorOrder, [$motorWash]);
     $attachServices(Order::factory()->create(['service_date' => $date, 'status' => 'batal']), [$carWash]);
-    $attachServices(Order::factory()->create(['service_date' => '2026-08-29']), [$motorWash]);
+    $attachServices(Order::factory()->create(['service_date' => '2026-08-29', 'arrived_at' => '2026-08-29 10:00:00']), [$motorWash]);
 
     $expected = [
         ['name' => 'Coating', 'count' => 1, 'categories' => [['name' => 'Coating Mobil', 'count' => 1, 'orders' => [[
@@ -182,6 +182,8 @@ test('dashboard and order page show the same daily vehicle counts by service gro
             'vehicle' => $carOrder->vehicle_name,
             'customer' => $carOrder->customer_name,
             'status' => 'selesai',
+            'date' => '2026-08-31',
+            'time' => '09.15',
         ]]]]],
         ['name' => 'Cuci', 'count' => 2, 'categories' => [
             ['name' => 'Cuci Mobil', 'count' => 1, 'orders' => [[
@@ -191,6 +193,8 @@ test('dashboard and order page show the same daily vehicle counts by service gro
                 'vehicle' => $carOrder->vehicle_name,
                 'customer' => $carOrder->customer_name,
                 'status' => 'selesai',
+                'date' => '2026-08-31',
+                'time' => '09.15',
             ]]],
             ['name' => 'Cuci Motor', 'count' => 1, 'orders' => [[
                 'id' => $motorOrder->id,
@@ -199,6 +203,8 @@ test('dashboard and order page show the same daily vehicle counts by service gro
                 'vehicle' => $motorOrder->vehicle_name,
                 'customer' => $motorOrder->customer_name,
                 'status' => 'proses',
+                'date' => $date,
+                'time' => null,
             ]]],
         ]],
     ];
@@ -208,7 +214,13 @@ test('dashboard and order page show the same daily vehicle counts by service gro
     expect($this->get(route('admin.dashboard', ['date' => $date]))->inertiaProps('serviceOverview'))
         ->toBe($expected);
     expect($this->get(route('admin.orders.index', ['date' => $date]))->inertiaProps('serviceOverview'))
-        ->toBe($expected);
+        ->toBe([['name' => 'Cuci', 'count' => 1, 'categories' => [$expected[1]['categories'][1]]]]);
+
+    expect($this->get(route('admin.orders.index', ['date' => '2026-08-31']))->inertiaProps('serviceOverview'))
+        ->toBe([
+            $expected[0],
+            ['name' => 'Cuci', 'count' => 1, 'categories' => [$expected[1]['categories'][0]]],
+        ]);
 
     $this->get(route('admin.orders.index', ['date' => $date, 'order' => $carOrder->id]))
         ->assertInertia(fn (AssertableInertia $page) => $page

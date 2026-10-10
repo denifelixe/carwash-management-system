@@ -74,6 +74,7 @@ const props = defineProps<{
     orders: CarwashOrder[];
     previousOrders: CarwashOrder[];
     dailyOrders: CarwashOrder[];
+    paymentRecapOrders: CarwashOrder[];
     partialPaymentBookings: CarwashOrder[];
     filters: CarwashDateFilter;
     shifts: CarwashWorkShift[];
@@ -181,6 +182,7 @@ const search = ref<string>('');
 const showAllOrders = ref<boolean>(false);
 const partialPaymentSearch = ref<string>('');
 const completedSearch = ref<string>('');
+const selectedCompletedOrder = ref<CarwashOrder | null>(null);
 const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
 const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
 const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
@@ -191,11 +193,13 @@ const selectedPaymentRecapOrder = ref<PaymentRecapOrderDetail | null>(null);
  * a printed recap's link land on the shift it was taken from.
  */
 const activePaymentRecapShift = ref<PaymentRecapShift>(paymentRecapTotalKey);
+const activeCompletedOrderShift = ref<PaymentRecapShift>(paymentRecapTotalKey);
 
 onMounted(() => {
     activePaymentRecapShift.value =
         new URLSearchParams(window.location.search).get('shift') ??
         paymentRecapTotalKey;
+    activeCompletedOrderShift.value = activePaymentRecapShift.value;
 });
 const selectedOrderId = ref<number | null>(null);
 const paymentIntent = ref<'settlement' | 'partial'>('settlement');
@@ -230,6 +234,8 @@ const receipt = ref<PosReceipt | null>(null);
 /** Set when the browser refuses the slip window so the cashier can retry. */
 const isReceiptWindowBlocked = ref<boolean>(false);
 const isPaymentRecapOpen = ref<boolean>(false);
+const isCompletedOrderRecapOpen = ref<boolean>(false);
+const isCompletedOrderRecapWindowBlocked = ref<boolean>(false);
 /** Set when the browser refuses the recap window so the cashier can retry. */
 const isRecapWindowBlocked = ref<boolean>(false);
 
@@ -244,6 +250,7 @@ if (props.mode === 'demo') {
         ...props.previousOrders,
         ...props.dailyOrders,
         ...props.partialPaymentBookings,
+        ...props.paymentRecapOrders,
     ]);
     workflow.hydrateCustomers(props.customers);
 }
@@ -268,12 +275,27 @@ const orderList = computed<CarwashOrder[]>(() =>
     props.mode === 'demo' ? workflow.orders.value : liveOrders.value,
 );
 
+/** Historical payments stay visible after their booking leaves the queue. */
+const paymentRecapOrderList = computed<CarwashOrder[]>(() =>
+    props.mode === 'demo'
+        ? workflow.orders.value
+        : Array.from(
+              new Map(
+                  [...props.paymentRecapOrders, ...orderList.value].map(
+                      (order) => [order.id, order],
+                  ),
+              ).values(),
+          ),
+);
+
 const demoPaymentCounters = new Map<number, number>();
 
 function nextDemoPaymentNumber(order: CarwashOrder): number {
     const previous = Math.max(
         demoPaymentCounters.get(order.id) ?? 0,
-        ...order.transactions.map((transaction) => Number(transaction.id.match(/\/TRX(\d+)$/)?.[1] ?? 0)),
+        ...order.transactions.map((transaction) =>
+            Number(transaction.id.match(/\/TRX(\d+)$/)?.[1] ?? 0),
+        ),
     );
     const next = previous + 1;
     demoPaymentCounters.set(order.id, next);
@@ -319,7 +341,7 @@ function compareTransactionsByPaidAt(
 const paymentRecapTransactions = computed(() =>
     Array.from(
         new Map(
-            orderList.value
+            paymentRecapOrderList.value
                 .flatMap((order) => order.transactions)
                 .filter(
                     (transaction) =>
@@ -448,6 +470,67 @@ const collectedTotal = computed<number>(
     () => paymentRecapFinalTotal.value + paymentRecapPartialTotal.value,
 );
 
+/** Recognize the order once, when its payments first cover the final bill. */
+const completedOrderRecap = computed(() =>
+    paymentRecapOrderList.value.flatMap((order) => {
+        if (order.status === 'batal') {
+            return [];
+        }
+
+        let paidAmount = 0;
+        const settlement = [...order.transactions]
+            .sort(compareTransactionsByPaidAt)
+            .find((transaction) => {
+                paidAmount += transaction.amount;
+
+                return paidAmount >= order.total;
+            });
+
+        if (
+            !settlement ||
+            (props.filters.date !== '' &&
+                settlement.date !== props.filters.date)
+        ) {
+            return [];
+        }
+
+        return [{ order, settlement }];
+    }),
+);
+
+const completedOrderTotal = computed<number>(() =>
+    completedOrderRecap.value.reduce(
+        (total, { order }) => total + order.total,
+        0,
+    ),
+);
+
+const activeCompletedOrderRecap = computed(() =>
+    completedOrderRecap.value
+        .filter(({ settlement }) =>
+            isTransactionInShift(settlement, activeCompletedOrderShift.value),
+        )
+        .sort((first, second) =>
+            compareTransactionsByPaidAt(second.settlement, first.settlement),
+        ),
+);
+
+const activeCompletedOrderTotal = computed<number>(() =>
+    activeCompletedOrderRecap.value.reduce(
+        (total, { order }) => total + order.total,
+        0,
+    ),
+);
+
+const completedOrderShiftTabs = computed(() =>
+    paymentRecapShiftOptions.value.map((shift) => ({
+        ...shift,
+        count: completedOrderRecap.value.filter(({ settlement }) =>
+            isTransactionInShift(settlement, shift.key),
+        ).length,
+    })),
+);
+
 const activePaymentRecapFinalTotal = computed<number>(() =>
     activePaymentRecapFinalTransactions.value.reduce(
         (total, transaction) => total + transaction.amount,
@@ -573,7 +656,7 @@ function posRecapSheet(): RecapSheet {
     );
 
     return {
-        title: 'Rekap Pembayaran Diterima',
+        title: 'Rekap Uang Diterima',
         slug: 'rekap-kasir-pos',
         periodLabel: formatDate(props.filters.date),
         shiftLabel: tab?.label ?? 'Total',
@@ -582,7 +665,7 @@ function posRecapSheet(): RecapSheet {
         ...recapLinks(props.filters.date, activePaymentRecapShift.value),
         summary: [
             {
-                label: 'Total pembayaran diterima',
+                label: 'Total uang diterima',
                 value: formatCurrency(activePaymentRecapTotal.value),
                 caption: 'Termasuk pembayaran sebagian dan pembayaran lunas',
                 tone: 'positive',
@@ -650,6 +733,88 @@ function printRecap(paper: RecapPaper): void {
         openRecapSheetWindow(posRecapSheet(), props.brand, paper) === null;
 }
 
+function completedOrderRecapSheet(): RecapSheet {
+    const tab = completedOrderShiftTabs.value.find(
+        (option) => option.key === activeCompletedOrderShift.value,
+    );
+
+    return {
+        title: 'Rekap Nilai Order Selesai',
+        slug: 'rekap-nilai-order-selesai',
+        periodLabel: formatDate(props.filters.date),
+        shiftLabel: tab?.label ?? 'Total',
+        shiftCaption: tab?.caption ?? null,
+        meta: [{ label: 'Dicetak oleh', value: props.persona.name }],
+        ...recapLinks(props.filters.date, activeCompletedOrderShift.value),
+        summary: [
+            {
+                label: 'Nilai Order Selesai',
+                value: formatCurrency(activeCompletedOrderTotal.value),
+                caption:
+                    'Total nilai akhir order yang lunas pada tanggal dipilih',
+            },
+            {
+                label: 'Jumlah order lunas',
+                value: formatNumber(activeCompletedOrderRecap.value.length),
+            },
+        ],
+        tables: [
+            {
+                heading: 'Order lunas',
+                columns: [
+                    'Order',
+                    'Pelanggan / kendaraan',
+                    'Waktu lunas',
+                    'Nilai order',
+                ],
+                rows: activeCompletedOrderRecap.value.map(
+                    ({ order, settlement }) => ({
+                        label: order.orderNo,
+                        values: [
+                            `${order.customer} · ${formatPlate(order.plate)}`,
+                            settlement.time,
+                            formatCurrency(order.total),
+                        ],
+                    }),
+                ),
+                total: {
+                    label: 'Total',
+                    values: [
+                        '',
+                        '',
+                        formatCurrency(activeCompletedOrderTotal.value),
+                    ],
+                },
+                emptyMessage:
+                    'Belum ada order yang lunas pada tanggal dan shift ini.',
+            },
+        ],
+        timezone: props.filters.timezone,
+    };
+}
+
+function printCompletedOrderRecap(paper: RecapPaper): void {
+    isCompletedOrderRecapWindowBlocked.value =
+        openRecapSheetWindow(completedOrderRecapSheet(), props.brand, paper) ===
+        null;
+}
+
+function closeCompletedOrderRecap(): void {
+    isCompletedOrderRecapOpen.value = false;
+    activeCompletedOrderShift.value = paymentRecapTotalKey;
+    isCompletedOrderRecapWindowBlocked.value = false;
+}
+
+function moveCompletedOrderShift(direction: -1 | 1): void {
+    const tabs = completedOrderShiftTabs.value;
+    const currentIndex = tabs.findIndex(
+        (tab) => tab.key === activeCompletedOrderShift.value,
+    );
+    const next = tabs[(currentIndex + direction + tabs.length) % tabs.length];
+    activeCompletedOrderShift.value = next.key;
+    document.getElementById(`completed-order-tab-${next.key}`)?.focus();
+}
+
 const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
     const selection = selectedPaymentRecap.value;
 
@@ -658,7 +823,7 @@ const paymentRecapDetails = computed<PaymentRecapDetail[]>(() => {
     }
 
     return activePaymentRecapTransactions.value.flatMap((transaction) => {
-        const order = orderList.value.find(
+        const order = paymentRecapOrderList.value.find(
             (candidate) => candidate.id === transaction.orderId,
         );
 
@@ -771,6 +936,14 @@ watch(paymentRecapShiftOptions, (options) => {
         !options.some((option) => option.key === activePaymentRecapShift.value)
     ) {
         selectPaymentRecapShift(paymentRecapTotalKey);
+    }
+
+    if (
+        !options.some(
+            (option) => option.key === activeCompletedOrderShift.value,
+        )
+    ) {
+        activeCompletedOrderShift.value = paymentRecapTotalKey;
     }
 });
 
@@ -2109,7 +2282,7 @@ const memberForm = useForm({
         <DateFilterBar :filters="filters" @change="applyDate" />
 
         <!-- Summary -->
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <StatCard
                 label="Order Berjalan"
                 :value="formatCurrency(outstandingTotal)"
@@ -2118,7 +2291,7 @@ const memberForm = useForm({
                 tone="amber"
             />
             <StatCard
-                label="Pembayaran diterima"
+                label="Uang diterima"
                 :value="formatCurrency(collectedTotal)"
                 caption="ketuk untuk melihat rekap pembayaran"
                 :icon="Banknote"
@@ -2127,11 +2300,21 @@ const memberForm = useForm({
                 :active="isPaymentRecapOpen"
                 @click="isPaymentRecapOpen = true"
             />
+            <StatCard
+                label="Nilai Order Selesai"
+                :value="formatCurrency(completedOrderTotal)"
+                caption="Total nilai akhir order yang lunas pada tanggal dipilih"
+                :icon="CircleCheck"
+                tone="default"
+                interactive
+                :active="isCompletedOrderRecapOpen"
+                @click="isCompletedOrderRecapOpen = true"
+            />
         </div>
 
         <ModalDialog
             :open="isPaymentRecapOpen"
-            title="Rekap Pembayaran Diterima"
+            title="Rekap Uang Diterima"
             :caption="`Periode ${formatDate(filters.date)}`"
             size="xl"
             @close="closePaymentRecap"
@@ -2202,7 +2385,7 @@ const memberForm = useForm({
                                 <p
                                     class="text-xs font-semibold tracking-wide text-emerald-700 uppercase"
                                 >
-                                    Total pembayaran diterima
+                                    Total uang diterima
                                 </p>
                                 <p
                                     class="mt-2 text-3xl font-bold tracking-tight text-emerald-950 tabular-nums"
@@ -2878,6 +3061,149 @@ const memberForm = useForm({
         </ModalDialog>
 
         <ModalDialog
+            :open="isCompletedOrderRecapOpen"
+            title="Rekap Nilai Order Selesai"
+            :caption="`Tanggal lunas ${formatDate(filters.date)}`"
+            size="xl"
+            @close="closeCompletedOrderRecap"
+        >
+            <div class="space-y-5">
+                <div
+                    class="flex flex-wrap gap-1 rounded-2xl bg-slate-100 p-1 ring-1 ring-slate-200/80 ring-inset"
+                    role="tablist"
+                    aria-label="Filter nilai order selesai berdasarkan shift pelunasan"
+                    @keydown.left.prevent="moveCompletedOrderShift(-1)"
+                    @keydown.right.prevent="moveCompletedOrderShift(1)"
+                >
+                    <button
+                        v-for="tab in completedOrderShiftTabs"
+                        :id="`completed-order-tab-${tab.key}`"
+                        :key="tab.key"
+                        type="button"
+                        role="tab"
+                        :title="tab.caption"
+                        :aria-selected="activeCompletedOrderShift === tab.key"
+                        aria-controls="completed-order-panel"
+                        :tabindex="
+                            activeCompletedOrderShift === tab.key ? 0 : -1
+                        "
+                        class="flex flex-1 basis-24 flex-col items-center justify-center rounded-xl px-3 py-2 leading-tight transition focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:outline-none"
+                        :class="
+                            activeCompletedOrderShift === tab.key
+                                ? 'bg-cyan-600 text-white shadow-sm'
+                                : 'text-slate-500 hover:bg-white hover:text-slate-800'
+                        "
+                        @click="activeCompletedOrderShift = tab.key"
+                    >
+                        <span class="text-sm font-semibold">{{
+                            tab.label
+                        }}</span>
+                        <span class="mt-0.5 text-[11px] tabular-nums"
+                            >{{ tab.count }} order</span
+                        >
+                    </button>
+                </div>
+                <div
+                    id="completed-order-panel"
+                    role="tabpanel"
+                    :aria-labelledby="`completed-order-tab-${activeCompletedOrderShift}`"
+                    class="space-y-4"
+                >
+                    <div
+                        class="rounded-2xl border border-cyan-200 bg-cyan-50 p-5"
+                    >
+                        <p
+                            class="text-xs font-semibold tracking-wide text-cyan-700 uppercase"
+                        >
+                            Nilai Order Selesai
+                        </p>
+                        <p
+                            class="mt-2 text-3xl font-bold tracking-tight text-cyan-950 tabular-nums"
+                        >
+                            {{ formatCurrency(activeCompletedOrderTotal) }}
+                        </p>
+                        <p class="mt-1 text-xs text-cyan-800">
+                            {{ activeCompletedOrderRecap.length }} order lunas ·
+                            Total nilai akhir setelah diskon
+                        </p>
+                        <p class="mt-2 text-xs text-cyan-700">
+                            Dihitung satu kali pada tanggal pelunasan, termasuk
+                            booking yang dibayar penuh di muka.
+                        </p>
+                    </div>
+                    <div
+                        v-if="activeCompletedOrderRecap.length > 0"
+                        class="divide-y divide-slate-100 rounded-2xl border border-slate-200"
+                    >
+                        <article
+                            v-for="{
+                                order,
+                                settlement,
+                            } in activeCompletedOrderRecap"
+                            :key="order.id"
+                            class="p-4"
+                        >
+                            <div
+                                class="flex flex-wrap items-start justify-between gap-3"
+                            >
+                                <div>
+                                    <p class="text-xs text-slate-500">
+                                        {{ order.orderNo }}
+                                    </p>
+                                    <p
+                                        class="mt-1 font-semibold text-slate-900"
+                                    >
+                                        {{ formatPlate(order.plate) }} ·
+                                        {{ order.vehicle }}
+                                    </p>
+                                    <p class="mt-1 text-sm text-slate-600">
+                                        {{ order.customer }}
+                                    </p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="text-xs text-slate-500">
+                                        Nilai order
+                                    </p>
+                                    <p
+                                        class="mt-1 font-semibold text-cyan-800 tabular-nums"
+                                    >
+                                        {{ formatCurrency(order.total) }}
+                                    </p>
+                                </div>
+                            </div>
+                            <p class="mt-3 text-sm text-slate-600">
+                                {{ order.items }}
+                            </p>
+                            <p class="mt-2 text-xs text-slate-500">
+                                Lunas {{ paidAtLabel(settlement) }} ·
+                                {{ settlement.shift || unassignedShiftLabel }}
+                            </p>
+                        </article>
+                    </div>
+                    <div
+                        v-else
+                        class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 text-center text-sm text-slate-500"
+                    >
+                        Belum ada order yang lunas pada tanggal dan shift ini.
+                    </div>
+                </div>
+            </div>
+            <template #footer>
+                <RecapPrintMenu
+                    :blocked="isCompletedOrderRecapWindowBlocked"
+                    @print="printCompletedOrderRecap"
+                />
+                <button
+                    type="button"
+                    class="ml-auto rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-slate-800"
+                    @click="closeCompletedOrderRecap"
+                >
+                    Tutup
+                </button>
+            </template>
+        </ModalDialog>
+
+        <ModalDialog
             :open="selectedPaymentRecapTransaction !== null"
             title="Rekap Transaksi"
             :caption="
@@ -3374,7 +3700,7 @@ const memberForm = useForm({
             <!-- Settled orders, kept around so the slip can be reprinted -->
             <AccordionSection
                 title="Lunas"
-                :caption="`${visibleCompletedOrders.length} order lunas — cetak ulang struk di sini`"
+                :caption="`${visibleCompletedOrders.length} order lunas — klik kartu untuk detail order`"
                 :icon="CircleCheck"
                 tone="emerald"
             >
@@ -3392,8 +3718,14 @@ const memberForm = useForm({
                     <li
                         v-for="order in visibleCompletedOrders"
                         :key="order.id"
-                        class="rounded-2xl border border-emerald-200 bg-white p-4"
+                        class="relative rounded-2xl border border-emerald-200 bg-white p-4 transition focus-within:ring-2 focus-within:ring-emerald-500 hover:border-emerald-400 hover:shadow-sm"
                     >
+                        <button
+                            type="button"
+                            class="absolute inset-0 rounded-2xl focus:outline-none"
+                            :aria-label="`Lihat detail order ${order.orderNo}`"
+                            @click="selectedCompletedOrder = order"
+                        ></button>
                         <div
                             class="flex flex-wrap items-start justify-between gap-2"
                         >
@@ -3469,7 +3801,7 @@ const memberForm = useForm({
                             </span>
                             <button
                                 type="button"
-                                class="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+                                class="relative flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
                                 @click="reprintReceipt(order)"
                             >
                                 <Printer class="h-3.5 w-3.5" />
@@ -3486,6 +3818,298 @@ const memberForm = useForm({
                     caption="Order yang sudah lunas akan tampil di sini untuk cetak ulang struk."
                 />
             </AccordionSection>
+
+            <ModalDialog
+                :open="selectedCompletedOrder !== null"
+                title="Detail Order Lunas"
+                :caption="selectedCompletedOrder?.orderNo"
+                size="lg"
+                @close="selectedCompletedOrder = null"
+            >
+                <div v-if="selectedCompletedOrder" class="space-y-4">
+                    <section
+                        class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+                    >
+                        <div class="flex items-start justify-between gap-3">
+                            <div>
+                                <p class="text-2xl font-bold text-slate-950">
+                                    {{
+                                        formatPlate(
+                                            selectedCompletedOrder.plate,
+                                        )
+                                    }}
+                                </p>
+                                <p class="text-lg font-semibold text-slate-700">
+                                    {{ selectedCompletedOrder.vehicle }}
+                                </p>
+                            </div>
+                            <StatusPill
+                                :status="selectedCompletedOrder.status"
+                            />
+                        </div>
+                        <p class="mt-3 text-sm font-medium text-slate-900">
+                            {{ selectedCompletedOrder.customer }}
+                        </p>
+                        <p class="text-xs text-slate-600">
+                            {{ selectedCompletedOrder.phone || '—' }}
+                        </p>
+                        <p class="mt-2 text-xs text-emerald-700">
+                            {{ orderTypeLabel(selectedCompletedOrder) }}
+                        </p>
+                    </section>
+                    <section
+                        v-if="selectedCompletedOrder.source === 'booking'"
+                        class="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4"
+                    >
+                        <h3 class="text-sm font-semibold text-cyan-800">
+                            Detail booking
+                        </h3>
+                        <dl
+                            class="mt-3 grid grid-cols-1 gap-3 text-xs sm:grid-cols-2"
+                        >
+                            <div>
+                                <dt class="text-slate-500">Booking dibuat</dt>
+                                <dd class="mt-1 font-medium text-slate-800">
+                                    {{
+                                        selectedCompletedOrder.bookingDate
+                                            ? formatDate(
+                                                  selectedCompletedOrder.bookingDate,
+                                              )
+                                            : '—'
+                                    }}
+                                    ·
+                                    {{
+                                        selectedCompletedOrder.bookingTime ||
+                                        '—'
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">Jadwal layanan</dt>
+                                <dd class="mt-1 font-medium text-slate-800">
+                                    {{
+                                        formatDate(selectedCompletedOrder.date)
+                                    }}
+                                </dd>
+                            </div>
+                            <div>
+                                <dt class="text-slate-500">
+                                    Kedatangan kendaraan
+                                </dt>
+                                <dd class="mt-1 font-medium text-slate-800">
+                                    {{
+                                        orderArrivalLabel(
+                                            selectedCompletedOrder,
+                                        )
+                                    }}
+                                </dd>
+                            </div>
+                            <div class="sm:col-span-2">
+                                <dt class="text-slate-500">Catatan booking</dt>
+                                <dd
+                                    class="mt-1 whitespace-pre-wrap text-slate-800"
+                                >
+                                    {{ selectedCompletedOrder.notes || '—' }}
+                                </dd>
+                            </div>
+                        </dl>
+                    </section>
+                    <dl
+                        class="grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-4 text-xs"
+                    >
+                        <div>
+                            <dt class="text-slate-500">Tanggal order</dt>
+                            <dd class="mt-1 font-medium text-slate-800">
+                                {{ formatDate(selectedCompletedOrder.date) }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Diinput oleh</dt>
+                            <dd class="mt-1 font-medium text-slate-800">
+                                {{ selectedCompletedOrder.inputBy || '—' }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Dihandle oleh</dt>
+                            <dd class="mt-1 font-medium text-slate-800">
+                                {{ selectedCompletedOrder.handledBy || '—' }}
+                            </dd>
+                        </div>
+                        <div>
+                            <dt class="text-slate-500">Crew / bay</dt>
+                            <dd class="mt-1 font-medium text-slate-800">
+                                {{ selectedCompletedOrder.crew }} ·
+                                {{ selectedCompletedOrder.bay }}
+                            </dd>
+                        </div>
+                    </dl>
+                    <section>
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Layanan dipesan
+                        </h3>
+                        <ul class="mt-2 space-y-2">
+                            <li
+                                v-for="item in selectedCompletedOrder.serviceItems"
+                                :key="item.serviceVariationId"
+                                class="flex items-start justify-between gap-3 rounded-xl border border-slate-200 p-3 text-xs"
+                            >
+                                <div>
+                                    <p class="font-medium text-slate-800">
+                                        {{ item.label }}
+                                    </p>
+                                    <p class="mt-1 text-slate-500">
+                                        {{ item.quantity }} ×
+                                        {{ formatCurrency(item.unitPrice) }}
+                                    </p>
+                                </div>
+                                <span
+                                    class="shrink-0 font-semibold text-slate-800"
+                                    >{{ formatCurrency(item.totalPrice) }}</span
+                                >
+                            </li>
+                        </ul>
+                    </section>
+                    <dl class="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
+                        <div class="flex justify-between gap-3">
+                            <dt>Subtotal layanan</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(
+                                        selectedCompletedOrder.serviceItems.reduce(
+                                            (total, item) =>
+                                                total + item.totalPrice,
+                                            0,
+                                        ),
+                                    )
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt>Diskon</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(
+                                        selectedCompletedOrder.discount,
+                                    )
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt>Reward</dt>
+                            <dd>{{ selectedCompletedOrder.reward }}</dd>
+                        </div>
+                        <div class="flex justify-between gap-3 font-semibold">
+                            <dt>Total order</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(selectedCompletedOrder.total)
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt>Total dibayar</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(
+                                        selectedCompletedOrder.paidAmount,
+                                    )
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt>Sisa tagihan</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(
+                                        Math.max(
+                                            selectedCompletedOrder.total -
+                                                selectedCompletedOrder.paidAmount,
+                                            0,
+                                        ),
+                                    )
+                                }}
+                            </dd>
+                        </div>
+                        <div class="flex justify-between gap-3">
+                            <dt>Stamp diperoleh</dt>
+                            <dd>{{ selectedCompletedOrder.stampsEarned }}</dd>
+                        </div>
+                    </dl>
+                    <section>
+                        <h3 class="text-sm font-semibold text-slate-900">
+                            Riwayat pembayaran
+                        </h3>
+                        <ul class="mt-2 space-y-2">
+                            <li
+                                v-for="transaction in selectedCompletedOrder.transactions"
+                                :key="transaction.id"
+                                class="rounded-xl border border-slate-200 p-3 text-xs"
+                            >
+                                <div
+                                    class="flex flex-wrap justify-between gap-2"
+                                >
+                                    <p class="font-semibold text-slate-900">
+                                        {{
+                                            paymentTransactionLabel(transaction)
+                                        }}
+                                    </p>
+                                    <span
+                                        class="font-semibold text-emerald-700"
+                                        >{{
+                                            formatCurrency(transaction.amount)
+                                        }}</span
+                                    >
+                                </div>
+                                <p class="mt-1 text-slate-500">
+                                    {{
+                                        paymentTransactionReference(
+                                            transaction,
+                                            selectedCompletedOrder,
+                                        )
+                                    }}
+                                    · {{ formatDate(transaction.date) }} ·
+                                    {{ transaction.time }}
+                                </p>
+                                <p class="mt-1 text-slate-600">
+                                    {{ transaction.channels }}
+                                </p>
+                                <p class="mt-1 text-slate-500">
+                                    Kasir: {{ transaction.recordedBy || '—' }} ·
+                                    Shift:
+                                    {{ transaction.shift || 'Tanpa Shift' }}
+                                </p>
+                                <p class="mt-1 text-slate-500">
+                                    Diterima
+                                    {{
+                                        formatCurrency(
+                                            transaction.tenderedAmount,
+                                        )
+                                    }}
+                                    · Kembalian
+                                    {{
+                                        formatCurrency(transaction.changeAmount)
+                                    }}
+                                </p>
+                                <p
+                                    v-if="transaction.note"
+                                    class="mt-2 whitespace-pre-wrap text-slate-600"
+                                >
+                                    {{ transaction.note }}
+                                </p>
+                            </li>
+                        </ul>
+                    </section>
+                </div>
+                <template #footer>
+                    <button
+                        type="button"
+                        class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                        @click="selectedCompletedOrder = null"
+                    >
+                        Tutup
+                    </button>
+                </template>
+            </ModalDialog>
 
             <!-- Payment modal -->
             <ModalDialog

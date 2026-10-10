@@ -9,9 +9,11 @@ import {
     Wallet,
 } from '@lucide/vue';
 import type { LucideIcon } from '@lucide/vue';
+import { ref } from 'vue';
 import { index as indexOrder } from '@/actions/App/Http/Controllers/Admin/OrderController';
 import ServiceOverview from '@/components/admin/ServiceOverview.vue';
 import DateFilterBar from '@/components/demo/DateFilterBar.vue';
+import ModalDialog from '@/components/demo/ModalDialog.vue';
 import StatCard from '@/components/demo/StatCard.vue';
 import StatusPill from '@/components/demo/StatusPill.vue';
 import { formatCurrency } from '@/composables/useCarwashFormat';
@@ -47,6 +49,8 @@ const statIcons: Record<string, LucideIcon> = {
     gift: Gift,
 };
 
+const serviceOverviewOpen = ref(false);
+
 function applyDate(date: string): void {
     router.get(
         props.filterUrl,
@@ -59,6 +63,7 @@ function applyDate(date: string): void {
 }
 
 function openOrder(orderId: number): void {
+    serviceOverviewOpen.value = false;
     const options = { query: { date: props.filters.date, order: orderId } };
     router.get(
         props.mode === 'demo'
@@ -102,8 +107,6 @@ function openOrder(orderId: number): void {
             </div>
         </section>
 
-        <ServiceOverview :groups="serviceOverview" @select-order="openOrder" />
-
         <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
                 v-for="stat in stats"
@@ -115,8 +118,27 @@ function openOrder(orderId: number): void {
                 :trend="stat.trend"
                 comparison-label="Dibanding hari sebelumnya"
                 :icon="statIcons[stat.icon]"
+                :interactive="stat.icon === 'car'"
+                :aria-haspopup="stat.icon === 'car' ? 'dialog' : undefined"
+                @click="stat.icon === 'car' && (serviceOverviewOpen = true)"
             />
         </section>
+
+        <ModalDialog
+            :open="serviceOverviewOpen"
+            title="Overview layanan"
+            caption="Kendaraan per grup layanan pada tanggal terpilih"
+            size="lg"
+            @close="serviceOverviewOpen = false"
+        >
+            <ServiceOverview
+                v-if="serviceOverviewOpen"
+                :groups="serviceOverview"
+                embedded
+                dialog-layer="nested"
+                @select-order="openOrder"
+            />
+        </ModalDialog>
 
         <section class="space-y-4">
             <article

@@ -67,7 +67,7 @@ test('order summary ignores bookings from other dates loaded by another module',
 
     expect($orders)
         ->toContain('const scopedOrders = computed<CarwashOrder[]>(() =>')
-        ->toContain("props.filters.date === '' || order.date === props.filters.date")
+        ->toContain('operationalOrderDate(order) === props.filters.date')
         ->toContain('return scopedOrders.value.filter((order) => {')
         ->toContain('scopedOrders.value.filter((order) =>')
         ->toContain('`${scopedOrders.value.length} order')

@@ -24,7 +24,7 @@ test('moving an unfinished booking into the floor records its first arrival', fu
     expect($order->refresh()->status)->toBe($status)
         ->and($order->arrived_at->toDateTimeString())->toBe('2026-09-06 10:15:00');
 
-    $this->get(route('admin.orders.index', ['date' => $order->service_date->toDateString()]))
+    $this->get(route('admin.orders.index', ['date' => '2026-09-06']))
         ->assertInertia(fn (AssertableInertia $page) => $page
             ->where('orders.0.time', '10.15')
             ->where('orders.0.arrivalDate', '2026-09-06')
@@ -114,11 +114,12 @@ const props = { capabilities: { update: true }, filters: { today: '2026-09-06', 
 const clock = class extends Date { constructor() { super('2026-09-06T03:15:00Z'); } };
 const { orderArrivalLabel, setStatus } = new Function('props', 'formatDate', 'Date', `${code}; return { orderArrivalLabel, setStatus };`)(props, date => date.split('-').reverse().join('/'), clock);
 const booking = { source: 'booking', status: 'booking', date: props.filters.today, time: '—' };
-assert.equal(orderArrivalLabel(booking), 'Jadwal: 06/09/2026 · Belum masuk');
+assert.equal(orderArrivalLabel(booking), 'Belum datang');
 for (const status of ['menunggu', 'proses', 'pelunasan', 'selesai']) {
-    assert.equal(orderArrivalLabel({ ...booking, status }), '06/09/2026 · Jam kedatangan belum tercatat');
+    assert.equal(orderArrivalLabel({ ...booking, status }), 'Belum tercatat');
 }
-assert.equal(orderArrivalLabel({ ...booking, status: 'batal' }), '06/09/2026 · Dibatalkan');
+assert.equal(orderArrivalLabel({ ...booking, status: 'batal' }), 'Tidak tercatat (dibatalkan)');
+assert.equal(orderArrivalLabel({ ...booking, source: 'walk-in', status: 'menunggu', arrivalDate: '2026-09-08', time: '23.21' }), '08/09/2026 · 23.21');
 for (const status of ['booking', 'menunggu', 'proses', 'pelunasan', 'selesai', 'batal']) {
     assert.equal(orderArrivalLabel({ ...booking, status, time: '09.30' }), '06/09/2026 · 09.30');
 }

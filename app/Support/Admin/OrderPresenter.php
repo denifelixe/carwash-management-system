@@ -106,6 +106,8 @@ class OrderPresenter
             'arrivalDate' => $order->arrived_at?->toDateString(),
             'settlementEnteredAt' => ($order->settlement_entered_at ?? $order->arrived_at ?? $order->created_at)?->valueOf(),
             'bookingDate' => $order->booking_date?->toDateString(),
+            'bookingTime' => $order->source === 'booking' ? $order->created_at?->format('H.i') : null,
+            'notes' => $order->notes,
             'customerId' => $order->member_id,
             'customer' => $order->customer_name.($order->member_id === null ? ' (non-member)' : ''),
             'phone' => $order->customer_phone,

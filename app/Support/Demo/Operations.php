@@ -10,15 +10,15 @@ use App\Support\Admin\PaymentChannelBreakdown;
 class Operations
 {
     /**
-     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string}>}>}>
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string, date: string, time: string|null}>}>}>
      */
-    public static function serviceOverview(string $date): array
+    public static function serviceOverview(string $date, bool $useArrivalDate = false): array
     {
         $services = collect(Catalog::services())->keyBy('id');
         $rows = collect(self::orders())
-            ->filter(fn (array $order): bool => $order['date'] === $date && $order['status'] !== 'batal')
+            ->filter(fn (array $order): bool => ($useArrivalDate ? ($order['arrivalDate'] ?? $order['date']) : $order['date']) === $date && $order['status'] !== 'batal')
             ->flatMap(fn (array $order) => collect($order['serviceIds'])
-                ->map(function (int $serviceId) use ($order, $services): ?array {
+                ->map(function (int $serviceId) use ($order, $services, $useArrivalDate): ?array {
                     $service = $services->get($serviceId);
 
                     return $service === null ? null : [
@@ -30,6 +30,8 @@ class Operations
                         'vehicle' => $order['vehicle'],
                         'customer' => $order['customer'],
                         'status' => $order['status'],
+                        'date' => $useArrivalDate ? ($order['arrivalDate'] ?? $order['date']) : $order['date'],
+                        'time' => $order['time'] === '—' ? null : $order['time'],
                     ];
                 })->filter())
             ->unique(fn (array $row): string => $row['orderId'].'|'.$row['category']);
@@ -50,6 +52,8 @@ class Operations
                                 'vehicle' => $row['vehicle'],
                                 'customer' => $row['customer'],
                                 'status' => $row['status'],
+                                'date' => $row['date'],
+                                'time' => $row['time'],
                             ])->values()->all(),
                     ])
                     ->sortKeys()->values()->all(),
@@ -99,6 +103,8 @@ class Operations
                 ...$order,
                 'invoice' => $order['orderNo'],
                 'bookingDate' => $bookingDate,
+                'bookingTime' => $order['bookingTime'] ?? null,
+                'notes' => $order['notes'] ?? null,
                 'transactions' => $transactions,
             ];
         }, self::recordedOrders());
@@ -247,6 +253,8 @@ class Operations
             'date' => $booking['date'],
             'time' => '—',
             'bookingDate' => $booking['bookingDate'],
+            'bookingTime' => $booking['bookingTime'],
+            'notes' => $booking['notes'],
             'customerId' => $booking['customerId'],
             'customer' => $booking['customer'],
             'phone' => $booking['phone'],

@@ -2,6 +2,72 @@
 
 use Illuminate\Support\Facades\Process;
 
+test('the POS prints received money and fully paid order value separately in HTML and PDF', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const path = require('node:path');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+(async () => {
+    const { createServer } = await import('vite');
+    const server = await createServer({ configFile: false, cacheDir: path.resolve('node_modules/.vite-recap-test'), server: { middlewareMode: true }, resolve: { alias: { '@': path.resolve('resources/js') } }, ssr: { external: ['jspdf'] } });
+    try {
+        const { renderRecapSheetDocument } = await server.ssrLoadModule('/resources/js/lib/recapSheet.ts');
+        const { renderRecapSheetPdf } = await server.ssrLoadModule('/resources/js/lib/recapSheetPdf.ts');
+        const { formatCurrency, formatDate, formatNumber } = await server.ssrLoadModule('/resources/js/composables/useCarwashFormat.ts');
+        const source = fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8');
+        const code = ['posRecapSheet', 'completedOrderRecapSheet'].map(name => {
+            const start = source.indexOf(`function ${name}(): RecapSheet {`);
+            return ts.transpile(source.slice(start, source.indexOf('\n}\n', start) + 2));
+        }).join('\n');
+        const context = {
+            paymentRecapShiftTabs: { value: [{ key: 'evening', label: 'Sore' }] }, activePaymentRecapShift: { value: 'evening' },
+            paymentRecapByChannel: { value: [{ label: 'Tunai', amount: 1500000, count: 1 }] },
+            activePaymentRecapTotal: { value: 1500000 }, activeCompletedOrderTotal: { value: 2000000 },
+            completedOrderShiftTabs: { value: [{ key: 'morning', label: 'Pagi' }] }, activeCompletedOrderShift: { value: 'morning' },
+            activeCompletedOrderRecap: { value: [{ order: { orderNo: 'ORD-1', customer: 'Budi', plate: 'B123AA', total: 2000000 }, settlement: { time: '10.00' } }] },
+            formatPlate: value => value,
+            paymentRecapTransactionCount: { value: 1 }, paymentRecapFinalOrderCount: { value: 1 },
+            finalPaymentRecapLabel: 'Pembayaran Sisa/Lunas (Order Selesai)',
+            paymentRecapByType: { value: [{ label: 'Pembayaran Sisa/Lunas (Order Selesai)', count: 1, amount: 1500000 }] },
+            props: { filters: { date: '2026-10-03', timezone: 'Asia/Jakarta' }, persona: { name: 'Kasir' } },
+            recapLinks: () => ({ sourceUrl: null, qrUrl: null }), formatCurrency, formatDate, formatNumber,
+        };
+        const sheet = new Function(...Object.keys(context), `${code}; return posRecapSheet();`)(...Object.values(context));
+        assert.equal(sheet.shiftLabel, 'Sore');
+        assert.equal(sheet.summary.find(item => item.label === 'Total uang diterima').value, formatCurrency(1500000));
+        assert.ok(!sheet.summary.some(item => item.label === 'Nilai Order Selesai'));
+        const orderSheet = new Function(...Object.keys(context), `${code}; return completedOrderRecapSheet();`)(...Object.values(context));
+        assert.equal(orderSheet.shiftLabel, 'Pagi');
+        assert.equal(orderSheet.summary.find(item => item.label === 'Nilai Order Selesai').value, formatCurrency(2000000));
+        assert.equal(orderSheet.tables[0].rows[0].label, 'ORD-1');
+        assert.ok(!orderSheet.summary.some(item => item.label === 'Total uang diterima'));
+        const brand = { name: 'ZenWash Auto Care', whatsapp: '6281800090009', instagram: 'zenwash.id', photo: null, logo: 'ZW' };
+        for (const paper of ['a4', 'struk']) {
+          for (const [document, values] of [[sheet, ['Rekap Uang Diterima', '1.500.000']], [orderSheet, ['Rekap Nilai Order Selesai', '2.000.000', 'ORD-1', 'Budi']]]) {
+            const html = renderRecapSheetDocument(document, brand, paper);
+            for (const value of values) {
+                assert.ok(html.includes(value), `${paper} HTML missing ${value}`);
+            }
+            const doc = renderRecapSheetPdf(document, brand, paper, { logo: null, qr: null });
+            const pdf = doc.output().toLowerCase();
+            for (const value of values) {
+                assert.ok(pdf.includes(value.toLowerCase()), `${paper} PDF missing ${value}`);
+            }
+            assert.equal(doc.getNumberOfPages(), 1);
+          }
+        }
+    } finally {
+        await server.close();
+    }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS;
+
+    $result = Process::path(base_path())->timeout(60)->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
 test('finance payment types render in both HTML and PDF paper sizes', function () {
     $script = <<<'JS'
 const fs = require('node:fs');
@@ -268,7 +334,7 @@ test('the POS recap carries the payment types and channels', function () {
     $sheet = recapBuilderSource(recapPosPage(), 'function posRecapSheet(): RecapSheet {');
 
     expect($sheet)
-        ->toContain("title: 'Rekap Pembayaran Diterima',")
+        ->toContain("title: 'Rekap Uang Diterima',")
         ->toContain('formatCurrency(activePaymentRecapTotal.value)')
         ->toContain('formatNumber(paymentRecapTransactionCount.value)')
         ->toContain('formatNumber(paymentRecapFinalOrderCount.value)')
