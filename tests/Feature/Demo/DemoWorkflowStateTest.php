@@ -111,7 +111,6 @@ test('the POS booking queue holds only the bookings the server sent', function (
     $bookingIds = array_column($bookings, 'id');
     $overlap = array_intersect(array_column($daily, 'id'), $bookingIds);
 
-    // The overlap is expected; what must not happen is it being stored twice.
-    expect($overlap)->not->toBeEmpty()
+    expect($overlap)->toBeEmpty()
         ->and($bookingIds)->toBe(array_unique($bookingIds));
 });

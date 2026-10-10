@@ -398,7 +398,7 @@ class Operations
 
     /**
      * Scheduled bookings whose vehicle has not arrived yet and whose visit is
-     * today or later. Once a booking reaches settlement, the cashier handles it
+     * after today. Once a booking reaches settlement, the cashier handles it
      * exclusively in the settlement section.
      *
      * @return list<array{id: int, orderNo: string, invoice: string, date: string, time: string, bookingDate: string|null, customerId: int|null, customer: string, phone: string, vehicle: string, plate: string, items: string, serviceIds: list<int>, total: int, discount: int, reward: string, paidAmount: int, payment: string, paymentStatus: string, status: string, stampsEarned: int, crew: string, bay: string, source: string, transactions: list<array{id: string, orderId: int, date: string, time: string, type: string, amount: int, channels: string, channelBreakdown: list<array{label: string, amount: int}>, shift: string|null}>}>
@@ -411,7 +411,7 @@ class Operations
             self::orders(),
             fn (array $order): bool => $order['source'] === 'booking'
                 && $order['status'] === 'booking'
-                && $order['date'] >= $today,
+                && $order['date'] > $today,
         ));
     }
 

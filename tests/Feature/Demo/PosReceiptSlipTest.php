@@ -194,7 +194,7 @@ test('the slip itemises every payment the order already took', function () {
         ->toContain('history: snapshot.history,');
 });
 
-test('the POS stacks its lists as accordions with only Pelunasan open', function () {
+test('the POS opens Order Berjalan and Pembayaran Diterima accordions by default', function () {
     $accordion = file_get_contents(
         resource_path('js/components/demo/AccordionSection.vue'),
     );
@@ -209,23 +209,23 @@ test('the POS stacks its lists as accordions with only Pelunasan open', function
 
     expect($pos)
         ->toContain("import AccordionSection from '@/components/demo/AccordionSection.vue'")
-        // Exactly one panel opens on arrival, and it is the settlement list.
-        ->toContain('title="Pelunasan"')
+        ->toContain('title="Order Berjalan"')
         ->toContain('default-open')
-        ->toContain('title="Pembayaran Sebagian/Booking"')
-        ->toContain('title="Lunas"');
+        ->toContain('title="Pembayaran Sebagian/Booking (Order Mendatang)"')
+        ->toContain('title="Pembayaran Diterima"');
 
-    expect(substr_count($pos, 'default-open'))->toBe(1);
+    expect(substr_count($pos, 'default-open'))->toBe(2);
     expect(substr_count($pos, '<AccordionSection'))->toBe(3);
 });
 
-test('settled orders stay reachable so their slip can be reprinted', function () {
+test('received payments stay reachable so each transaction slip can be reprinted', function () {
     expect(posModule())
-        ->toContain('const visibleCompletedOrders = computed<CarwashOrder[]>')
-        ->toContain("order.status === 'selesai' && order.paymentStatus === 'lunas'")
-        ->toContain('function reprintReceipt(order: CarwashOrder): void')
-        ->toContain('@click="reprintReceipt(order)"')
-        ->toContain('Cetak ulang struk')
+        ->toContain('const visibleReceivedPaymentOrders = computed<CarwashOrder[]>')
+        ->toContain('receivedPayments(order).length > 0 && matchesQuery')
+        ->toContain('openReceipt(transactionReceipt(order, transaction))')
+        ->toMatch('/@click\.stop="\s*reprintTransaction\(\s*order,\s*transaction,?\s*\)\s*"/')
+        ->toMatch('/@click="\s*reprintTransaction\(\s*selectedReceivedPaymentOrder,\s*transaction,?\s*\)\s*"/')
+        ->toContain('Cetak struk')
         // The last payment is the settlement; the rest is history.
         ->toContain('isReprint: true')
         ->toContain('change: settlement?.changeAmount ?? 0')
@@ -336,12 +336,13 @@ test('the recap detail list matches the row it expands', function () {
     expect($awaitingSettlement)->not->toBeEmpty();
 });
 
-test('a settled order card lists its whole payment run', function () {
+test('a received payment card lists its whole history and highlights the selected date', function () {
     expect(posModule())
-        ->toContain('v-for="transaction in order.transactions"')
-        ->toContain('{{ paymentTransactionLabel(transaction) }}')
-        // Instalments first, the settlement last and weighted heavier.
-        ->toContain("transaction.type === 'Pembayaran Sebagian'")
-        ->toContain("'font-medium text-emerald-700'")
-        ->toContain("'font-semibold text-emerald-800'");
+        ->toContain('v-for="transaction in paymentHistory(order)"')
+        ->toMatch('/\{\{\s*paymentTransactionLabel\(transaction\)\s*\}\}/')
+        ->toContain('isReceivedOnSelectedDate(transaction)')
+        ->toContain("'border-emerald-300 bg-emerald-50 text-emerald-900'")
+        ->toContain("'border-slate-200 bg-slate-50 text-slate-600'")
+        ->toContain('Tanggal dipilih')
+        ->toContain('Uang diterima pada tanggal ini');
 });

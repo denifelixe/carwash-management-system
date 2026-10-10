@@ -124,18 +124,130 @@ JS,
     expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
-test('the cashier lists completed orders by their settling payment, newest first', function () {
+test('received payment cards distinguish arrival time from the booking schedule', function () {
     $result = runPosScript(
-        ['compareTransactionsByPaidAt', 'settlingTransaction', 'completedSearch', 'visibleCompletedOrders'],
+        ['orderArrivalLabel', 'receivedOrderArrivalLabel'],
         <<<'JS'
-const order = (id, orderNo, transactions) => ({ id, orderNo, invoice: `INV-${id}`, customer: 'Customer', plate: 'B123AA', date: '2026-09-23', status: 'selesai', paymentStatus: 'lunas', transactions });
-const settlementOrderList = ref([
-    order(1, 'ORD-003', [transaction('TRX-1', 1, '09.00')]),
-    order(2, 'ORD-001', [transaction('TRX-2', 2, '08.00'), transaction('TRX-3', 2, '16.45')]),
-    order(3, 'ORD-002', [transaction('TRX-4', 3, '11.20')]),
-    order(4, 'ORD-004', []),
+const formatDate = date => date;
+const order = { date: '2026-10-07', arrivalDate: '2026-10-08', time: '15.48', status: 'selesai' };
+assert.equal(receivedOrderArrivalLabel(order), '2026-10-08 · 15.48');
+order.time = '—';
+order.arrivalDate = null;
+order.status = 'booking';
+assert.equal(receivedOrderArrivalLabel(order), 'Belum datang');
+order.status = 'batal';
+assert.equal(receivedOrderArrivalLabel(order), 'Tidak tercatat (dibatalkan)');
+order.status = 'menunggu';
+assert.equal(receivedOrderArrivalLabel(order), 'Belum tercatat');
+JS,
+    );
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('received payment cards emphasize only orders settled on the selected day', function () {
+    $result = runPosScript(
+        ['compareTransactionsByPaidAt', 'paymentHistory', 'isReceivedOnSelectedDate', 'receivedPayments', 'isSettledOnSelectedDate'],
+        <<<'JS'
+const props = { filters: { date: '2026-09-23', today: '2026-09-24' } };
+const order = { status: 'selesai', total: 10000, paymentStatus: 'lunas', transactions: [transaction('TRX-1', 1, '10.00')] };
+assert.equal(isSettledOnSelectedDate(order), true);
+props.filters.date = '2026-09-24';
+assert.equal(isSettledOnSelectedDate(order), false);
+props.filters.date = '2026-09-23';
+order.transactions[0].type = 'Pembayaran Sebagian';
+order.status = 'booking';
+assert.equal(isSettledOnSelectedDate(order), true, 'a fully prepaid booking is emphasized even with a partial payment label');
+order.transactions[0].type = 'Pembayaran Lunas';
+order.paymentStatus = 'sebagian';
+assert.equal(isSettledOnSelectedDate(order), false);
+order.paymentStatus = 'lunas';
+order.transactions[0].amount = 0;
+assert.equal(isSettledOnSelectedDate(order), false);
+order.transactions = [transaction('TRX-LATER', 1, '12.00', '2026-09-24'), { ...transaction('TRX-1', 1, '10.00'), amount: 6000 }, { ...transaction('TRX-2', 1, '11.00'), amount: 4000 }];
+assert.equal(isSettledOnSelectedDate(order), true, 'split deposits are recognized when they first cover the bill');
+props.filters.date = '2026-09-24';
+assert.equal(isSettledOnSelectedDate(order), false, 'later transactions do not recognize the order value again');
+props.filters.date = '2026-09-23';
+order.status = 'batal';
+assert.equal(isSettledOnSelectedDate(order), false);
+JS,
+    );
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('fully paid bookings leave the partial payment queue and return when payment is removed', function () {
+    $result = runPosScript(
+        ['visiblePartialPaymentBookings'],
+        <<<'JS'
+const partialPaymentSearch = ref('');
+const props = ref({ filters: { today: '2026-10-22' } }).value;
+const partialPaymentBookingIds = new Set([1, 2, 3, 4, 5]);
+const booking = (id, paidAmount, overrides = {}) => ({ id, source: 'booking', status: 'booking', orderNo: `ORD-${id}`, customer: 'Budi', plate: `B${id}AA`, date: '2026-10-23', total: 70000, paidAmount, ...overrides });
+const orderList = ref([booking(1, 0), booking(2, 20000), booking(3, 70000), booking(4, 80000), booking(5, 20000, { status: 'batal' }), booking(6, 0)]);
+assert.deepEqual(visiblePartialPaymentBookings.value.map(order => order.id), [1, 2]);
+orderList.value[1].paidAmount = 70000;
+assert.deepEqual(visiblePartialPaymentBookings.value.map(order => order.id), [1]);
+orderList.value[2].paidAmount = 20000;
+assert.deepEqual(visiblePartialPaymentBookings.value.map(order => order.id), [1, 3]);
+partialPaymentSearch.value = 'B3AA';
+assert.deepEqual(visiblePartialPaymentBookings.value.map(order => order.id), [3]);
+partialPaymentSearch.value = '';
+props.filters.today = '2026-10-23';
+assert.deepEqual(visiblePartialPaymentBookings.value, [], 'bookings leave the upcoming queue on their scheduled day');
+JS,
+    );
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('received payments group orders by transaction date and highlight only that days payments', function () {
+    $result = runPosScript(
+        [
+            'compareTransactionsByPaidAt', 'isReceivedOnSelectedDate', 'paymentHistory',
+            'receivedPayments', 'receivedPaymentTotal', 'receivedPaymentSearch',
+            'visibleReceivedPaymentOrders', 'receivedPaymentCount',
+        ],
+        <<<'JS'
+const props = ref({ filters: { date: '2026-09-23', today: '2026-09-24' } }).value;
+const order = (id, transactions, overrides = {}) => ({ id, orderNo: `ORD-${id}`, invoice: `INV-${id}`, customer: `Customer ${id}`, plate: `B${id}AA`, date: '2026-09-01', arrivalDate: '2026-09-02', status: 'selesai', paymentStatus: 'lunas', transactions, ...overrides });
+const partial = (id, orderId, time, date = '2026-09-23') => ({ ...transaction(id, orderId, time, date), type: 'Pembayaran Sebagian' });
+const booking = order(2, [partial('TRX-3', 2, '16.45'), partial('TRX-2', 2, '08.00'), transaction('TRX-5', 2, '23.00', '2026-09-24')], { status: 'booking', paymentStatus: 'sebagian', date: '2026-10-10', arrivalDate: null });
+const oldOrder = order(1, [transaction('TRX-1', 1, '09.00'), partial('TRX-OLD', 1, '12.00', '2026-09-22')]);
+const paymentRecapOrderList = ref([
+    oldOrder,
+    booking,
+    order(3, [partial('TRX-4', 3, '11.20')], { status: 'proses', paymentStatus: 'sebagian' }),
+    order(4, []),
+    order(5, [transaction('TRX-6', 5, '10.00', '2026-09-24')]),
+    order(6, [{ ...transaction('TRX-ZERO', 6, '20.00'), amount: 0 }]),
+    booking,
 ]);
-assert.deepEqual(visibleCompletedOrders.value.map(entry => entry.id), [2, 3, 1, 4]);
+assert.deepEqual(visibleReceivedPaymentOrders.value.map(entry => entry.id), [2, 3, 1]);
+assert.equal(receivedPaymentCount.value, 4);
+assert.equal(receivedPaymentTotal(booking), 20000);
+assert.equal(receivedPaymentTotal(oldOrder), 10000);
+assert.deepEqual(paymentHistory(booking).map(entry => entry.id), ['TRX-2', 'TRX-3', 'TRX-5']);
+assert.deepEqual(booking.transactions.map(entry => entry.id), ['TRX-3', 'TRX-2', 'TRX-5'], 'sorting never mutates the receipt history');
+assert.deepEqual(paymentHistory(booking).filter(isReceivedOnSelectedDate).map(entry => entry.id), ['TRX-2', 'TRX-3']);
+assert.equal(isReceivedOnSelectedDate(oldOrder.transactions[1]), false);
+for (const query of ['ord-2', 'INV-2', 'Customer 2', ' B2AA ']) {
+    receivedPaymentSearch.value = query;
+    assert.deepEqual(visibleReceivedPaymentOrders.value.map(entry => entry.id), [2]);
+    assert.equal(receivedPaymentCount.value, 2);
+}
+receivedPaymentSearch.value = 'missing';
+assert.equal(visibleReceivedPaymentOrders.value.length, 0);
+receivedPaymentSearch.value = '';
+props.filters.date = '2026-09-24';
+assert.deepEqual(visibleReceivedPaymentOrders.value.map(entry => entry.id), [2, 5]);
+assert.deepEqual(receivedPayments(booking).map(entry => entry.id), ['TRX-5']);
+props.filters.date = '';
+assert.deepEqual(visibleReceivedPaymentOrders.value.map(entry => entry.id), [2, 5]);
+props.filters.date = '2026-09-23';
+booking.transactions.splice(0, 2);
+assert.deepEqual(visibleReceivedPaymentOrders.value.map(entry => entry.id), [3, 1], 'orders leave the list when their selected-day payments are removed');
 JS,
     );
 

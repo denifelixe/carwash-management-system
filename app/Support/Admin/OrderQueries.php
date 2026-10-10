@@ -135,7 +135,7 @@ class OrderQueries
     }
 
     /**
-     * Bookings whose car has not arrived yet, from today onwards. The cashier
+     * Bookings whose car has not arrived yet, scheduled after today. The cashier
      * takes deposits on these before the visit, so they stay visible whichever
      * day is filtered.
      *
@@ -146,7 +146,7 @@ class OrderQueries
         return self::baseQuery()
             ->where('source', 'booking')
             ->where('status', 'booking')
-            ->whereDate('service_date', '>=', $today)
+            ->whereDate('service_date', '>', $today)
             ->orderBy('service_date')
             ->orderBy('id')
             ->get();

@@ -19,7 +19,7 @@ use Inertia\Response;
  * order's `serviceIds`. Reward redemption belongs to the cashier's payment flow.
  *
  * Final settlements stay date-filtered, while the complete booking schedule
- * for today and later remains visible for cashier payment handling.
+ * after today remains visible for cashier payment handling.
  */
 class PosController extends AdminController
 {

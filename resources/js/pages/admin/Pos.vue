@@ -11,7 +11,6 @@ import {
     Printer,
     Sparkles,
     Trash2,
-    Wallet,
 } from '@lucide/vue';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import {
@@ -179,10 +178,12 @@ const eMoneyOptions = [
 ];
 
 const search = ref<string>('');
-const showAllOrders = ref<boolean>(false);
+const isTodaySelected = computed<boolean>(
+    () => (props.filters.date || props.filters.today) === props.filters.today,
+);
 const partialPaymentSearch = ref<string>('');
-const completedSearch = ref<string>('');
-const selectedCompletedOrder = ref<CarwashOrder | null>(null);
+const receivedPaymentSearch = ref<string>('');
+const selectedReceivedPaymentOrder = ref<CarwashOrder | null>(null);
 const selectedPaymentRecap = ref<PaymentRecapSelection | null>(null);
 const paymentRecapDetailsElement = ref<HTMLElement | null>(null);
 const selectedPaymentRecapTransaction = ref<PaymentRecapDetail | null>(null);
@@ -256,8 +257,7 @@ if (props.mode === 'demo') {
 }
 
 /**
- * The day's orders plus the bookings still waiting for their car. A booking due
- * today sits in both lists, so it is keyed by id to appear once.
+ * The day's orders plus future bookings and earlier running orders, keyed by id.
  */
 const liveOrders = computed<CarwashOrder[]>(() =>
     Array.from(
@@ -310,13 +310,15 @@ const customerList = computed<CarwashCustomer[]>(() =>
 const settlementOrderList = computed<CarwashOrder[]>(() =>
     orderList.value.filter(
         (order) =>
-            props.filters.date === '' || order.date === props.filters.date,
+            ['booking', 'menunggu', 'proses', 'pelunasan'].includes(
+                order.status,
+            ) && order.date <= (props.filters.date || props.filters.today),
     ),
 );
 
 const outstandingTotal = computed<number>(() =>
     settlementOrderList.value.reduce(
-        (sum, order) => sum + order.total - order.paidAmount,
+        (sum, order) => sum + Math.max(order.total - order.paidAmount, 0),
         0,
     ),
 );
@@ -1006,8 +1008,8 @@ function bookingDisplayStatus(order: CarwashOrder): string {
 }
 
 /**
- * Settlements queue by when they entered settlement; the running orders view
- * queues by arrival, oldest first. A booking whose car has not arrived carries
+ * Running orders queue by arrival, oldest first.
+ * A booking whose car has not arrived carries
  * '—' as its time and goes after every clock time of its day.
  */
 const visibleOrders = computed<CarwashOrder[]>(() => {
@@ -1015,31 +1017,18 @@ const visibleOrders = computed<CarwashOrder[]>(() => {
     const arrivalTime = (order: CarwashOrder): string =>
         order.time && order.time !== '—' ? order.time : '99.99';
 
-    return orderList.value
+    return settlementOrderList.value
         .filter((order) => {
-            const matchesStatus = showAllOrders.value
-                ? ['booking', 'menunggu', 'proses', 'pelunasan'].includes(
-                      order.status,
-                  )
-                : order.status === 'pelunasan';
-            const matchesDate =
-                order.date <= (props.filters.date || props.filters.today);
             const matchesQuery =
                 query === '' ||
                 order.orderNo.toLowerCase().includes(query) ||
                 order.customer.toLowerCase().includes(query) ||
                 order.plate.toLowerCase().includes(query);
 
-            return matchesStatus && matchesDate && matchesQuery;
+            return matchesQuery;
         })
         .sort((first, second) => {
-            const bySettlementEntry = showAllOrders.value
-                ? 0
-                : (first.settlementEnteredAt ?? 0) -
-                  (second.settlementEnteredAt ?? 0);
-
             return (
-                bySettlementEntry ||
                 first.date.localeCompare(second.date) ||
                 arrivalTime(first).localeCompare(arrivalTime(second)) ||
                 first.id - second.id
@@ -1053,14 +1042,12 @@ const settlementGroups = computed(() => {
     return [
         {
             key: 'selected',
-            title: `${showAllOrders.value ? 'Order' : 'Pelunasan'} ${formatDate(date)}`,
+            title: `Order ${formatDate(date)}`,
             orders: visibleOrders.value.filter((order) => order.date === date),
         },
         {
             key: 'overdue',
-            title: showAllOrders.value
-                ? 'Order sebelumnya'
-                : 'Pelunasan tertunggak',
+            title: 'Order sebelumnya',
             orders: visibleOrders.value.filter((order) => order.date < date),
         },
     ].filter((group) => group.orders.length > 0);
@@ -1080,30 +1067,68 @@ const receiptHeadline = computed<string>(() => {
         : 'Pembayaran sebagian diterima';
 });
 
-/** The payment that settled the order: its latest one. */
-function settlingTransaction(order: CarwashOrder): CarwashTransaction | null {
-    return order.transactions.reduce<CarwashTransaction | null>(
-        (latest, transaction) =>
-            latest === null ||
-            compareTransactionsByPaidAt(transaction, latest) > 0
-                ? transaction
-                : latest,
-        null,
+/** Receipt amounts follow the outlet's selected transaction day. */
+function isReceivedOnSelectedDate(transaction: CarwashTransaction): boolean {
+    return (
+        transaction.amount > 0 &&
+        transaction.date === (props.filters.date || props.filters.today)
     );
 }
 
-/**
- * Settled orders for the filtered day, newest settlement first. The cashier
- * only comes here to reprint, so the most recent settlement sits at the top.
- * Order numbers follow arrival, not payment, so they cannot order this list.
- */
-const visibleCompletedOrders = computed<CarwashOrder[]>(() => {
-    const query = completedSearch.value.trim().toLowerCase();
+function paymentHistory(order: CarwashOrder): CarwashTransaction[] {
+    return [...order.transactions].sort(compareTransactionsByPaidAt);
+}
 
-    return settlementOrderList.value
+function receivedPayments(order: CarwashOrder): CarwashTransaction[] {
+    return paymentHistory(order).filter(isReceivedOnSelectedDate);
+}
+
+function receivedPaymentTotal(order: CarwashOrder): number {
+    return receivedPayments(order).reduce(
+        (total, transaction) => total + transaction.amount,
+        0,
+    );
+}
+
+function isSettledOnSelectedDate(order: CarwashOrder): boolean {
+    if (order.paymentStatus !== 'lunas' || order.status === 'batal') {
+        return false;
+    }
+
+    let paidAmount = 0;
+    const settlement = paymentHistory(order).find((transaction) => {
+        paidAmount += transaction.amount;
+
+        return paidAmount >= order.total;
+    });
+
+    return settlement !== undefined && isReceivedOnSelectedDate(settlement);
+}
+
+function receivedOrderArrivalLabel(order: CarwashOrder): string {
+    if (order.time === '—') {
+        if (order.status === 'booking') {
+            return 'Belum datang';
+        }
+
+        return order.status === 'batal'
+            ? 'Tidak tercatat (dibatalkan)'
+            : 'Belum tercatat';
+    }
+
+    return orderArrivalLabel(order);
+}
+
+/** One order per card, sorted by its latest payment on the selected day. */
+const visibleReceivedPaymentOrders = computed<CarwashOrder[]>(() => {
+    const query = receivedPaymentSearch.value.trim().toLowerCase();
+
+    return Array.from(
+        new Map(
+            paymentRecapOrderList.value.map((order) => [order.id, order]),
+        ).values(),
+    )
         .filter((order) => {
-            const isCompleted =
-                order.status === 'selesai' && order.paymentStatus === 'lunas';
             const matchesQuery =
                 query === '' ||
                 order.orderNo.toLowerCase().includes(query) ||
@@ -1111,23 +1136,23 @@ const visibleCompletedOrders = computed<CarwashOrder[]>(() => {
                 order.customer.toLowerCase().includes(query) ||
                 order.plate.toLowerCase().includes(query);
 
-            return isCompleted && matchesQuery;
+            return receivedPayments(order).length > 0 && matchesQuery;
         })
-        .map((order) => ({ order, settledBy: settlingTransaction(order) }))
         .sort(
             (first, second) =>
-                (first.settledBy && second.settledBy
-                    ? compareTransactionsByPaidAt(
-                          second.settledBy,
-                          first.settledBy,
-                      )
-                    : Number(second.settledBy !== null) -
-                      Number(first.settledBy !== null)) ||
-                second.order.date.localeCompare(first.order.date) ||
-                second.order.orderNo.localeCompare(first.order.orderNo),
-        )
-        .map(({ order }) => order);
+                compareTransactionsByPaidAt(
+                    receivedPayments(second).at(-1)!,
+                    receivedPayments(first).at(-1)!,
+                ) || second.orderNo.localeCompare(first.orderNo),
+        );
 });
+
+const receivedPaymentCount = computed<number>(() =>
+    visibleReceivedPaymentOrders.value.reduce(
+        (count, order) => count + receivedPayments(order).length,
+        0,
+    ),
+);
 
 const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
     const query = partialPaymentSearch.value.trim().toLowerCase();
@@ -1141,7 +1166,13 @@ const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
                 order.customer.toLowerCase().includes(query) ||
                 order.plate.toLowerCase().includes(query);
 
-            return isScheduledBooking && matchesQuery;
+            return (
+                isScheduledBooking &&
+                order.date > props.filters.today &&
+                order.status === 'booking' &&
+                order.paidAmount < order.total &&
+                matchesQuery
+            );
         })
         .sort(
             (first, second) =>
@@ -1151,16 +1182,10 @@ const visiblePartialPaymentBookings = computed<CarwashOrder[]>(() => {
 });
 
 /**
- * The queue mixes cars due today with ones booked for later, so the panel
- * header splits the total rather than leaving the cashier to count rows.
+ * Only bookings scheduled after today belong in the upcoming queue.
  */
 const partialPaymentBookingCaption = computed<string>(() => {
-    const bookings = visiblePartialPaymentBookings.value;
-    const today = bookings.filter(
-        (order) => order.date === props.filters.today,
-    ).length;
-
-    return `${bookings.length} Booking (${today} Hari Ini - ${bookings.length - today} Mendatang)`;
+    return `${visiblePartialPaymentBookings.value.length} Booking Mendatang`;
 });
 
 const selectedOrder = computed<CarwashOrder | null>(
@@ -2232,13 +2257,6 @@ function reprintTransaction(
     openReceipt(transactionReceipt(order, transaction));
 }
 
-/** Reprints a settled order from its last payment, with the recap on screen. */
-function reprintReceipt(order: CarwashOrder): void {
-    receipt.value = transactionReceipt(order, null);
-
-    printReceipt();
-}
-
 /** Filtering is a fresh visit, so the page rebuilds from the narrowed props. */
 function applyDate(date: string): void {
     router.get(
@@ -2282,13 +2300,17 @@ const memberForm = useForm({
         <DateFilterBar :filters="filters" @change="applyDate" />
 
         <!-- Summary -->
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+            class="grid grid-cols-1 gap-4 sm:grid-cols-2"
+            :class="isTodaySelected ? 'lg:grid-cols-3' : 'lg:grid-cols-2'"
+        >
             <StatCard
-                label="Order Berjalan"
+                label="Sisa Tagihan Order Berjalan"
+                v-if="isTodaySelected"
                 :value="formatCurrency(outstandingTotal)"
-                caption="order yang sedang berlangsung dan belum melakukan pembayaran"
+                caption="akumulasi sisa tagihan order yang masih berjalan"
                 :icon="Clock"
-                tone="amber"
+                tone="violet"
             />
             <StatCard
                 label="Uang diterima"
@@ -3384,34 +3406,18 @@ const memberForm = useForm({
         <div class="space-y-4">
             <!-- Order picker -->
             <AccordionSection
-                title="Pelunasan"
+                title="Order Berjalan"
+                v-if="isTodaySelected"
                 :caption="`${visibleOrders.length} order ditampilkan — ketuk untuk memproses pembayaran`"
-                :icon="Wallet"
+                :icon="Clock"
                 tone="violet"
                 default-open
             >
                 <template #toolbar>
-                    <div class="flex flex-wrap items-center gap-3">
-                        <label
-                            class="flex cursor-pointer items-center gap-2 text-xs font-medium text-violet-900"
-                        >
-                            <input
-                                v-model="showAllOrders"
-                                type="checkbox"
-                                role="switch"
-                                class="peer sr-only"
-                            />
-                            <span
-                                aria-hidden="true"
-                                class="relative h-5 w-9 shrink-0 rounded-full bg-slate-300 transition-colors peer-checked:bg-violet-600 peer-focus-visible:ring-2 peer-focus-visible:ring-violet-500 peer-focus-visible:ring-offset-2 after:absolute after:top-0.5 after:left-0.5 after:size-4 after:rounded-full after:bg-white after:shadow-sm after:transition-transform peer-checked:after:translate-x-4"
-                            ></span>
-                            Tampilkan semua order berjalan
-                        </label>
-                        <DataToolbar
-                            v-model:search="search"
-                            placeholder="Cari order / plat"
-                        />
-                    </div>
+                    <DataToolbar
+                        v-model:search="search"
+                        placeholder="Cari order / plat"
+                    />
                 </template>
 
                 <div v-if="visibleOrders.length > 0" class="mt-4 space-y-5">
@@ -3474,10 +3480,47 @@ const memberForm = useForm({
                                         </div>
                                     </div>
 
-                                    <p class="mt-2 text-[11px] text-slate-500">
-                                        {{ orderArrivalLabel(order) }} •
-                                        {{ orderTypeLabel(order) }}
-                                    </p>
+                                    <div
+                                        class="mt-2 flex flex-col gap-0.5 text-[11px] text-slate-500"
+                                    >
+                                        <template
+                                            v-if="order.source === 'booking'"
+                                        >
+                                            <span
+                                                class="font-bold text-sky-700"
+                                            >
+                                                Booking dibuat pada:
+                                                {{
+                                                    order.bookingDate
+                                                        ? formatDate(
+                                                              order.bookingDate,
+                                                          )
+                                                        : '—'
+                                                }}
+                                                <template
+                                                    v-if="order.bookingTime"
+                                                >
+                                                    ·
+                                                    {{
+                                                        order.bookingTime
+                                                    }}</template
+                                                >
+                                            </span>
+                                            <span
+                                                class="font-bold text-violet-700"
+                                            >
+                                                Untuk layanan tanggal:
+                                                {{ formatDate(order.date) }}
+                                            </span>
+                                        </template>
+                                        <span class="font-bold text-teal-700">
+                                            Waktu kedatangan:
+                                            {{
+                                                receivedOrderArrivalLabel(order)
+                                            }}
+                                        </span>
+                                        <span>{{ orderTypeLabel(order) }}</span>
+                                    </div>
                                     <p
                                         class="mt-3 truncate text-sm font-medium text-slate-900"
                                     >
@@ -3556,22 +3599,15 @@ const memberForm = useForm({
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    :title="
-                        showAllOrders
-                            ? 'Tidak ada order'
-                            : 'Tidak ada order untuk pembayaran sisa/lunas'
-                    "
-                    :caption="
-                        showAllOrders
-                            ? 'Belum ada order pada tanggal yang dipilih atau pencarian tidak cocok.'
-                            : 'Belum ada order berstatus Pembayaran Sisa/Lunas (Order Selesai) atau pencarian tidak cocok.'
-                    "
+                    title="Tidak ada order berjalan"
+                    caption="Belum ada order berjalan pada tanggal yang dipilih atau pencarian tidak cocok."
                 />
             </AccordionSection>
 
             <!-- Booking payments before arrival -->
             <AccordionSection
-                title="Pembayaran Sebagian/Booking"
+                title="Pembayaran Sebagian/Booking (Order Mendatang)"
+                v-if="isTodaySelected"
                 :caption="partialPaymentBookingCaption"
                 :icon="CreditCard"
                 tone="orange"
@@ -3626,10 +3662,32 @@ const memberForm = useForm({
                                 />
                             </div>
 
-                            <p class="mt-2 text-[11px] text-slate-500">
-                                {{ orderArrivalLabel(order) }} •
-                                {{ orderTypeLabel(order) }}
-                            </p>
+                            <div
+                                class="mt-2 flex flex-col gap-0.5 text-[11px] text-slate-500"
+                            >
+                                <template v-if="order.source === 'booking'">
+                                    <span class="font-bold text-sky-700">
+                                        Booking dibuat pada:
+                                        {{
+                                            order.bookingDate
+                                                ? formatDate(order.bookingDate)
+                                                : '—'
+                                        }}
+                                        <template v-if="order.bookingTime">
+                                            · {{ order.bookingTime }}</template
+                                        >
+                                    </span>
+                                    <span class="font-bold text-violet-700">
+                                        Untuk layanan tanggal:
+                                        {{ formatDate(order.date) }}
+                                    </span>
+                                </template>
+                                <span class="font-bold text-teal-700">
+                                    Waktu kedatangan:
+                                    {{ receivedOrderArrivalLabel(order) }}
+                                </span>
+                                <span>{{ orderTypeLabel(order) }}</span>
+                            </div>
                             <p
                                 class="mt-3 truncate text-sm font-medium text-slate-900"
                             >
@@ -3697,26 +3755,27 @@ const memberForm = useForm({
                 />
             </AccordionSection>
 
-            <!-- Settled orders, kept around so the slip can be reprinted -->
+            <!-- Payments received on the selected day, grouped by order -->
             <AccordionSection
-                title="Lunas"
-                :caption="`${visibleCompletedOrders.length} order lunas — klik kartu untuk detail order`"
+                title="Pembayaran Diterima"
+                :caption="`${visibleReceivedPaymentOrders.length} order · ${receivedPaymentCount} pembayaran — klik kartu untuk detail order`"
                 :icon="CircleCheck"
                 tone="emerald"
+                default-open
             >
                 <template #toolbar>
                     <DataToolbar
-                        v-model:search="completedSearch"
+                        v-model:search="receivedPaymentSearch"
                         placeholder="Cari nomor order / plat"
                     />
                 </template>
 
                 <ul
-                    v-if="visibleCompletedOrders.length > 0"
+                    v-if="visibleReceivedPaymentOrders.length > 0"
                     class="mt-4 space-y-2.5"
                 >
                     <li
-                        v-for="order in visibleCompletedOrders"
+                        v-for="order in visibleReceivedPaymentOrders"
                         :key="order.id"
                         class="relative rounded-2xl border border-emerald-200 bg-white p-4 transition focus-within:ring-2 focus-within:ring-emerald-500 hover:border-emerald-400 hover:shadow-sm"
                     >
@@ -3724,7 +3783,7 @@ const memberForm = useForm({
                             type="button"
                             class="absolute inset-0 rounded-2xl focus:outline-none"
                             :aria-label="`Lihat detail order ${order.orderNo}`"
-                            @click="selectedCompletedOrder = order"
+                            @click="selectedReceivedPaymentOrder = order"
                         ></button>
                         <div
                             class="flex flex-wrap items-start justify-between gap-2"
@@ -3749,11 +3808,35 @@ const memberForm = useForm({
                             <StatusPill :status="order.status" />
                         </div>
 
-                        <p class="mt-2 text-[11px] text-slate-500">
-                            {{ orderArrivalLabel(order) }} •
-                            {{ orderTypeLabel(order) }} •
-                            {{ order.transactions.length }} pembayaran
-                        </p>
+                        <div
+                            class="mt-2 flex flex-col gap-0.5 text-[11px] text-slate-500"
+                        >
+                            <template v-if="order.source === 'booking'">
+                                <span class="font-bold text-sky-700">
+                                    Booking dibuat pada:
+                                    {{
+                                        order.bookingDate
+                                            ? formatDate(order.bookingDate)
+                                            : '—'
+                                    }}
+                                    <template v-if="order.bookingTime">
+                                        · {{ order.bookingTime }}</template
+                                    >
+                                </span>
+                                <span class="font-bold text-violet-700">
+                                    Untuk layanan tanggal:
+                                    {{ formatDate(order.date) }}
+                                </span>
+                            </template>
+                            <span class="font-bold text-teal-700">
+                                Waktu kedatangan:
+                                {{ receivedOrderArrivalLabel(order) }}
+                            </span>
+                            <span
+                                >{{ orderTypeLabel(order) }} ·
+                                {{ order.transactions.length }} pembayaran</span
+                            >
+                        </div>
                         <p
                             class="mt-3 truncate text-sm font-medium text-slate-900"
                         >
@@ -3762,51 +3845,105 @@ const memberForm = useForm({
                         <p class="mt-1 line-clamp-1 text-xs text-slate-500">
                             {{ order.items }}
                         </p>
-                        <!--
-                            The whole payment run in order, so the instalments
-                            that led to the settlement stay readable next to it.
-                        -->
                         <ul
                             v-if="order.transactions.length > 0"
-                            class="mt-2 space-y-1 text-xs"
+                            class="mt-3 space-y-2 text-xs"
                         >
                             <li
-                                v-for="transaction in order.transactions"
+                                v-for="transaction in paymentHistory(order)"
                                 :key="transaction.id"
+                                class="rounded-xl border p-3"
                                 :class="
-                                    transaction.type === 'Pembayaran Sebagian'
-                                        ? 'font-medium text-emerald-700'
-                                        : 'font-semibold text-emerald-800'
+                                    isReceivedOnSelectedDate(transaction)
+                                        ? 'border-emerald-300 bg-emerald-50 text-emerald-900'
+                                        : 'border-slate-200 bg-slate-50 text-slate-600'
                                 "
                             >
-                                {{ formatDate(transaction.date) }} ·
-                                {{ transaction.time }} ·
-                                {{ paymentTransactionLabel(transaction) }}
-                                sebesar
-                                {{ formatCurrency(transaction.amount) }}.
+                                <div
+                                    class="flex flex-wrap items-center justify-between gap-2"
+                                >
+                                    <p class="font-semibold">
+                                        {{
+                                            paymentTransactionLabel(transaction)
+                                        }}
+                                        ·
+                                        {{ formatCurrency(transaction.amount) }}
+                                    </p>
+                                    <span
+                                        v-if="
+                                            isReceivedOnSelectedDate(
+                                                transaction,
+                                            )
+                                        "
+                                        class="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-semibold text-emerald-800"
+                                        >Tanggal dipilih</span
+                                    >
+                                </div>
+                                <p class="mt-1">
+                                    {{ formatDate(transaction.date) }} ·
+                                    {{ transaction.time }} ·
+                                    {{ transaction.channels }}
+                                </p>
+                                <button
+                                    type="button"
+                                    class="relative mt-2 flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                    :aria-label="`Cetak struk ${paymentTransactionReference(transaction, order)}`"
+                                    @click.stop="
+                                        reprintTransaction(order, transaction)
+                                    "
+                                >
+                                    <Printer class="h-3.5 w-3.5" />
+                                    Cetak struk
+                                </button>
                             </li>
                         </ul>
 
                         <div
-                            class="mt-3 flex flex-wrap items-end justify-between gap-3 border-t border-dashed border-slate-200 pt-2.5"
+                            class="mt-3 flex flex-col items-start gap-1.5 border-t border-dashed border-slate-200 pt-2.5"
                         >
-                            <span class="text-[11px] text-slate-500">
-                                Total
+                            <p class="text-sm font-medium text-emerald-700">
+                                Uang diterima pada tanggal ini
                                 <span
-                                    class="font-semibold text-slate-900 tabular-nums"
+                                    class="ml-1 text-lg font-bold tabular-nums"
                                 >
-                                    {{ formatCurrency(order.total) }}
+                                    {{
+                                        formatCurrency(
+                                            receivedPaymentTotal(order),
+                                        )
+                                    }}
                                 </span>
-                                · {{ order.payment }}
-                            </span>
-                            <button
-                                type="button"
-                                class="relative flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
-                                @click="reprintReceipt(order)"
+                            </p>
+                            <p
+                                :class="
+                                    isSettledOnSelectedDate(order)
+                                        ? 'text-sm font-medium text-cyan-700'
+                                        : 'text-[11px] text-slate-500'
+                                "
                             >
-                                <Printer class="h-3.5 w-3.5" />
-                                Cetak ulang struk
-                            </button>
+                                Nilai Order
+                                <span
+                                    class="ml-1 tabular-nums"
+                                    :class="
+                                        isSettledOnSelectedDate(order)
+                                            ? 'text-lg font-bold'
+                                            : 'font-semibold'
+                                    "
+                                    >{{ formatCurrency(order.total) }}</span
+                                >
+                            </p>
+                            <p class="text-[11px] text-slate-500">
+                                Total dibayar
+                                <span
+                                    class="tabular-nums"
+                                    :class="
+                                        isSettledOnSelectedDate(order)
+                                            ? 'font-bold'
+                                            : ''
+                                    "
+                                >
+                                    {{ formatCurrency(order.paidAmount) }}
+                                </span>
+                            </p>
                         </div>
                     </li>
                 </ul>
@@ -3814,19 +3951,19 @@ const memberForm = useForm({
                 <EmptyState
                     v-else
                     :icon="ClipboardList"
-                    title="Belum ada order selesai"
-                    caption="Order yang sudah lunas akan tampil di sini untuk cetak ulang struk."
+                    title="Belum ada pembayaran diterima"
+                    caption="Order dengan pembayaran pada tanggal terpilih akan tampil di sini."
                 />
             </AccordionSection>
 
             <ModalDialog
-                :open="selectedCompletedOrder !== null"
-                title="Detail Order Lunas"
-                :caption="selectedCompletedOrder?.orderNo"
+                :open="selectedReceivedPaymentOrder !== null"
+                title="Detail Order"
+                :caption="selectedReceivedPaymentOrder?.orderNo"
                 size="lg"
-                @close="selectedCompletedOrder = null"
+                @close="selectedReceivedPaymentOrder = null"
             >
-                <div v-if="selectedCompletedOrder" class="space-y-4">
+                <div v-if="selectedReceivedPaymentOrder" class="space-y-4">
                     <section
                         class="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
                     >
@@ -3835,30 +3972,30 @@ const memberForm = useForm({
                                 <p class="text-2xl font-bold text-slate-950">
                                     {{
                                         formatPlate(
-                                            selectedCompletedOrder.plate,
+                                            selectedReceivedPaymentOrder.plate,
                                         )
                                     }}
                                 </p>
                                 <p class="text-lg font-semibold text-slate-700">
-                                    {{ selectedCompletedOrder.vehicle }}
+                                    {{ selectedReceivedPaymentOrder.vehicle }}
                                 </p>
                             </div>
                             <StatusPill
-                                :status="selectedCompletedOrder.status"
+                                :status="selectedReceivedPaymentOrder.status"
                             />
                         </div>
                         <p class="mt-3 text-sm font-medium text-slate-900">
-                            {{ selectedCompletedOrder.customer }}
+                            {{ selectedReceivedPaymentOrder.customer }}
                         </p>
                         <p class="text-xs text-slate-600">
-                            {{ selectedCompletedOrder.phone || '—' }}
+                            {{ selectedReceivedPaymentOrder.phone || '—' }}
                         </p>
                         <p class="mt-2 text-xs text-emerald-700">
-                            {{ orderTypeLabel(selectedCompletedOrder) }}
+                            {{ orderTypeLabel(selectedReceivedPaymentOrder) }}
                         </p>
                     </section>
                     <section
-                        v-if="selectedCompletedOrder.source === 'booking'"
+                        v-if="selectedReceivedPaymentOrder.source === 'booking'"
                         class="rounded-xl border border-cyan-200 bg-cyan-50/50 p-4"
                     >
                         <h3 class="text-sm font-semibold text-cyan-800">
@@ -3871,15 +4008,15 @@ const memberForm = useForm({
                                 <dt class="text-slate-500">Booking dibuat</dt>
                                 <dd class="mt-1 font-medium text-slate-800">
                                     {{
-                                        selectedCompletedOrder.bookingDate
+                                        selectedReceivedPaymentOrder.bookingDate
                                             ? formatDate(
-                                                  selectedCompletedOrder.bookingDate,
+                                                  selectedReceivedPaymentOrder.bookingDate,
                                               )
                                             : '—'
                                     }}
                                     ·
                                     {{
-                                        selectedCompletedOrder.bookingTime ||
+                                        selectedReceivedPaymentOrder.bookingTime ||
                                         '—'
                                     }}
                                 </dd>
@@ -3888,7 +4025,9 @@ const memberForm = useForm({
                                 <dt class="text-slate-500">Jadwal layanan</dt>
                                 <dd class="mt-1 font-medium text-slate-800">
                                     {{
-                                        formatDate(selectedCompletedOrder.date)
+                                        formatDate(
+                                            selectedReceivedPaymentOrder.date,
+                                        )
                                     }}
                                 </dd>
                             </div>
@@ -3899,7 +4038,7 @@ const memberForm = useForm({
                                 <dd class="mt-1 font-medium text-slate-800">
                                     {{
                                         orderArrivalLabel(
-                                            selectedCompletedOrder,
+                                            selectedReceivedPaymentOrder,
                                         )
                                     }}
                                 </dd>
@@ -3909,7 +4048,10 @@ const memberForm = useForm({
                                 <dd
                                     class="mt-1 whitespace-pre-wrap text-slate-800"
                                 >
-                                    {{ selectedCompletedOrder.notes || '—' }}
+                                    {{
+                                        selectedReceivedPaymentOrder.notes ||
+                                        '—'
+                                    }}
                                 </dd>
                             </div>
                         </dl>
@@ -3920,26 +4062,35 @@ const memberForm = useForm({
                         <div>
                             <dt class="text-slate-500">Tanggal order</dt>
                             <dd class="mt-1 font-medium text-slate-800">
-                                {{ formatDate(selectedCompletedOrder.date) }}
+                                {{
+                                    formatDate(
+                                        selectedReceivedPaymentOrder.date,
+                                    )
+                                }}
                             </dd>
                         </div>
                         <div>
                             <dt class="text-slate-500">Diinput oleh</dt>
                             <dd class="mt-1 font-medium text-slate-800">
-                                {{ selectedCompletedOrder.inputBy || '—' }}
+                                {{
+                                    selectedReceivedPaymentOrder.inputBy || '—'
+                                }}
                             </dd>
                         </div>
                         <div>
                             <dt class="text-slate-500">Dihandle oleh</dt>
                             <dd class="mt-1 font-medium text-slate-800">
-                                {{ selectedCompletedOrder.handledBy || '—' }}
+                                {{
+                                    selectedReceivedPaymentOrder.handledBy ||
+                                    '—'
+                                }}
                             </dd>
                         </div>
                         <div>
                             <dt class="text-slate-500">Crew / bay</dt>
                             <dd class="mt-1 font-medium text-slate-800">
-                                {{ selectedCompletedOrder.crew }} ·
-                                {{ selectedCompletedOrder.bay }}
+                                {{ selectedReceivedPaymentOrder.crew }} ·
+                                {{ selectedReceivedPaymentOrder.bay }}
                             </dd>
                         </div>
                     </dl>
@@ -3949,7 +4100,7 @@ const memberForm = useForm({
                         </h3>
                         <ul class="mt-2 space-y-2">
                             <li
-                                v-for="item in selectedCompletedOrder.serviceItems"
+                                v-for="item in selectedReceivedPaymentOrder.serviceItems"
                                 :key="item.serviceVariationId"
                                 class="flex items-start justify-between gap-3 rounded-xl border border-slate-200 p-3 text-xs"
                             >
@@ -3970,12 +4121,26 @@ const memberForm = useForm({
                         </ul>
                     </section>
                     <dl class="space-y-2 rounded-xl bg-slate-50 p-4 text-xs">
+                        <div
+                            class="flex justify-between gap-3 font-semibold text-emerald-700"
+                        >
+                            <dt>Uang diterima pada tanggal ini</dt>
+                            <dd>
+                                {{
+                                    formatCurrency(
+                                        receivedPaymentTotal(
+                                            selectedReceivedPaymentOrder,
+                                        ),
+                                    )
+                                }}
+                            </dd>
+                        </div>
                         <div class="flex justify-between gap-3">
                             <dt>Subtotal layanan</dt>
                             <dd>
                                 {{
                                     formatCurrency(
-                                        selectedCompletedOrder.serviceItems.reduce(
+                                        selectedReceivedPaymentOrder.serviceItems.reduce(
                                             (total, item) =>
                                                 total + item.totalPrice,
                                             0,
@@ -3989,20 +4154,22 @@ const memberForm = useForm({
                             <dd>
                                 {{
                                     formatCurrency(
-                                        selectedCompletedOrder.discount,
+                                        selectedReceivedPaymentOrder.discount,
                                     )
                                 }}
                             </dd>
                         </div>
                         <div class="flex justify-between gap-3">
                             <dt>Reward</dt>
-                            <dd>{{ selectedCompletedOrder.reward }}</dd>
+                            <dd>{{ selectedReceivedPaymentOrder.reward }}</dd>
                         </div>
                         <div class="flex justify-between gap-3 font-semibold">
-                            <dt>Total order</dt>
+                            <dt>Nilai Order</dt>
                             <dd>
                                 {{
-                                    formatCurrency(selectedCompletedOrder.total)
+                                    formatCurrency(
+                                        selectedReceivedPaymentOrder.total,
+                                    )
                                 }}
                             </dd>
                         </div>
@@ -4011,7 +4178,7 @@ const memberForm = useForm({
                             <dd>
                                 {{
                                     formatCurrency(
-                                        selectedCompletedOrder.paidAmount,
+                                        selectedReceivedPaymentOrder.paidAmount,
                                     )
                                 }}
                             </dd>
@@ -4022,8 +4189,8 @@ const memberForm = useForm({
                                 {{
                                     formatCurrency(
                                         Math.max(
-                                            selectedCompletedOrder.total -
-                                                selectedCompletedOrder.paidAmount,
+                                            selectedReceivedPaymentOrder.total -
+                                                selectedReceivedPaymentOrder.paidAmount,
                                             0,
                                         ),
                                     )
@@ -4032,7 +4199,9 @@ const memberForm = useForm({
                         </div>
                         <div class="flex justify-between gap-3">
                             <dt>Stamp diperoleh</dt>
-                            <dd>{{ selectedCompletedOrder.stampsEarned }}</dd>
+                            <dd>
+                                {{ selectedReceivedPaymentOrder.stampsEarned }}
+                            </dd>
                         </div>
                     </dl>
                     <section>
@@ -4041,10 +4210,23 @@ const memberForm = useForm({
                         </h3>
                         <ul class="mt-2 space-y-2">
                             <li
-                                v-for="transaction in selectedCompletedOrder.transactions"
+                                v-for="transaction in paymentHistory(
+                                    selectedReceivedPaymentOrder,
+                                )"
                                 :key="transaction.id"
-                                class="rounded-xl border border-slate-200 p-3 text-xs"
+                                class="rounded-xl border p-3 text-xs"
+                                :class="
+                                    isReceivedOnSelectedDate(transaction)
+                                        ? 'border-emerald-300 bg-emerald-50'
+                                        : 'border-slate-200 bg-slate-50'
+                                "
                             >
+                                <p
+                                    v-if="isReceivedOnSelectedDate(transaction)"
+                                    class="mb-2 font-semibold text-emerald-700"
+                                >
+                                    Tanggal dipilih
+                                </p>
                                 <div
                                     class="flex flex-wrap justify-between gap-2"
                                 >
@@ -4064,7 +4246,7 @@ const memberForm = useForm({
                                     {{
                                         paymentTransactionReference(
                                             transaction,
-                                            selectedCompletedOrder,
+                                            selectedReceivedPaymentOrder,
                                         )
                                     }}
                                     · {{ formatDate(transaction.date) }} ·
@@ -4096,6 +4278,20 @@ const memberForm = useForm({
                                 >
                                     {{ transaction.note }}
                                 </p>
+                                <button
+                                    type="button"
+                                    class="mt-3 flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                                    :aria-label="`Cetak struk ${paymentTransactionReference(transaction, selectedReceivedPaymentOrder)}`"
+                                    @click="
+                                        reprintTransaction(
+                                            selectedReceivedPaymentOrder,
+                                            transaction,
+                                        )
+                                    "
+                                >
+                                    <Printer class="h-3.5 w-3.5" />
+                                    Cetak struk
+                                </button>
                             </li>
                         </ul>
                     </section>
@@ -4104,7 +4300,7 @@ const memberForm = useForm({
                     <button
                         type="button"
                         class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                        @click="selectedCompletedOrder = null"
+                        @click="selectedReceivedPaymentOrder = null"
                     >
                         Tutup
                     </button>

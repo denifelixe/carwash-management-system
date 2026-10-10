@@ -61,7 +61,8 @@ test('the migration recovers affected bookings without changing payment data', f
         ->toBe(collect($originalOrder)->except(['status', 'updated_at'])->all())
         ->and($order->transactions()->withTrashed()->get()->toArray())->toBe($originalTransactions)
         ->and(DailyBalance::all()->toArray())->toBe($originalBalances)
-        ->and(OrderQueries::upcomingBookings(today()->toDateString())->modelKeys())->toContain($order->id)
+        ->and(OrderQueries::upcomingBookings(today()->toDateString())->modelKeys())
+        ->toBe($daysAhead === 0 ? [] : [$order->id])
         ->and(OrderQueries::bookings()->modelKeys())->toContain($order->id);
 })->with([0, 10000])->with([0, 481]);
 

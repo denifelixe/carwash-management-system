@@ -435,14 +435,19 @@ const unfinishedPreviousOrders = computed<CarwashOrder[]>(() =>
         ),
 );
 
-const orderSections = computed(() => [
-    { key: 'daily', title: 'Daftar order', orders: filteredOrders.value },
-    {
-        key: 'previous',
-        title: 'Order hari sebelumnya yang belum selesai',
-        orders: unfinishedPreviousOrders.value,
-    },
-]);
+const orderSections = computed(() =>
+    [
+        { key: 'daily', title: 'Daftar order', orders: filteredOrders.value },
+        {
+            key: 'previous',
+            title: 'Order hari sebelumnya yang belum selesai',
+            orders: unfinishedPreviousOrders.value,
+        },
+    ].filter(
+        (section) =>
+            section.key === 'daily' || props.filters.date >= props.filters.today,
+    ),
+);
 
 const detailOrder = computed<CarwashOrder | null>(
     () =>

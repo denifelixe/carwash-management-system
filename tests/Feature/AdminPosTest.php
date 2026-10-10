@@ -194,6 +194,7 @@ test('the live cashier page uses the shared component and database records', fun
 });
 
 test('the cashier only settles orders the floor handed over, and keeps upcoming bookings in view', function () {
+    $this->travelTo(now()->setDate(2026, 10, 10)->setTime(10, 0));
     $owner = Admin::factory()->create(['is_owner' => true]);
     Order::factory()->create(['status' => 'proses']);
     $settlement = Order::factory()->create(['status' => 'pelunasan']);
@@ -201,6 +202,13 @@ test('the cashier only settles orders the floor handed over, and keeps upcoming 
         'status' => 'booking',
         'source' => 'booking',
         'service_date' => today()->addDays(3),
+    ]);
+    $todayBooking = Order::factory()->create([
+        'status' => 'booking',
+        'source' => 'booking',
+        'service_date' => today(),
+        'booking_date' => '2026-10-08',
+        'created_at' => '2026-10-08 10:00:00',
     ]);
     Order::factory()->create([
         'status' => 'booking',
@@ -215,10 +223,16 @@ test('the cashier only settles orders the floor handed over, and keeps upcoming 
             fn (AssertableInertia $page) => $page
                 ->has('orders', 1)
                 ->where('orders.0.id', $settlement->id)
-                ->has('dailyOrders', 2)
+                ->has('dailyOrders', 3)
+                ->where('dailyOrders', fn ($orders): bool => collect($orders)->pluck('id')->contains($todayBooking->id))
                 ->has('partialPaymentBookings', 1)
                 ->where('partialPaymentBookings.0.id', $booking->id),
         );
+
+    $this->get(route('admin.pos.index', ['date' => '2026-10-08']))
+        ->assertInertia(fn (AssertableInertia $page) => $page
+            ->has('partialPaymentBookings', 1)
+            ->where('partialPaymentBookings.0.id', $booking->id));
 });
 
 test('a partial payment leaves the order open and records its channels', function () {

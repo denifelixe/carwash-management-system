@@ -10,7 +10,103 @@ use App\Support\Demo\RoleAccess;
 use Illuminate\Support\Facades\Process;
 use Inertia\Testing\AssertableInertia;
 
-test('the POS order switch includes only ongoing orders while preserving date and search filters', function () {
+test('the POS payment cards only render for today while historical recaps stay available', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { computed, reactive, compile, createSSRApp } = require('vue');
+const { renderToString } = require('@vue/server-renderer');
+const { parse } = require('@vue/compiler-sfc');
+const { baseParse } = require('@vue/compiler-dom');
+const source = fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8');
+const { descriptor } = parse(source);
+const ast = ts.createSourceFile('Pos.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true);
+const declaration = ast.statements.find(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => declaration.name.getText(ast) === 'isTodaySelected'));
+assert.ok(declaration, 'the payment cards need a reactive date condition');
+const props = reactive({ filters: { date: '2026-10-10', today: '2026-10-10' } });
+const isTodaySelected = new Function('props', 'computed', ts.transpile(declaration.getText(ast)) + '\nreturn isTodaySelected;')(props, computed);
+const titles = ['Sisa Tagihan Order Berjalan', 'Pembayaran Sebagian/Booking (Order Mendatang)', 'Order Berjalan', 'Rekap Uang Diterima', 'Rekap Nilai Order Selesai'];
+const panels = [];
+function collect(node, conditions = []) {
+    const ownConditions = (node.props ?? []).filter(prop => prop.type === 7 && prop.name === 'if').map(prop => prop.exp.content);
+    const inheritedConditions = [...conditions, ...ownConditions];
+    const title = (node.props ?? []).find(prop => prop.type === 6 && ['title', 'label'].includes(prop.name))?.value?.content;
+    if (titles.includes(title)) {
+        panels.push({ title, conditions: inheritedConditions });
+    }
+    for (const child of node.children ?? []) collect(child, inheritedConditions);
+}
+collect(baseParse(descriptor.template.content));
+assert.equal(panels.length, titles.length);
+const template = '<main>' + panels.map(panel => {
+    const condition = panel.conditions.length ? ` v-if="${panel.conditions.map(value => `(${value})`).join(' && ')}"` : '';
+    return `<section${condition}>${panel.title}</section>`;
+}).join('') + '</main>';
+const render = compile(template);
+(async () => {
+    for (const mode of ['live', 'demo']) {
+        props.mode = mode;
+        for (const [date, visible] of [['2026-10-10', true], ['2026-10-09', false], ['2026-10-11', false], ['2026-10-10', true], ['', true]]) {
+            props.filters.date = date;
+            const html = await renderToString(createSSRApp({ setup: () => ({ isTodaySelected }), render }));
+            for (const title of titles.slice(0, 3)) assert.equal(html.includes(`<section>${title}</section>`), visible, `${mode}: ${title} on ${date}`);
+            for (const title of titles.slice(3)) assert.ok(html.includes(`<section>${title}</section>`), `${mode}: ${title} stays visible on ${date}`);
+        }
+    }
+})().catch(error => { console.error(error); process.exitCode = 1; });
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('the POS accumulates remaining bills for ongoing orders independently of search', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const { ref, computed } = require('vue');
+const { parse } = require('@vue/compiler-sfc');
+const { descriptor } = parse(fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8'));
+const ast = ts.createSourceFile('Pos.ts', descriptor.scriptSetup.content, ts.ScriptTarget.Latest, true);
+const names = ['search', 'settlementOrderList', 'outstandingTotal', 'visibleOrders'];
+const declarations = ast.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))));
+const code = ts.transpile(declarations.map(node => node.getText(ast)).join('\n'));
+const props = { filters: { date: '2026-10-10', today: '2026-10-10' } };
+const order = (id, status, date, total, paidAmount) => ({ id, status, date, total, paidAmount, orderNo: `ORD-${id}`, customer: `Customer ${id}`, plate: `B ${id} AA`, time: '09.00' });
+const orderList = ref([
+    order(1, 'pelunasan', '2026-10-09', 100000, 40000),
+    order(2, 'menunggu', '2026-10-10', 50000, 0),
+    order(3, 'proses', '2026-10-10', 80000, 20000),
+    order(4, 'booking', '2026-10-10', 70000, 30000),
+    order(5, 'selesai', '2026-10-10', 90000, 0),
+    order(6, 'batal', '2026-10-10', 90000, 0),
+    order(7, 'booking', '2026-10-11', 90000, 0),
+    order(8, 'proses', '2026-10-10', 10000, 15000),
+]);
+eval(code + `
+assert.equal(outstandingTotal.value, 210000);
+search.value = 'ORD-2';
+assert.deepEqual(visibleOrders.value.map(order => order.id), [2]);
+assert.equal(outstandingTotal.value, 210000);
+orderList.value[0].paidAmount = 100000;
+orderList.value[0].status = 'selesai';
+assert.equal(outstandingTotal.value, 150000);
+props.filters.date = '';
+assert.equal(outstandingTotal.value, 150000);
+orderList.value = [];
+assert.equal(outstandingTotal.value, 0);
+`);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('the POS shows all ongoing orders while preserving date and search filters', function () {
     $script = <<<'JS'
 const fs = require('node:fs');
 const ts = require('typescript');
@@ -19,7 +115,7 @@ const { ref, computed } = require('vue');
 const source = fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8');
 const script = source.split('<script setup lang="ts">')[1].split('</script>')[0];
 const ast = ts.createSourceFile('Pos.ts', script, ts.ScriptTarget.Latest, true);
-const names = ['search', 'showAllOrders', 'visibleOrders', 'settlementGroups'];
+const names = ['search', 'settlementOrderList', 'visibleOrders', 'settlementGroups'];
 const declarations = ast.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))));
 const code = ts.transpile(declarations.map(node => node.getText(ast)).join('\n'));
 const props = { filters: { date: '2026-09-08', today: '2026-09-08' } };
@@ -29,9 +125,6 @@ const orderList = ref(statuses.map((status, id) => ({ id, status, date: '2026-09
 orderList.value.push({ ...orderList.value[0], id: 6, date: '2026-09-07' });
 orderList.value.push({ ...orderList.value[0], id: 7, date: '2026-09-09' });
 eval(code + `
-assert.equal(showAllOrders.value, false);
-assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0]);
-showAllOrders.value = true;
 assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0, 1, 2, 3]);
 assert.equal(settlementGroups.value.flatMap(group => group.orders).length, 5);
 for (const query of ['ord-4', 'ord-5']) {
@@ -42,10 +135,8 @@ for (const query of ['ord-2', 'CUSTOMER 2', ' B 2 AA ']) {
     search.value = query;
     assert.deepEqual(visibleOrders.value.map(order => order.id), [2]);
 }
-showAllOrders.value = false;
-assert.equal(visibleOrders.value.length, 0);
 search.value = '';
-assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0]);
+assert.deepEqual(visibleOrders.value.map(order => order.id), [6, 0, 1, 2, 3]);
 `);
 JS;
 
@@ -145,11 +236,11 @@ test('the POS recap uses received payments from the selected transaction date', 
         ->toContain('row.amount += channel.amount');
 });
 
-test('the cashier booking list only contains todays and upcoming bookings that have not arrived', function () {
+test('the cashier booking list only contains future bookings that have not arrived', function () {
     $bookings = Operations::partialPaymentBookingOrders();
     $scheduledBookingNumbers = array_column(array_filter(
         Operations::scheduledBookings(),
-        fn (array $booking): bool => $booking['date'] >= Reports::todayDate()
+        fn (array $booking): bool => $booking['date'] > Reports::todayDate()
             && $booking['orderStatus'] === 'booking',
     ), 'code');
     $cashierBookingNumbers = array_column($bookings, 'orderNo');
@@ -166,13 +257,13 @@ test('the cashier booking list only contains todays and upcoming bookings that h
     sort($cashierBookingNumbers);
 
     expect($bookings)->not->toBeEmpty()
-        ->and($todayBookings)->toHaveCount(3)
+        ->and($todayBookings)->toHaveCount(0)
         ->and($upcomingBookings)->toHaveCount(3)
         ->and($cashierBookingNumbers)->toBe($scheduledBookingNumbers);
 
     foreach ($bookings as $booking) {
         expect($booking['source'])->toBe('booking')
-            ->and($booking['date'])->toBeGreaterThanOrEqual(Reports::todayDate());
+            ->and($booking['date'])->toBeGreaterThan(Reports::todayDate());
     }
 });
 
@@ -206,14 +297,13 @@ test('the partial payment section sits below settlement and opens the same payme
         ->toContain('partialPaymentTransactions(order).length > 0')
         ->toContain('Pembayaran Sebagian/Booking sebesar')
         ->not->toContain('Pembayaran sudah lunas.')
-        // The header splits the queue into cars due today and later ones.
-        ->toContain('Booking (${today} Hari Ini - ${bookings.length - today} Mendatang)')
+        ->toContain('Booking Mendatang`')
         // Both lists are accordion panels now; the tones live in the component.
-        ->toContain('title="Pelunasan"')
-        ->toContain('title="Pembayaran Sebagian/Booking"')
-        ->and(mb_strpos($posPage, 'title="Pelunasan"'))
+        ->toContain('title="Order Berjalan"')
+        ->toContain('title="Pembayaran Sebagian/Booking (Order Mendatang)"')
+        ->and(mb_strpos($posPage, 'title="Order Berjalan"'))
         ->toBeLessThan(
-            mb_strpos($posPage, 'title="Pembayaran Sebagian/Booking"'),
+            mb_strpos($posPage, 'title="Pembayaran Sebagian/Booking (Order Mendatang)"'),
         );
 
     expect(file_get_contents(
@@ -277,8 +367,9 @@ test('the cashier summary shows settlement balance, received money and completed
     );
 
     expect($posPage)
-        ->toContain('<div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">')
-        ->toContain('label="Order Berjalan"')
+        ->toContain('class="grid grid-cols-1 gap-4 sm:grid-cols-2"')
+        ->toContain(':class="isTodaySelected ? \'lg:grid-cols-3\' : \'lg:grid-cols-2\'"')
+        ->toContain('label="Sisa Tagihan Order Berjalan"')
         ->toContain('label="Uang diterima"')
         ->not->toContain('label="Order menggantung"')
         ->not->toContain('depositCount')
@@ -499,7 +590,7 @@ test('the POS shows one lifecycle chip and describes an existing partial payment
 
     /* The heading now belongs to the accordion panel wrapping the list. */
     expect(preg_match(
-        '/<AccordionSection\s+title="Pelunasan"/',
+        '/<AccordionSection\s+title="Order Berjalan"/',
         $posPage,
     ))->toBe(1);
 

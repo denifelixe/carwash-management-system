@@ -102,7 +102,7 @@ JS;
     expect($result->successful())->toBeTrue($result->errorOutput());
 });
 
-test('the cashier sorts settlements by entry time and running orders by arrival without mutating the source', function () {
+test('the cashier sorts all running orders by arrival without mutating the source', function () {
     $script = <<<'JS'
 const fs = require('node:fs');
 const ts = require('typescript');
@@ -111,7 +111,7 @@ const { ref, computed } = require('vue');
 const source = fs.readFileSync('resources/js/pages/admin/Pos.vue', 'utf8');
 const script = source.split('<script setup lang="ts">')[1].split('</script>')[0];
 const ast = ts.createSourceFile('Pos.ts', script, ts.ScriptTarget.Latest, true);
-const names = ['search', 'showAllOrders', 'visibleOrders', 'settlementGroups'];
+const names = ['search', 'settlementOrderList', 'visibleOrders', 'settlementGroups'];
 const declarations = ast.statements.filter(node => ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => names.includes(declaration.name.getText(ast))));
 const code = ts.transpile(declarations.map(node => node.getText(ast)).join('\n'));
 const props = { filters: { date: '2026-09-15', today: '2026-09-15' } };
@@ -119,17 +119,16 @@ const formatDate = value => value;
 const order = (id, settlementEnteredAt, date = '2026-09-15', time = '08.00', status = 'pelunasan') => ({ id, settlementEnteredAt, date, time, status, orderNo: `ORD-${id}`, customer: 'Customer', plate: 'B123AA' });
 const orderList = ref([order(1, 3000), order(2, 1000), order(3, 2000), order(5, 4000, '2026-09-13'), order(4, 500, '2026-09-14'), order(6, 2000)]);
 eval(code + `
-assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [2, 3, 6, 1]);
-assert.deepEqual(settlementGroups.value[1].orders.map(order => order.id), [4, 5]);
+assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [1, 2, 3, 6]);
+assert.deepEqual(settlementGroups.value[1].orders.map(order => order.id), [5, 4]);
 assert.deepEqual(orderList.value.map(order => order.id), [1, 2, 3, 5, 4, 6]);
 orderList.value[1].paidAmount = 20000;
-assert.equal(settlementGroups.value[0].orders[0].id, 2);
+assert.equal(settlementGroups.value[0].orders[0].id, 1);
 orderList.value = [...orderList.value].reverse();
-assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [2, 3, 6, 1]);
+assert.deepEqual(settlementGroups.value[0].orders.map(order => order.id), [1, 2, 3, 6]);
 search.value = 'ord-1';
 assert.deepEqual(visibleOrders.value.map(order => order.id), [1]);
 search.value = '';
-showAllOrders.value = true;
 orderList.value = [
     order(10, null, '2026-09-15', '11.30', 'menunggu'),
     order(11, 100, '2026-09-15', '07.45'),

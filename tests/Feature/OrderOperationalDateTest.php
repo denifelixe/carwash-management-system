@@ -123,3 +123,34 @@ JS;
 
     expect($result->successful())->toBeTrue($result->errorOutput());
 });
+
+test('the order board hides previous unfinished orders when viewing a past date', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Orders.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Orders.ts', source, ts.ScriptTarget.Latest, true);
+const declaration = ast.statements.find(node => ts.isVariableStatement(node)
+    && node.declarationList.declarations.some(declaration => declaration.name.text === 'orderSections'));
+const code = ts.transpile(declaration.getText(ast), { target: ts.ScriptTarget.ES2020 });
+const props = { filters: { date: '2026-09-05', today: '2026-09-06' } };
+const daily = { value: [{ id: 1 }] };
+const previous = { value: [{ id: 2 }] };
+const computed = fn => ({ get value() { return fn(); } });
+const sections = new Function('props', 'computed', 'filteredOrders', 'unfinishedPreviousOrders', `${code}; return orderSections;`)(props, computed, daily, previous);
+assert.deepEqual(sections.value.map(section => section.key), ['daily']);
+assert.deepEqual(sections.value[0].orders, [{ id: 1 }]);
+props.filters.date = '2026-09-06';
+assert.deepEqual(sections.value.map(section => section.key), ['daily', 'previous']);
+assert.deepEqual(sections.value[1].orders, [{ id: 2 }]);
+props.filters.date = '2026-09-07';
+assert.deepEqual(sections.value.map(section => section.key), ['daily', 'previous']);
+props.filters.date = '2026-09-05';
+assert.deepEqual(sections.value.map(section => section.key), ['daily']);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
