@@ -4,6 +4,8 @@ namespace App\Support\Admin;
 
 class AdminModuleActions
 {
+    public const VIEW_SENSITIVE_DATA = 'view_sensitive_data';
+
     public const EDIT_CASH_ENTRY_BACKDATE = 'edit_cash_entry_backdate';
 
     public const VIEW_NON_CASH_BALANCE = 'view_non_cash_balance';
@@ -23,6 +25,7 @@ class AdminModuleActions
                     'key' => self::EDIT_CASH_ENTRY_BACKDATE,
                     'label' => 'Atur tanggal & waktu keuangan',
                 ],
+                ['key' => self::VIEW_SENSITIVE_DATA, 'label' => 'Melihat dan membuat sensitif data'],
             ],
         ];
     }

@@ -505,6 +505,8 @@ export interface CarwashCrewMember {
 }
 
 export interface CarwashMoneyEntry {
+    isSensitive?: boolean;
+    isRedacted?: boolean;
     id: number | string;
     /** Database key for a live POS payment that may be corrected in Finance. */
     transactionId?: number | null;

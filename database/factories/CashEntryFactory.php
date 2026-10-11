@@ -22,6 +22,7 @@ class CashEntryFactory extends Factory
         $occurredAt = now();
 
         return [
+            'is_sensitive' => false,
             'direction' => 'in',
             'reference' => 'TRX-PP-'.fake()->unique()->bothify('######'),
             'category' => 'Penjualan Produk',
@@ -32,6 +33,11 @@ class CashEntryFactory extends Factory
             'entry_date' => $occurredAt->toDateString(),
             'occurred_at' => $occurredAt,
         ];
+    }
+
+    public function sensitive(): static
+    {
+        return $this->state(fn (): array => ['is_sensitive' => true]);
     }
 
     /** Outgoing money always carries its supporting document (BR-10). */

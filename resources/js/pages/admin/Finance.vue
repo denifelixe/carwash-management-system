@@ -73,6 +73,16 @@ const props = defineProps<{
     moneyIn: CarwashMoneyEntry[];
     filters: CarwashDateFilter;
     moneyOut: CarwashMoneyEntry[];
+    ledgerSummary: Record<
+        string,
+        {
+            moneyIn: number;
+            moneyOut: number;
+            incomeCount: number;
+            expenseCount: number;
+            channels: Record<string, { income: number; expense: number }>;
+        }
+    >;
     incomeCategories: string[];
     expenseCategories: string[];
     cashSummary: CarwashCashSummary;
@@ -100,6 +110,7 @@ const props = defineProps<{
         delete: boolean;
         edit_cash_entry_backdate: boolean;
         view_non_cash_balance: boolean;
+        view_sensitive_data: boolean;
     };
 }>();
 
@@ -197,6 +208,7 @@ const entryForm = useForm<{
     removed_attachment_ids: number[];
     transaction_shift_id: number | null;
     confirm_duplicate: boolean;
+    is_sensitive: boolean;
 }>({
     entry_date: props.filters.date,
     entry_time: outletClock(),
@@ -209,6 +221,7 @@ const entryForm = useForm<{
     removed_attachment_ids: [],
     transaction_shift_id: null,
     confirm_duplicate: false,
+    is_sensitive: false,
 });
 
 /** Mirrors FinanceQueries::DUPLICATE_WINDOW_MINUTES for the demo ledger. */
@@ -254,6 +267,7 @@ function demoDuplicateEntries(
     return entries.filter(
         (entry) =>
             entry.source !== 'pos' &&
+            (props.capabilities.view_sensitive_data || !entry.isSensitive) &&
             entry.category === draft.value.category &&
             entry.amount === draft.value.amount &&
             entry.date === date &&
@@ -556,18 +570,50 @@ const paymentRecapByType = computed(() =>
 );
 
 const activeEntries = computed<CarwashMoneyEntry[]>(() =>
-    activeLedger.value === 'in' ? scopedIncome.value : scopedExpenses.value,
+    (activeLedger.value === 'in'
+        ? scopedIncome.value
+        : scopedExpenses.value
+    ).map((entry, index) =>
+        props.capabilities.view_sensitive_data || !entry.isSensitive
+            ? entry
+            : {
+                  id: `sensitive-${index}`,
+                  date: entry.date,
+                  shift: entry.shift,
+                  isSensitive: true,
+                  isRedacted: true,
+                  isMutable: false,
+                  source: 'manual',
+                  ref: '',
+                  time: '',
+                  category: '',
+                  description: '',
+                  amount: 0,
+                  method: '',
+                  channelBreakdown: [],
+                  recordedBy: '',
+                  attachments: [],
+              },
+    ),
 );
 
 const filterOptions = computed<string[]>(() => [
     'Semua',
-    ...new Set(activeEntries.value.map((entry) => entry.category)),
+    ...new Set(
+        activeEntries.value
+            .filter((entry) => !entry.isRedacted)
+            .map((entry) => entry.category),
+    ),
 ]);
 
 const filteredEntries = computed<CarwashMoneyEntry[]>(() => {
     const query = search.value.trim().toLowerCase();
 
     return activeEntries.value.filter((entry) => {
+        if (entry.isRedacted) {
+            return query === '';
+        }
+
         const matchesCategory =
             categoryFilters.value.includes('Semua') ||
             categoryFilters.value.includes(entry.category);
@@ -585,14 +631,32 @@ const filteredEntries = computed<CarwashMoneyEntry[]>(() => {
 });
 
 const totalIn = computed<number>(() =>
-    scopedIncome.value.reduce((total, entry) => total + entry.amount, 0),
+    props.mode === 'live'
+        ? (props.ledgerSummary[activeShift.value]?.moneyIn ?? 0)
+        : scopedIncome.value.reduce((total, entry) => total + entry.amount, 0),
 );
 
 const totalOut = computed<number>(() =>
-    scopedExpenses.value.reduce((total, entry) => total + entry.amount, 0),
+    props.mode === 'live'
+        ? (props.ledgerSummary[activeShift.value]?.moneyOut ?? 0)
+        : scopedExpenses.value.reduce(
+              (total, entry) => total + entry.amount,
+              0,
+          ),
 );
 
 const profit = computed<number>(() => totalIn.value - totalOut.value);
+
+const incomeCount = computed(() =>
+    props.mode === 'live'
+        ? (props.ledgerSummary[activeShift.value]?.incomeCount ?? 0)
+        : scopedIncome.value.length,
+);
+const expenseCount = computed(() =>
+    props.mode === 'live'
+        ? (props.ledgerSummary[activeShift.value]?.expenseCount ?? 0)
+        : scopedExpenses.value.length,
+);
 
 const balanceHistoryOpen = ref(false);
 
@@ -633,8 +697,16 @@ function channelTotal(entries: CarwashMoneyEntry[], channel: string): number {
 
 const channelRows = computed(() =>
     financialChannels.map((channel) => {
-        const income = channelTotal(scopedIncome.value, channel.key);
-        const expense = channelTotal(scopedExpenses.value, channel.key);
+        const aggregate =
+            props.ledgerSummary[activeShift.value]?.channels[channel.key];
+        const income =
+            props.mode === 'live'
+                ? (aggregate?.income ?? 0)
+                : channelTotal(scopedIncome.value, channel.key);
+        const expense =
+            props.mode === 'live'
+                ? (aggregate?.expense ?? 0)
+                : channelTotal(scopedExpenses.value, channel.key);
 
         return {
             ...channel,
@@ -765,13 +837,13 @@ function financeRecapSheet(): RecapSheet {
             {
                 label: 'Uang masuk',
                 value: formatCurrency(totalIn.value),
-                caption: `${scopedIncome.value.length} transaksi tercatat`,
+                caption: `${incomeCount.value} transaksi tercatat`,
                 tone: 'positive',
             },
             {
                 label: 'Uang keluar',
                 value: formatCurrency(totalOut.value),
-                caption: `${scopedExpenses.value.length} pengeluaran`,
+                caption: `${expenseCount.value} pengeluaran`,
                 tone: 'negative',
             },
             {
@@ -955,6 +1027,10 @@ const attachmentError = computed<string | undefined>(() => {
 });
 
 function isEditable(entry: CarwashMoneyEntry): boolean {
+    if (entry.isSensitive && !props.capabilities.view_sensitive_data) {
+        return false;
+    }
+
     if (props.mode === 'demo') {
         const cutoff = new Date(`${props.filters.today}T00:00:00Z`);
         cutoff.setUTCDate(cutoff.getUTCDate() - 30);
@@ -1072,6 +1148,7 @@ function openForm(): void {
     entryForm.entry_date = props.capabilities.edit_cash_entry_backdate
         ? props.filters.date
         : props.filters.today;
+    entryForm.is_sensitive = false;
     entryForm.entry_time = outletClock();
     isFormOpen.value = true;
 }
@@ -1114,6 +1191,7 @@ function openEditForm(entry: CarwashMoneyEntry): void {
     };
     entryForm.entry_date = entry.date;
     entryForm.entry_time = entry.time.replace('.', ':');
+    entryForm.is_sensitive = entry.isSensitive ?? false;
     entryForm.clearErrors();
     isFormOpen.value = true;
 }
@@ -1474,7 +1552,10 @@ for (const entry of [...props.moneyIn, ...props.moneyOut]) {
     const match = entry.ref.match(/^TRX-[A-Z0-9]+-(\d{6})-(\d{4})$/);
 
     if (match) {
-        demoCashCounters.set(match[1], Math.max(demoCashCounters.get(match[1]) ?? 0, Number(match[2])));
+        demoCashCounters.set(
+            match[1],
+            Math.max(demoCashCounters.get(match[1]) ?? 0, Number(match[2])),
+        );
     }
 }
 
@@ -1615,11 +1696,20 @@ function saveLiveEntry(transactionShiftId: number | null): void {
 function saveDemoEntry(transactionShiftId: number | null): void {
     if (editingEntry.value !== null) {
         const entry = editingEntry.value;
-        const reference = entry.date === entryForm.entry_date
-            ? transactionReference(draft.value.category, entryForm.entry_date, Number(entry.ref.slice(-4)))
-            : nextDemoCashReference(draft.value.category, entryForm.entry_date);
+        const reference =
+            entry.date === entryForm.entry_date
+                ? transactionReference(
+                      draft.value.category,
+                      entryForm.entry_date,
+                      Number(entry.ref.slice(-4)),
+                  )
+                : nextDemoCashReference(
+                      draft.value.category,
+                      entryForm.entry_date,
+                  );
         Object.assign(entry, {
             ...draft.value,
+            isSensitive: entryForm.is_sensitive,
             ref: reference,
             date: entryForm.entry_date,
             time: entryForm.entry_time.replace(':', '.'),
@@ -1676,6 +1766,7 @@ function saveDemoEntry(transactionShiftId: number | null): void {
               )?.name ?? null)
             : props.persona.shift || null;
     const entry: CarwashMoneyEntry = {
+        isSensitive: entryForm.is_sensitive,
         id: sequence,
         ref: nextDemoCashReference(draft.value.category, entryForm.entry_date),
         date: entryForm.entry_date,
@@ -1839,14 +1930,14 @@ function applyDate(date: string): void {
                 <StatCard
                     label="Uang masuk"
                     :value="formatCurrency(totalIn)"
-                    :caption="`${scopedIncome.length} transaksi tercatat`"
+                    :caption="`${incomeCount} transaksi tercatat`"
                     :icon="TrendingUp"
                     tone="emerald"
                 />
                 <StatCard
                     label="Uang keluar"
                     :value="formatCurrency(totalOut)"
-                    :caption="`${scopedExpenses.length} pengeluaran`"
+                    :caption="`${expenseCount} pengeluaran`"
                     :icon="TrendingDown"
                     tone="rose"
                 />
@@ -2197,227 +2288,265 @@ function applyDate(date: string): void {
                                     : 'hover:bg-slate-50/70'
                             "
                         >
-                            <td class="px-5 py-3.5">
-                                <button
-                                    type="button"
-                                    class="text-left font-semibold wrap-anywhere text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                                    :aria-label="`Lihat rekap transaksi ${entry.ref}`"
-                                    @click="openTransactionRecap(entry)"
+                            <template v-if="entry.isRedacted">
+                                <td
+                                    v-for="column in 8"
+                                    :key="column"
+                                    class="px-5 py-3.5"
+                                    aria-hidden="true"
                                 >
-                                    {{ entry.ref }}
-                                </button>
-                                <p class="text-[11px] text-slate-500">
-                                    {{ formatDate(entry.date) }} •
-                                    {{ entry.time }}
-                                </p>
-                                <span
-                                    v-if="entry.id === recentlyUpdatedEntryId"
-                                    role="status"
-                                    class="mt-1 inline-flex rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
+                                    <span
+                                        class="block h-3 w-20 rounded bg-slate-300/70 blur-[3px] select-none"
+                                    />
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-right text-xs whitespace-nowrap text-slate-400"
                                 >
-                                    Baru diperbarui
-                                </span>
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <span
-                                    class="inline-block max-w-48 rounded-lg bg-slate-100 px-2 py-1 text-[11px] leading-snug font-medium whitespace-normal text-slate-600"
-                                >
-                                    <template
-                                        v-if="
-                                            entry.category ===
-                                            'Pembayaran Sisa/Lunas (Order Selesai)'
-                                        "
-                                    >
-                                        <span class="block whitespace-nowrap">
-                                            Pembayaran Sisa/Lunas
-                                        </span>
-                                        <span class="block whitespace-nowrap">
-                                            (Order Selesai)
-                                        </span>
-                                    </template>
-                                    <template v-else>
-                                        {{ entry.category }}
-                                    </template>
-                                </span>
-                            </td>
-                            <td
-                                class="max-w-[240px] px-5 py-3.5 text-slate-600"
-                            >
-                                {{ entry.description }}
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <template v-if="entry.orderNo">
+                                    Data sensitif
+                                </td>
+                            </template>
+                            <template v-else>
+                                <td class="px-5 py-3.5">
                                     <button
                                         type="button"
-                                        class="text-left font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                                        :aria-label="`Lihat rekap order ${entry.orderNo}`"
-                                        @click="openOrderRecap(entry)"
+                                        class="text-left font-semibold wrap-anywhere text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                        :aria-label="`Lihat rekap transaksi ${entry.ref}`"
+                                        @click="openTransactionRecap(entry)"
                                     >
-                                        {{ entry.orderNo }}
+                                        {{ entry.ref }}
                                     </button>
-                                    <p
-                                        class="mt-0.5 text-[11px] text-slate-500"
-                                    >
-                                        {{ entry.customer }}
-                                    </p>
                                     <p class="text-[11px] text-slate-500">
-                                        {{ entry.vehicle }} ·
-                                        {{ formatPlate(entry.plate) }}
+                                        {{ formatDate(entry.date) }} •
+                                        {{ entry.time }}
                                     </p>
-                                </template>
-                                <span v-else class="text-xs text-slate-400">
-                                    Tidak terkait order
-                                </span>
-                            </td>
-                            <td class="px-5 py-3.5 text-slate-600">
-                                <div
-                                    v-if="entry.channelBreakdown.length > 1"
-                                    class="space-y-1"
-                                >
-                                    <div
-                                        v-for="channel in entry.channelBreakdown"
-                                        :key="channel.label"
-                                        class="flex items-center justify-between gap-3 whitespace-nowrap"
-                                    >
-                                        <span>{{ channel.label }}</span>
-                                        <span
-                                            class="font-medium text-slate-900 tabular-nums"
-                                        >
-                                            {{ formatCurrency(channel.amount) }}
-                                        </span>
-                                    </div>
-                                </div>
-                                <span v-else>{{ entry.method }}</span>
-                            </td>
-                            <td class="px-5 py-3.5 text-slate-600">
-                                {{ entry.recordedBy }}
-                                <p
-                                    v-if="entry.shift"
-                                    class="mt-0.5 text-[11px] text-slate-400"
-                                >
-                                    {{ entry.shift }}
-                                </p>
-                                <p
-                                    v-if="entry.updatedBy"
-                                    class="mt-0.5 text-[11px] text-cyan-600"
-                                >
-                                    <span class="block">
-                                        Diperbarui: {{ entry.updatedBy }}
-                                    </span>
                                     <span
-                                        v-if="entry.updatedAt"
-                                        class="mt-0.5 block text-slate-400"
+                                        v-if="
+                                            entry.id === recentlyUpdatedEntryId
+                                        "
+                                        role="status"
+                                        class="mt-1 inline-flex rounded-md bg-emerald-100 px-2 py-0.5 text-[11px] font-medium text-emerald-700"
                                     >
-                                        {{ formatDate(entry.updatedAt.date) }} ·
-                                        {{ entry.updatedAt.time }}
+                                        Baru diperbarui
                                     </span>
-                                </p>
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div
-                                    v-if="entry.attachments?.length"
-                                    class="space-y-1.5"
-                                >
-                                    <a
-                                        v-for="attachment in entry.attachments"
-                                        :key="attachment.id"
-                                        :href="attachment.url || undefined"
-                                        :data-type="
-                                            attachmentLightboxType(attachment)
-                                        "
-                                        :data-caption="
-                                            attachmentLightboxType(attachment)
-                                                ? `${entry.ref} — ${entry.description}`
-                                                : null
-                                        "
-                                        class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
-                                        @click="openAttachment($event)"
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <span
+                                        class="inline-block max-w-48 rounded-lg bg-slate-100 px-2 py-1 text-[11px] leading-snug font-medium whitespace-normal text-slate-600"
                                     >
-                                        <component
-                                            :is="
-                                                attachment.isImage
-                                                    ? ImageIcon
-                                                    : Paperclip
+                                        <template
+                                            v-if="
+                                                entry.category ===
+                                                'Pembayaran Sisa/Lunas (Order Selesai)'
                                             "
-                                            class="h-3.5 w-3.5 shrink-0"
-                                        />
-                                        <span class="max-w-[10rem] truncate">
-                                            {{ attachment.name }}
+                                        >
+                                            <span
+                                                class="block whitespace-nowrap"
+                                            >
+                                                Pembayaran Sisa/Lunas
+                                            </span>
+                                            <span
+                                                class="block whitespace-nowrap"
+                                            >
+                                                (Order Selesai)
+                                            </span>
+                                        </template>
+                                        <template v-else>
+                                            {{ entry.category }}
+                                        </template>
+                                    </span>
+                                </td>
+                                <td
+                                    class="max-w-[240px] px-5 py-3.5 text-slate-600"
+                                >
+                                    {{ entry.description }}
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <template v-if="entry.orderNo">
+                                        <button
+                                            type="button"
+                                            class="text-left font-semibold text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900 focus-visible:rounded focus-visible:ring-2 focus-visible:ring-cyan-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                                            :aria-label="`Lihat rekap order ${entry.orderNo}`"
+                                            @click="openOrderRecap(entry)"
+                                        >
+                                            {{ entry.orderNo }}
+                                        </button>
+                                        <p
+                                            class="mt-0.5 text-[11px] text-slate-500"
+                                        >
+                                            {{ entry.customer }}
+                                        </p>
+                                        <p class="text-[11px] text-slate-500">
+                                            {{ entry.vehicle }} ·
+                                            {{ formatPlate(entry.plate) }}
+                                        </p>
+                                    </template>
+                                    <span v-else class="text-xs text-slate-400">
+                                        Tidak terkait order
+                                    </span>
+                                </td>
+                                <td class="px-5 py-3.5 text-slate-600">
+                                    <div
+                                        v-if="entry.channelBreakdown.length > 1"
+                                        class="space-y-1"
+                                    >
+                                        <div
+                                            v-for="channel in entry.channelBreakdown"
+                                            :key="channel.label"
+                                            class="flex items-center justify-between gap-3 whitespace-nowrap"
+                                        >
+                                            <span>{{ channel.label }}</span>
+                                            <span
+                                                class="font-medium text-slate-900 tabular-nums"
+                                            >
+                                                {{
+                                                    formatCurrency(
+                                                        channel.amount,
+                                                    )
+                                                }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span v-else>{{ entry.method }}</span>
+                                </td>
+                                <td class="px-5 py-3.5 text-slate-600">
+                                    {{ entry.recordedBy }}
+                                    <p
+                                        v-if="entry.shift"
+                                        class="mt-0.5 text-[11px] text-slate-400"
+                                    >
+                                        {{ entry.shift }}
+                                    </p>
+                                    <p
+                                        v-if="entry.updatedBy"
+                                        class="mt-0.5 text-[11px] text-cyan-600"
+                                    >
+                                        <span class="block">
+                                            Diperbarui: {{ entry.updatedBy }}
                                         </span>
-                                    </a>
-                                </div>
-                                <span
-                                    v-else
-                                    class="flex items-center gap-1 text-[11px]"
+                                        <span
+                                            v-if="entry.updatedAt"
+                                            class="mt-0.5 block text-slate-400"
+                                        >
+                                            {{
+                                                formatDate(entry.updatedAt.date)
+                                            }}
+                                            ·
+                                            {{ entry.updatedAt.time }}
+                                        </span>
+                                    </p>
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <div
+                                        v-if="entry.attachments?.length"
+                                        class="space-y-1.5"
+                                    >
+                                        <a
+                                            v-for="attachment in entry.attachments"
+                                            :key="attachment.id"
+                                            :href="attachment.url || undefined"
+                                            :data-type="
+                                                attachmentLightboxType(
+                                                    attachment,
+                                                )
+                                            "
+                                            :data-caption="
+                                                attachmentLightboxType(
+                                                    attachment,
+                                                )
+                                                    ? `${entry.ref} — ${entry.description}`
+                                                    : null
+                                            "
+                                            class="flex items-center gap-1.5 text-[11px] text-cyan-700 underline decoration-cyan-300 underline-offset-2 transition hover:text-cyan-900"
+                                            @click="openAttachment($event)"
+                                        >
+                                            <component
+                                                :is="
+                                                    attachment.isImage
+                                                        ? ImageIcon
+                                                        : Paperclip
+                                                "
+                                                class="h-3.5 w-3.5 shrink-0"
+                                            />
+                                            <span
+                                                class="max-w-[10rem] truncate"
+                                            >
+                                                {{ attachment.name }}
+                                            </span>
+                                        </a>
+                                    </div>
+                                    <span
+                                        v-else
+                                        class="flex items-center gap-1 text-[11px]"
+                                        :class="
+                                            activeLedger === 'out'
+                                                ? 'text-rose-500'
+                                                : 'text-slate-400'
+                                        "
+                                    >
+                                        <TriangleAlert
+                                            v-if="activeLedger === 'out'"
+                                            class="h-3.5 w-3.5"
+                                        />
+                                        {{
+                                            activeLedger === 'out'
+                                                ? 'Belum ada'
+                                                : '—'
+                                        }}
+                                    </span>
+                                </td>
+                                <td
+                                    class="px-5 py-3.5 text-right font-semibold tabular-nums"
                                     :class="
-                                        activeLedger === 'out'
-                                            ? 'text-rose-500'
-                                            : 'text-slate-400'
+                                        activeLedger === 'in'
+                                            ? 'text-emerald-600'
+                                            : 'text-rose-600'
                                     "
                                 >
-                                    <TriangleAlert
-                                        v-if="activeLedger === 'out'"
-                                        class="h-3.5 w-3.5"
-                                    />
-                                    {{
-                                        activeLedger === 'out'
-                                            ? 'Belum ada'
-                                            : '—'
-                                    }}
-                                </span>
-                            </td>
-                            <td
-                                class="px-5 py-3.5 text-right font-semibold tabular-nums"
-                                :class="
-                                    activeLedger === 'in'
-                                        ? 'text-emerald-600'
-                                        : 'text-rose-600'
-                                "
-                            >
-                                {{ activeLedger === 'in' ? '+' : '−'
-                                }}{{ formatCurrency(entry.amount) }}
-                            </td>
-                            <td class="px-5 py-3.5">
-                                <div
-                                    v-if="isEditable(entry)"
-                                    class="flex items-center justify-end gap-1"
-                                >
-                                    <button
-                                        v-if="capabilities.update"
-                                        type="button"
-                                        class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-cyan-700"
-                                        :aria-label="`Ubah catatan ${entry.ref}`"
-                                        @click="openEditForm(entry)"
+                                    {{ activeLedger === 'in' ? '+' : '−'
+                                    }}{{ formatCurrency(entry.amount) }}
+                                </td>
+                                <td class="px-5 py-3.5">
+                                    <div
+                                        v-if="isEditable(entry)"
+                                        class="flex items-center justify-end gap-1"
                                     >
-                                        <Pencil class="h-4 w-4" />
-                                    </button>
-                                    <button
-                                        v-if="
-                                            mode === 'live' &&
-                                            capabilities.delete &&
-                                            (cashEntryId(entry) !== null ||
-                                                posTransactionId(entry) !==
-                                                    null)
-                                        "
-                                        type="button"
-                                        class="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
-                                        :aria-label="`Hapus catatan ${entry.ref}`"
-                                        @click="openDeleteEntry(entry)"
+                                        <button
+                                            v-if="capabilities.update"
+                                            type="button"
+                                            class="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-cyan-700"
+                                            :aria-label="`Ubah catatan ${entry.ref}`"
+                                            @click="openEditForm(entry)"
+                                        >
+                                            <Pencil class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="
+                                                mode === 'live' &&
+                                                capabilities.delete &&
+                                                (cashEntryId(entry) !== null ||
+                                                    posTransactionId(entry) !==
+                                                        null)
+                                            "
+                                            type="button"
+                                            class="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                                            :aria-label="`Hapus catatan ${entry.ref}`"
+                                            @click="openDeleteEntry(entry)"
+                                        >
+                                            <Trash2 class="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                    <span
+                                        v-else
+                                        class="block text-right text-[11px] text-slate-400"
                                     >
-                                        <Trash2 class="h-4 w-4" />
-                                    </button>
-                                </div>
-                                <span
-                                    v-else
-                                    class="block text-right text-[11px] text-slate-400"
-                                >
-                                    {{
-                                        entry.isMutable === false
-                                            ? 'Terkunci (>30 hari)'
-                                            : 'Dari kasir'
-                                    }}
-                                </span>
-                            </td>
+                                        {{
+                                            entry.isMutable === false
+                                                ? 'Terkunci (>30 hari)'
+                                                : 'Dari kasir'
+                                        }}
+                                    </span>
+                                </td>
+                            </template>
                         </tr>
                     </tbody>
                 </table>
@@ -3365,6 +3494,32 @@ function applyDate(date: string): void {
                 <InputError
                     class="mt-1.5"
                     :message="entryForm.errors.description"
+                />
+            </div>
+
+            <div
+                v-if="
+                    capabilities.view_sensitive_data &&
+                    !editingEntry?.transferReference
+                "
+            >
+                <label
+                    class="flex items-center gap-2 text-sm font-medium text-slate-700"
+                >
+                    <input
+                        v-model="entryForm.is_sensitive"
+                        type="checkbox"
+                        class="size-4 rounded border-slate-300 accent-cyan-600"
+                    />
+                    Sensitif Data
+                </label>
+                <p class="mt-1 text-xs text-slate-500">
+                    Catatan hanya dapat dilihat oleh role dengan izin melihat
+                    sensitif data.
+                </p>
+                <InputError
+                    class="mt-1.5"
+                    :message="entryForm.errors.is_sensitive"
                 />
             </div>
 

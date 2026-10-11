@@ -75,6 +75,8 @@ test('the owner is the only role that can manage users', function () {
 test('only the manager staff role receives finance additional actions by default', function () {
     foreach (AdminModuleActions::for('finance') as $action) {
         expect(RoleAccess::allowsAdditionalAction('manager', 'finance', $action['key']))
+            ->toBe($action['key'] !== AdminModuleActions::VIEW_SENSITIVE_DATA)
+            ->and(RoleAccess::allowsAdditionalAction('owner', 'finance', $action['key']))
             ->toBeTrue()
             ->and(RoleAccess::allowsAdditionalAction('finance', 'finance', $action['key']))
             ->toBeFalse()

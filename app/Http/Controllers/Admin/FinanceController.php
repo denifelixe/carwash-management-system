@@ -64,6 +64,8 @@ class FinanceController extends Controller
         $selectedDate = DateFilter::resolve($request->query('date')) ?: $today->toDateString();
 
         ['moneyIn' => $moneyIn, 'moneyOut' => $moneyOut] = FinanceQueries::ledgerForDate($selectedDate);
+        $canViewSensitive = Gate::allows('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA);
+        $shifts = FinanceQueries::shiftSummary($moneyIn, $moneyOut, $selectedDate);
         $canViewNonCashBalance = Gate::allows(
             'admin.finance.'.AdminModuleActions::VIEW_NON_CASH_BALANCE,
         );
@@ -86,8 +88,9 @@ class FinanceController extends Controller
 
         return Inertia::render('admin/Finance', [
             ...$adminShell->props($admin, 'Keuangan', 'finance'),
-            'moneyIn' => $moneyIn,
-            'moneyOut' => $moneyOut,
+            'moneyIn' => FinanceQueries::visibleEntries($moneyIn, $canViewSensitive),
+            'moneyOut' => FinanceQueries::visibleEntries($moneyOut, $canViewSensitive),
+            'ledgerSummary' => FinanceQueries::ledgerSummary($moneyIn, $moneyOut, $shifts),
             'filters' => OrderQueries::filters($selectedDate, $today),
             /* Only what may be written by hand: POS categories are derived. */
             'incomeCategories' => FinanceCategories::recordable('in'),
@@ -97,7 +100,7 @@ class FinanceController extends Controller
             'dailyBalanceHistory' => $dailyBalanceHistory,
             'paymentMethods' => OrderQueries::PAYMENT_METHODS,
             'expenseMethods' => OrderQueries::EXPENSE_METHODS,
-            'shifts' => FinanceQueries::shiftSummary($moneyIn, $moneyOut, $selectedDate),
+            'shifts' => $shifts,
             'shiftOptions' => OrderQueries::workShifts()
                 ->map(fn (AdminShift $shift): array => $shift->only(['id', 'name']))->all(),
             'orders' => FinanceQueries::ordersForDate($selectedDate)
@@ -111,6 +114,7 @@ class FinanceController extends Controller
                     'admin.finance.'.AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
                 ),
                 'view_non_cash_balance' => $canViewNonCashBalance,
+                'view_sensitive_data' => $canViewSensitive,
             ],
         ]);
     }
@@ -141,6 +145,7 @@ class FinanceController extends Controller
                 $data['category'],
                 (int) $data['amount'],
                 $occurredAt,
+                $admin->can('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA),
             );
 
             if ($duplicates->isNotEmpty()) {
@@ -178,6 +183,7 @@ class FinanceController extends Controller
                 &$storedFiles,
             ): void {
                 $entry = new CashEntry([
+                    'is_sensitive' => (bool) ($data['is_sensitive'] ?? false),
                     'direction' => $data['direction'],
                     'category' => $data['category'],
                     'description' => $data['description'],
@@ -338,6 +344,7 @@ class FinanceController extends Controller
                     (int) $data['amount'],
                 );
                 $cashEntry->fill([
+                    'is_sensitive' => $data['is_sensitive'] ?? $cashEntry->is_sensitive,
                     ...(array_key_exists('transaction_shift_id', $data) ? [
                         'shift_name' => $data['transaction_shift_id'] === null
                             ? null
@@ -455,6 +462,9 @@ class FinanceController extends Controller
         DeleteCashEntry $deleteCashEntry,
     ): RedirectResponse {
         Gate::authorize('admin.finance.delete');
+        if ($cashEntry->is_sensitive) {
+            Gate::authorize('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA);
+        }
         /** @var Admin $admin */
         $admin = $request->user('admin');
 
@@ -482,7 +492,10 @@ class FinanceController extends Controller
     public function attachment(CashEntryAttachment $cashEntryAttachment): StreamedResponse
     {
         Gate::authorize('admin.finance.read');
-        abort_unless($cashEntryAttachment->cashEntry()->exists(), 404);
+        $entry = $cashEntryAttachment->cashEntry()->firstOrFail();
+        if ($entry->is_sensitive) {
+            Gate::authorize('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA);
+        }
 
         $disk = Storage::disk($cashEntryAttachment->disk);
 

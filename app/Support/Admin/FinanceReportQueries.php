@@ -38,9 +38,9 @@ class FinanceReportQueries
     }
 
     /** @return array{data: list<array<string, mixed>>, meta: array<string, int|null>} */
-    public static function log(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', int $page = 1): array
+    public static function log(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', int $page = 1, bool $canViewSensitive = true): array
     {
-        $paginator = self::orderedQuery($from, $to, $direction)
+        $paginator = self::orderedQuery($from, $to, $direction, $canViewSensitive)
             ->paginate(perPage: self::PER_PAGE, page: max(1, $page));
         $paginator->setCollection(self::present($paginator->getCollection()));
 
@@ -48,18 +48,18 @@ class FinanceReportQueries
     }
 
     /** @return LazyCollection<int, array<string, mixed>> */
-    public static function rows(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all'): LazyCollection
+    public static function rows(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', bool $canViewSensitive = true): LazyCollection
     {
-        return new LazyCollection(function () use ($from, $to, $direction) {
-            foreach (self::orderedQuery($from, $to, $direction)->lazy(500)->chunk(500) as $chunk) {
+        return new LazyCollection(function () use ($from, $to, $direction, $canViewSensitive) {
+            foreach (self::orderedQuery($from, $to, $direction, $canViewSensitive)->lazy(500)->chunk(500) as $chunk) {
                 yield from self::present(collect($chunk->all()));
             }
         });
     }
 
-    private static function orderedQuery(CarbonImmutable $from, CarbonImmutable $to, string $direction): Builder
+    private static function orderedQuery(CarbonImmutable $from, CarbonImmutable $to, string $direction, bool $canViewSensitive): Builder
     {
-        $query = self::query($from, $to);
+        $query = self::query($from, $to, $canViewSensitive);
 
         if (self::direction($direction) !== 'all') {
             $query->where('direction', self::direction($direction));
@@ -69,7 +69,7 @@ class FinanceReportQueries
     }
 
     /** Union only identifiers and totals; hydrate just the requested page or export chunk. */
-    private static function query(CarbonImmutable $from, CarbonImmutable $to): Builder
+    private static function query(CarbonImmutable $from, CarbonImmutable $to, bool $canViewSensitive = true): Builder
     {
         $payments = OrderTransaction::query()
             ->selectRaw("id, 'pos' AS source, 'in' AS direction, amount, DATE(paid_at) AS ledger_date, paid_at AS occurred_at")
@@ -78,6 +78,7 @@ class FinanceReportQueries
             ->where('amount', '>', 0)
             ->toBase();
         $entries = CashEntry::query()
+            ->when(! $canViewSensitive, fn ($query) => $query->where('is_sensitive', false))
             ->selectRaw("id, 'manual' AS source, direction, amount, DATE(entry_date) AS ledger_date, occurred_at")
             ->where('entry_date', '>=', $from->toDateString())
             ->where('entry_date', '<', $to->addDay()->toDateString())

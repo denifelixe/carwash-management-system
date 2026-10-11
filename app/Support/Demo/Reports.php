@@ -19,7 +19,7 @@ use Carbon\Exceptions\InvalidFormatException;
 class Reports
 {
     /** @return list<array<string, mixed>> */
-    public static function financeLogRows(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all'): array
+    public static function financeLogRows(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', bool $canViewSensitive = true): array
     {
         $direction = FinanceReportQueries::direction($direction);
 
@@ -27,6 +27,7 @@ class Reports
             ->map(fn (array $row): array => [...$row, 'direction' => 'in'])
             ->concat(collect(Finance::moneyOut())->map(fn (array $row): array => [...$row, 'source' => 'manual', 'direction' => 'out']))
             ->filter(fn (array $row): bool => $row['date'] >= $from->toDateString()
+                && ($canViewSensitive || ! ($row['isSensitive'] ?? false))
                 && $row['date'] <= $to->toDateString()
                 && ($direction === 'all' || $row['direction'] === $direction))
             ->sortByDesc(fn (array $row): string => $row['date'].' '.$row['time'].' '.$row['ref'])
@@ -34,9 +35,9 @@ class Reports
     }
 
     /** @return array{data: list<array<string, mixed>>, meta: array<string, int|null>} */
-    public static function financeLog(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', int $page = 1): array
+    public static function financeLog(CarbonImmutable $from, CarbonImmutable $to, string $direction = 'all', int $page = 1, bool $canViewSensitive = true): array
     {
-        return Paginated::fromArray(self::financeLogRows($from, $to, $direction), $page, FinanceReportQueries::PER_PAGE);
+        return Paginated::fromArray(self::financeLogRows($from, $to, $direction, $canViewSensitive), $page, FinanceReportQueries::PER_PAGE);
     }
 
     /** @return array{moneyIn: int, moneyOut: int, net: int, transactions: int} */

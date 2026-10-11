@@ -19,7 +19,8 @@ class StoreCashEntryRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user('admin')?->can('admin.finance.create') ?? false;
+        return ($this->user('admin')?->can('admin.finance.create') ?? false)
+            && (! $this->boolean('is_sensitive') || $this->user('admin')->can('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA));
     }
 
     /**
@@ -32,6 +33,7 @@ class StoreCashEntryRequest extends FormRequest
         $canManageOccurrence = $this->canManageOccurrence();
 
         return [
+            'is_sensitive' => ['sometimes', 'boolean'],
             'entry_date' => [
                 Rule::excludeIf(! $canManageOccurrence),
                 'required',

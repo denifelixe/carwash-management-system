@@ -1494,6 +1494,7 @@ const code = ts.transpile(ast.statements
     .map(node => node.getText(ast))
     .join('\n'));
 const draft = { value: { category: 'Penjualan Produk', amount: 360000 } };
+const props = { capabilities: { view_sensitive_data: false } };
 eval(code + `
 const entry = (id, time, overrides = {}) => ({ id, date: '2026-09-23', time, category: 'Penjualan Produk', amount: 360000, source: 'manual', ...overrides });
 const entries = [
@@ -1504,8 +1505,11 @@ const entries = [
     entry(5, '10.05', { date: '2026-09-22' }),
     entry(6, '10.05', { source: 'pos' }),
     entry(7, '10.29'),
+    entry(8, '10.05', { isSensitive: true }),
 ];
 assert.deepEqual(demoDuplicateEntries(entries, '2026-09-23', '10:00').map(item => item.id), [1, 7]);
+props.capabilities.view_sensitive_data = true;
+assert.deepEqual(demoDuplicateEntries(entries, '2026-09-23', '10:00').map(item => item.id), [1, 7, 8]);
 `);
 JS;
 

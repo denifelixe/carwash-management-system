@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Demo;
 
 use App\Support\Admin\AdminModuleActions;
+use App\Support\Admin\FinanceQueries;
 use App\Support\Demo\Brand;
 use App\Support\Demo\DateFilter;
 use App\Support\Demo\Finance;
@@ -28,6 +29,9 @@ class FinanceController extends AdminController
             AdminModuleActions::VIEW_NON_CASH_BALANCE,
         );
         $dailyBalance = Finance::dailyBalance($date);
+        $canViewSensitive = RoleAccess::allowsAdditionalAction($role, 'finance', AdminModuleActions::VIEW_SENSITIVE_DATA);
+        $moneyIn = DateFilter::apply(Finance::moneyIn(), $date);
+        $moneyOut = DateFilter::apply(Finance::moneyOut(), $date);
         $dailyBalanceHistory = Finance::dailyBalanceHistory($date);
 
         if (! $canViewNonCashBalance) {
@@ -45,8 +49,9 @@ class FinanceController extends AdminController
         }
 
         return $this->page($request, 'admin/Finance', [
-            'moneyIn' => DateFilter::apply(Finance::moneyIn(), $date),
-            'moneyOut' => DateFilter::apply(Finance::moneyOut(), $date),
+            'moneyIn' => FinanceQueries::visibleEntries($moneyIn, $canViewSensitive),
+            'moneyOut' => FinanceQueries::visibleEntries($moneyOut, $canViewSensitive),
+            'ledgerSummary' => FinanceQueries::ledgerSummary($moneyIn, $moneyOut, Brand::shifts()),
             'filters' => DateFilter::meta($date),
             'incomeCategories' => Finance::incomeCategories(),
             'expenseCategories' => Finance::expenseCategories(),
@@ -72,6 +77,7 @@ class FinanceController extends AdminController
                     AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE,
                 ),
                 'view_non_cash_balance' => $canViewNonCashBalance,
+                'view_sensitive_data' => $canViewSensitive,
             ],
         ]);
     }

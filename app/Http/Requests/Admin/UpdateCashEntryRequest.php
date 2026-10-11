@@ -21,7 +21,9 @@ class UpdateCashEntryRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return $this->user('admin')?->can('admin.finance.update') ?? false;
+        return ($this->user('admin')?->can('admin.finance.update') ?? false)
+            && ((! $this->entry()->is_sensitive && ! $this->boolean('is_sensitive'))
+                || $this->user('admin')->can('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA));
     }
 
     /**
@@ -34,6 +36,7 @@ class UpdateCashEntryRequest extends FormRequest
         $canManageOccurrence = $this->canManageOccurrence();
 
         return [
+            'is_sensitive' => ['sometimes', 'boolean', Rule::in($this->entry()->transfer_reference === null ? [true, false, 0, 1, '0', '1'] : [false, 0, '0'])],
             'transaction_shift_id' => ['sometimes', 'nullable', 'integer', Rule::exists(AdminShift::class, 'id')->where('is_active', true)],
             'entry_date' => [
                 Rule::excludeIf(! $canManageOccurrence),

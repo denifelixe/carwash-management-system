@@ -91,12 +91,15 @@ const assert = require('node:assert/strict');
             props: { filters: { date: '2026-09-06', timezone: 'Asia/Jakarta' }, persona: { name: 'Deni Victoria' }, capabilities: { view_non_cash_balance: true }, dailyBalance: { cash: 0, nonCash: 20000, previous: { date: '2026-09-05', cash: 0, nonCash: 0 } } },
             recapLinks: () => ({ sourceUrl: null, qrUrl: null }),
             totalIn: { value: 20000 }, totalOut: { value: 0 }, profit: { value: 20000 }, scopedIncome: { value: [{}] }, scopedExpenses: { value: [] },
+            incomeCount: { value: 2 }, expenseCount: { value: 1 },
             paymentRecapByType: { value: [{ label: 'Pembayaran Sebagian/DP', count: 1, amount: 20000, cash: 5000, nonCash: 15000 }, { label: 'Pembayaran Sisa/Lunas (Order Selesai)', count: 0, amount: 0, cash: 0, nonCash: 0 }] },
             balanceCaption: { value: 'Saldo awal dan akhir' }, balanceRow: (date, cash, nonCash) => ({ label: date, values: [cash, nonCash, cash + nonCash].map(formatCurrency) }),
             formatCurrency, formatDate,
         };
         const sheet = new Function(...Object.keys(context), `${code}; return financeRecapSheet();`)(...Object.values(context));
         assert.deepEqual(sheet.tables[0].columns, ['Jenis', 'Tunai', 'Non Tunai', 'Nominal']);
+        assert.equal(sheet.summary[0].caption, '2 transaksi tercatat');
+        assert.equal(sheet.summary[1].caption, '1 pengeluaran');
         assert.deepEqual(sheet.tables[0].rows[0].values, [formatCurrency(5000), formatCurrency(15000), formatCurrency(20000)]);
         const brand = { name: 'ZenWash Auto Care', whatsapp: '6281800090009', instagram: 'zenwash.id', photo: null, logo: 'ZW' };
         for (const paper of ['a4', 'struk']) {

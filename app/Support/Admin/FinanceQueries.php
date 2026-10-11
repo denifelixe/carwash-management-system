@@ -28,6 +28,76 @@ class FinanceQueries
     public const DUPLICATE_WINDOW_MINUTES = 30;
 
     /**
+     * @param  list<array<string, mixed>>  $entries
+     * @return list<array<string, mixed>>
+     */
+    public static function visibleEntries(array $entries, bool $canViewSensitive): array
+    {
+        return array_map(function (array $entry, int $index) use ($canViewSensitive): array {
+            if ($canViewSensitive || ! ($entry['isSensitive'] ?? false)) {
+                return $entry;
+            }
+
+            return [
+                'id' => 'sensitive-'.$index,
+                'date' => $entry['date'],
+                'shift' => $entry['shift'] ?? null,
+                'isSensitive' => true,
+                'isRedacted' => true,
+                'isMutable' => false,
+                'source' => 'manual',
+                'ref' => '',
+                'time' => '',
+                'category' => '',
+                'description' => '',
+                'amount' => 0,
+                'method' => '',
+                'channelBreakdown' => [],
+                'recordedBy' => '',
+                'attachments' => [],
+            ];
+        }, $entries, array_keys($entries));
+    }
+
+    /**
+     * Aggregate the full ledger without exposing individual sensitive entries.
+     *
+     * @param  list<array<string, mixed>>  $moneyIn
+     * @param  list<array<string, mixed>>  $moneyOut
+     * @param  list<array<string, mixed>>  $shifts
+     * @return array<string, array{moneyIn: int, moneyOut: int, incomeCount: int, expenseCount: int, channels: array<string, array{income: int, expense: int}>}>
+     */
+    public static function ledgerSummary(array $moneyIn, array $moneyOut, array $shifts): array
+    {
+        $shiftKeys = array_column($shifts, 'id', 'name');
+        $empty = ['moneyIn' => 0, 'moneyOut' => 0, 'incomeCount' => 0, 'expenseCount' => 0, 'channels' => []];
+        $summary = ['all' => $empty, self::UNASSIGNED_SHIFT_KEY => $empty];
+
+        foreach ($shifts as $shift) {
+            $summary[(string) $shift['id']] = $empty;
+        }
+
+        foreach (['income' => $moneyIn, 'expense' => $moneyOut] as $direction => $entries) {
+            foreach ($entries as $entry) {
+                $key = (string) ($shiftKeys[$entry['shift'] ?? ''] ?? self::UNASSIGNED_SHIFT_KEY);
+
+                foreach (['all', $key] as $bucket) {
+                    $summary[$bucket][$direction === 'income' ? 'moneyIn' : 'moneyOut'] += $entry['amount'];
+                    $summary[$bucket][$direction === 'income' ? 'incomeCount' : 'expenseCount']++;
+
+                    foreach ($entry['channelBreakdown'] as $channel) {
+                        $label = explode(' · ', $channel['label'])[0];
+                        $summary[$bucket]['channels'][$label] ??= ['income' => 0, 'expense' => 0];
+                        $summary[$bucket]['channels'][$label][$direction] += $channel['amount'];
+                    }
+                }
+            }
+        }
+
+        return $summary;
+    }
+
+    /**
      * One day of the ledger, ready to hand to a page. Both the finance module
      * and the dashboard read a day through here, so a figure shown on one
      * cannot disagree with the same figure shown on the other.
@@ -94,8 +164,10 @@ class FinanceQueries
         string $category,
         int $amount,
         CarbonImmutable $occurredAt,
+        bool $canViewSensitive = true,
     ): Collection {
         return CashEntry::query()
+            ->when(! $canViewSensitive, fn ($query) => $query->where('is_sensitive', false))
             ->with(['recordedBy:id,name', 'updatedBy:id,name', 'attachments'])
             ->where('direction', $direction)
             ->where('category', $category)

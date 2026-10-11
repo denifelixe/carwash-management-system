@@ -17,6 +17,7 @@ use Illuminate\Support\Carbon;
  *
  * @property int $id
  * @property string $direction
+ * @property bool $is_sensitive
  * @property string $reference
  * @property string|null $transfer_reference Ties the two entries of a Setor Tunai
  * @property string $category
@@ -35,6 +36,7 @@ use Illuminate\Support\Carbon;
  */
 #[Fillable([
     'direction',
+    'is_sensitive',
     'reference',
     'transfer_reference',
     'category',
@@ -97,6 +99,7 @@ class CashEntry extends Model
     protected function casts(): array
     {
         return [
+            'is_sensitive' => 'boolean',
             'entry_date' => 'date',
             'occurred_at' => 'datetime',
         ];

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Admin;
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\AdminShell;
 use App\Support\Admin\DailySalesCsv;
 use App\Support\Admin\FinanceLogCsv;
@@ -49,6 +50,7 @@ class ReportController extends Controller
                 $to,
                 $request->string('direction')->toString(),
                 $request->integer('financePage'),
+                Gate::allows('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA),
             )),
             'topServices' => ReportQueries::topServices($from, $to),
             'customerBase' => ReportQueries::customerBase($from, $to),
@@ -133,7 +135,7 @@ class ReportController extends Controller
         $direction = FinanceReportQueries::direction($request->string('direction')->toString());
 
         return FinanceLogCsv::download(
-            FinanceReportQueries::rows($from, $to, $direction),
+            FinanceReportQueries::rows($from, $to, $direction, Gate::allows('admin.finance.'.AdminModuleActions::VIEW_SENSITIVE_DATA)),
             FinanceLogCsv::fileName($from, $to, $direction),
         );
     }

@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Demo;
 
+use App\Support\Admin\AdminModuleActions;
 use App\Support\Admin\DailySalesCsv;
 use App\Support\Admin\FinanceLogCsv;
 use App\Support\Admin\FinanceReportQueries;
 use App\Support\Admin\ItemSalesCsv;
 use App\Support\Admin\OrderLogCsv;
 use App\Support\Demo\Reports;
+use App\Support\Demo\RoleAccess;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -38,6 +40,7 @@ class ReportController extends AdminController
                 $to,
                 $request->string('direction')->toString(),
                 $request->integer('financePage'),
+                RoleAccess::allowsAdditionalAction((string) $request->session()->get(RoleAccess::SESSION_KEY, RoleAccess::DEFAULT_ROLE), 'finance', AdminModuleActions::VIEW_SENSITIVE_DATA),
             )),
             'topServices' => Reports::topServices($scale),
             'customerBase' => Reports::customerBase($scale),
@@ -105,7 +108,7 @@ class ReportController extends AdminController
         $direction = FinanceReportQueries::direction($request->string('direction')->toString());
 
         return FinanceLogCsv::download(
-            Reports::financeLogRows($from, $to, $direction),
+            Reports::financeLogRows($from, $to, $direction, RoleAccess::allowsAdditionalAction((string) $request->session()->get(RoleAccess::SESSION_KEY, RoleAccess::DEFAULT_ROLE), 'finance', AdminModuleActions::VIEW_SENSITIVE_DATA)),
             FinanceLogCsv::fileName($from, $to, $direction),
         );
     }

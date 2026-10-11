@@ -151,7 +151,7 @@ test('only the default manager role receives finance additional actions', functi
     };
 
     expect($actionsFor('manager'))
-        ->toBe(array_column(AdminModuleActions::for('finance'), 'key'))
+        ->toBe([AdminModuleActions::VIEW_NON_CASH_BALANCE, AdminModuleActions::EDIT_CASH_ENTRY_BACKDATE])
         ->and($actionsFor('finance'))->toBe([])
         ->and($actionsFor('cashier'))->toBe([]);
 });
