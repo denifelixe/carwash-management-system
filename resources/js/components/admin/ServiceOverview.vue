@@ -213,7 +213,7 @@ const groupIcons: Record<string, LucideIcon> = {
                                 v-for="(service, index) in order.services"
                                 :key="index"
                                 class="block"
-                                >{{ service }}</span
+                                >{{ service.split(' → ').join(' · ') }}</span
                             >
                         </span>
                         <span class="mt-1 block text-xs text-slate-500">
