@@ -199,7 +199,10 @@ const groupIcons: Record<string, LucideIcon> = {
                             {{ order.vehicle }}</span
                         >
                         <span class="mt-1 block text-xs text-slate-500"
-                            >{{ order.orderNo }} · {{ order.customer }}</span
+                            >{{ order.orderNo }} · {{ order.customer
+                            }}<template v-if="order.phone">
+                                · {{ order.phone }}</template
+                            ></span
                         >
                         <span class="mt-1 block text-xs text-slate-500">
                             {{ formatDate(order.date) }} ·

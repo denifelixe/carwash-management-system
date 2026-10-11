@@ -93,6 +93,7 @@ export interface CarwashServiceOverviewGroup {
             plate: string;
             vehicle: string;
             customer: string;
+            phone: string;
             status: string;
             date: string;
             time: string | null;

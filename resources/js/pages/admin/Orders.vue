@@ -218,6 +218,7 @@ function buildOrderServiceOverview(
                     plate: order.plate,
                     vehicle: order.vehicle,
                     customer: order.customer,
+                    phone: order.phone,
                     status: order.status,
                     date: operationalOrderDate(order),
                     time: order.time === '—' ? null : order.time,

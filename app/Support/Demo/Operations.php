@@ -10,7 +10,7 @@ use App\Support\Admin\PaymentChannelBreakdown;
 class Operations
 {
     /**
-     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, status: string, date: string, time: string|null}>}>}>
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, phone: string, status: string, date: string, time: string|null}>}>}>
      */
     public static function serviceOverview(string $date, bool $useArrivalDate = false): array
     {
@@ -29,6 +29,7 @@ class Operations
                         'plate' => $order['plate'],
                         'vehicle' => $order['vehicle'],
                         'customer' => $order['customer'],
+                        'phone' => $order['phone'],
                         'status' => $order['status'],
                         'date' => $useArrivalDate ? ($order['arrivalDate'] ?? $order['date']) : $order['date'],
                         'time' => $order['time'] === '—' ? null : $order['time'],
@@ -51,6 +52,7 @@ class Operations
                                 'plate' => $row['plate'],
                                 'vehicle' => $row['vehicle'],
                                 'customer' => $row['customer'],
+                                'phone' => $row['phone'],
                                 'status' => $row['status'],
                                 'date' => $row['date'],
                                 'time' => $row['time'],
