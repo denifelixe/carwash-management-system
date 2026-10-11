@@ -173,9 +173,6 @@ const groupIcons: Record<string, LucideIcon> = {
                                     >
                                         {{ category.count }} kendaraan
                                     </span>
-                                    <ChevronRight
-                                        class="h-4 w-4 text-cyan-600"
-                                    />
                                 </span>
                             </button>
                         </div>
