@@ -94,6 +94,7 @@ export interface CarwashServiceOverviewGroup {
             vehicle: string;
             customer: string;
             phone: string;
+            services: string[];
             status: string;
             date: string;
             time: string | null;

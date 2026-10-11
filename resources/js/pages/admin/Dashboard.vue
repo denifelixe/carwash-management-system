@@ -62,9 +62,9 @@ function applyDate(date: string): void {
     );
 }
 
-function openOrder(orderId: number): void {
+function openOrder(orderId: number, date: string): void {
     serviceOverviewOpen.value = false;
-    const options = { query: { date: props.filters.date, order: orderId } };
+    const options = { query: { date, order: orderId } };
     router.get(
         props.mode === 'demo'
             ? demoAdmin.orders.url(options)

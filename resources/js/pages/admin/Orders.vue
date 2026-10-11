@@ -219,6 +219,17 @@ function buildOrderServiceOverview(
                     vehicle: order.vehicle,
                     customer: order.customer,
                     phone: order.phone,
+                    services: order.serviceItems.map((item) => {
+                        const service = servicesById.get(item.serviceId);
+                        const path = [
+                            service?.categoryGroup,
+                            service?.category,
+                            item.serviceName,
+                            ...Object.values(item.variations ?? {}),
+                        ].filter(Boolean);
+
+                        return `${path.join(' → ')} (${item.quantity})x`;
+                    }),
                     status: order.status,
                     date: operationalOrderDate(order),
                     time: order.time === '—' ? null : order.time,

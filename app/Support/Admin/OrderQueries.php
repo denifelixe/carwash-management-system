@@ -213,7 +213,7 @@ class OrderQueries
      * Vehicles are counted once per category and group, even when an order
      * contains several services or variations from the same category.
      *
-     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, phone: string, status: string, date: string, time: string|null}>}>}>
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, phone: string, services: list<string>, status: string, date: string, time: string|null}>}>}>
      */
     public static function serviceOverviewForDate(string $date, bool $useArrivalDate = false): array
     {
@@ -231,8 +231,17 @@ class OrderQueries
             ->where('orders.status', '!=', 'batal')
             ->whereNull('orders.deleted_at')
             ->select('orders.id as order_id', 'orders.number', 'orders.vehicle_plate', 'orders.vehicle_name', 'orders.customer_name', 'orders.customer_phone', 'orders.status', 'orders.service_date', 'orders.arrived_at', 'services.category_group', 'services.category')
-            ->distinct()
+            ->addSelect('order_services.service_name', 'order_services.variations', 'order_services.quantity')
+            ->orderBy('order_services.service_variation_id')
             ->get();
+
+        $servicesByOrder = $rows->groupBy('order_id')->map(fn ($services): array => $services
+            ->map(function ($service): string {
+                $variations = json_decode($service->variations ?? 'null', true, flags: JSON_THROW_ON_ERROR);
+                $path = [$service->category_group, $service->category, $service->service_name, ...array_values($variations ?? [])];
+
+                return implode(' → ', $path).' ('.$service->quantity.')x';
+            })->values()->all());
 
         return $rows->groupBy('category_group')
             ->map(fn ($group, string $name): array => [
@@ -250,6 +259,7 @@ class OrderQueries
                                 'vehicle' => $row->vehicle_name,
                                 'customer' => $row->customer_name,
                                 'phone' => $row->customer_phone,
+                                'services' => $servicesByOrder->get($row->order_id),
                                 'status' => $row->status,
                                 'date' => $row->arrived_at === null
                                     ? CarbonImmutable::parse($row->service_date)->toDateString()

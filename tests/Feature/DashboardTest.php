@@ -171,6 +171,11 @@ test('dashboard keeps schedule counts while the order page follows arrival day b
     $motorOrder = Order::factory()->create(['service_date' => $date, 'status' => 'proses', 'arrived_at' => null]);
     $attachServices($carOrder, [$carWash, $otherCarWash, $coating]);
     $attachServices($motorOrder, [$motorWash]);
+    $carOrder->serviceVariations()->updateExistingPivot($carWash->serviceVariations()->firstOrFail()->id, [
+        'service_name' => 'Regular Wash',
+        'variations' => json_encode(['Ukuran' => 'Large'], JSON_THROW_ON_ERROR),
+        'quantity' => 2,
+    ]);
     $attachServices(Order::factory()->create(['service_date' => $date, 'status' => 'batal']), [$carWash]);
     $attachServices(Order::factory()->create(['service_date' => '2026-08-29', 'arrived_at' => '2026-08-29 10:00:00']), [$motorWash]);
 
@@ -182,6 +187,11 @@ test('dashboard keeps schedule counts while the order page follows arrival day b
             'vehicle' => $carOrder->vehicle_name,
             'customer' => $carOrder->customer_name,
             'phone' => $carOrder->customer_phone,
+            'services' => [
+                'Cuci → Cuci Mobil → Regular Wash → Large (2)x',
+                "Cuci → Cuci Mobil → {$otherCarWash->name} (1)x",
+                "Coating → Coating Mobil → {$coating->name} (1)x",
+            ],
             'status' => 'selesai',
             'date' => '2026-08-31',
             'time' => '09.15',
@@ -194,6 +204,11 @@ test('dashboard keeps schedule counts while the order page follows arrival day b
                 'vehicle' => $carOrder->vehicle_name,
                 'customer' => $carOrder->customer_name,
                 'phone' => $carOrder->customer_phone,
+                'services' => [
+                    'Cuci → Cuci Mobil → Regular Wash → Large (2)x',
+                    "Cuci → Cuci Mobil → {$otherCarWash->name} (1)x",
+                    "Coating → Coating Mobil → {$coating->name} (1)x",
+                ],
                 'status' => 'selesai',
                 'date' => '2026-08-31',
                 'time' => '09.15',
@@ -205,6 +220,7 @@ test('dashboard keeps schedule counts while the order page follows arrival day b
                 'vehicle' => $motorOrder->vehicle_name,
                 'customer' => $motorOrder->customer_name,
                 'phone' => $motorOrder->customer_phone,
+                'services' => ["Cuci → Cuci Motor → {$motorWash->name} (1)x"],
                 'status' => 'proses',
                 'date' => $date,
                 'time' => null,
@@ -225,9 +241,10 @@ test('dashboard keeps schedule counts while the order page follows arrival day b
             ['name' => 'Cuci', 'count' => 1, 'categories' => [$expected[1]['categories'][0]]],
         ]);
 
-    $this->get(route('admin.orders.index', ['date' => $date, 'order' => $carOrder->id]))
+    $this->get(route('admin.orders.index', ['date' => '2026-08-31', 'order' => $carOrder->id]))
         ->assertInertia(fn (AssertableInertia $page) => $page
-            ->where('focusedOrderId', $carOrder->id));
+            ->where('focusedOrderId', $carOrder->id)
+            ->where('orders.0.id', $carOrder->id));
 });
 
 test('a takings card compares the day against the one before it', function () {

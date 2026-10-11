@@ -29,15 +29,23 @@ withDefaults(
 
 const contentId = useId();
 const isOpen = ref(false);
-const openGroup = ref<string | null>(null);
+const collapsedGroups = ref(new Set<string>());
 const selectedCategory = ref<
     CarwashServiceOverviewGroup['categories'][number] | null
 >(null);
-const emit = defineEmits<{ selectOrder: [orderId: number] }>();
+const emit = defineEmits<{ selectOrder: [orderId: number, date: string] }>();
 
-function selectOrder(orderId: number): void {
+function toggleGroup(name: string): void {
+    if (collapsedGroups.value.has(name)) {
+        collapsedGroups.value.delete(name);
+    } else {
+        collapsedGroups.value.add(name);
+    }
+}
+
+function selectOrder(orderId: number, date: string): void {
     selectedCategory.value = null;
-    emit('selectOrder', orderId);
+    emit('selectOrder', orderId, date);
 }
 
 const groupIcons: Record<string, LucideIcon> = {
@@ -109,11 +117,8 @@ const groupIcons: Record<string, LucideIcon> = {
                         <button
                             type="button"
                             class="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition hover:bg-slate-50"
-                            :aria-expanded="openGroup === group.name"
-                            @click="
-                                openGroup =
-                                    openGroup === group.name ? null : group.name
-                            "
+                            :aria-expanded="!collapsedGroups.has(group.name)"
+                            @click="toggleGroup(group.name)"
                         >
                             <span
                                 class="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-cyan-50 text-cyan-700"
@@ -142,12 +147,14 @@ const groupIcons: Record<string, LucideIcon> = {
                             <ChevronRight
                                 class="h-4 w-4 shrink-0 text-cyan-600 transition-transform"
                                 :class="
-                                    openGroup === group.name ? 'rotate-90' : ''
+                                    !collapsedGroups.has(group.name)
+                                        ? 'rotate-90'
+                                        : ''
                                 "
                             />
                         </button>
                         <div
-                            v-if="openGroup === group.name"
+                            v-if="!collapsedGroups.has(group.name)"
                             class="border-t border-slate-100 px-4 py-2"
                         >
                             <button
@@ -191,7 +198,7 @@ const groupIcons: Record<string, LucideIcon> = {
                     :key="order.id"
                     type="button"
                     class="flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 p-4 text-left transition hover:border-cyan-300 hover:bg-cyan-50/50"
-                    @click="selectOrder(order.id)"
+                    @click="selectOrder(order.id, order.date)"
                 >
                     <span class="min-w-0">
                         <span class="block text-sm font-semibold text-slate-900"
@@ -204,6 +211,14 @@ const groupIcons: Record<string, LucideIcon> = {
                                 · {{ order.phone }}</template
                             ></span
                         >
+                        <span class="mt-1 block text-xs text-slate-500">
+                            <span
+                                v-for="(service, index) in order.services"
+                                :key="index"
+                                class="block"
+                                >{{ service }}</span
+                            >
+                        </span>
                         <span class="mt-1 block text-xs text-slate-500">
                             {{ formatDate(order.date) }} ·
                             {{ order.time ?? 'Jam kedatangan belum tercatat' }}

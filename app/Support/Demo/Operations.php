@@ -10,7 +10,7 @@ use App\Support\Admin\PaymentChannelBreakdown;
 class Operations
 {
     /**
-     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, phone: string, status: string, date: string, time: string|null}>}>}>
+     * @return list<array{name: string, count: int, categories: list<array{name: string, count: int, orders: list<array{id: int, orderNo: string, plate: string, vehicle: string, customer: string, phone: string, services: list<string>, status: string, date: string, time: string|null}>}>}>
      */
     public static function serviceOverview(string $date, bool $useArrivalDate = false): array
     {
@@ -30,6 +30,12 @@ class Operations
                         'vehicle' => $order['vehicle'],
                         'customer' => $order['customer'],
                         'phone' => $order['phone'],
+                        'services' => collect($order['serviceItems'])->map(function (array $item) use ($services): string {
+                            $service = $services->get($item['serviceId']);
+                            $path = [$service['categoryGroup'], $service['category'], $item['serviceName'], ...array_values($item['variations'] ?? [])];
+
+                            return implode(' → ', $path).' ('.$item['quantity'].')x';
+                        })->all(),
                         'status' => $order['status'],
                         'date' => $useArrivalDate ? ($order['arrivalDate'] ?? $order['date']) : $order['date'],
                         'time' => $order['time'] === '—' ? null : $order['time'],
@@ -53,6 +59,7 @@ class Operations
                                 'vehicle' => $row['vehicle'],
                                 'customer' => $row['customer'],
                                 'phone' => $row['phone'],
+                                'services' => $row['services'],
                                 'status' => $row['status'],
                                 'date' => $row['date'],
                                 'time' => $row['time'],

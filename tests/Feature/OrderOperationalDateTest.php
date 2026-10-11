@@ -97,7 +97,10 @@ const props = { mode: 'demo', capabilities: { update: true }, filters: { date: '
     { id: 1, categoryGroup: 'Cuci', category: 'Mobil' },
     { id: 2, categoryGroup: 'Cuci', category: 'Mobil' },
 ] };
-const booking = { id: 1, source: 'booking', status: 'booking', date: '2026-09-04', time: '—', serviceIds: [1, 2], plate: 'B8120DS', orderNo: 'BK1', customer: 'Member', vehicle: 'Civic' };
+const booking = { id: 1, source: 'booking', status: 'booking', date: '2026-09-04', time: '—', serviceIds: [1, 2], serviceItems: [
+    { serviceId: 1, serviceName: 'Regular Wash', variations: { Ukuran: 'Large' }, quantity: 2 },
+    { serviceId: 2, serviceName: 'Extra Wash', variations: null, quantity: 1 },
+], plate: 'B8120DS', orderNo: 'BK1', customer: 'Member', vehicle: 'Civic' };
 const orderList = { value: [booking] };
 const computed = fn => ({ get value() { return fn(); } });
 const clock = class extends Date { constructor() { super('2026-09-06T16:21:00Z'); } };
@@ -105,6 +108,10 @@ const { scopedOrders, unfinishedPreviousOrders, displayedServiceOverview, setSta
 assert.equal(scopedOrders.value.length, 1);
 assert.equal(displayedServiceOverview.value[0].count, 1);
 assert.equal(displayedServiceOverview.value[0].categories[0].count, 1);
+assert.deepEqual(displayedServiceOverview.value[0].categories[0].orders[0].services, [
+    'Cuci → Mobil → Regular Wash → Large (2)x',
+    'Cuci → Mobil → Extra Wash (1)x',
+]);
 setStatus(booking, 'menunggu');
 assert.equal(booking.date, '2026-09-04');
 assert.equal(booking.arrivalDate, '2026-09-06');
@@ -117,6 +124,63 @@ assert.equal(displayedServiceOverview.value[0].categories[0].orders[0].date, '20
 props.filters.date = '2026-09-07';
 assert.deepEqual(scopedOrders.value, []);
 assert.deepEqual(unfinishedPreviousOrders.value.map(order => order.id), [1]);
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('dashboard vehicle links open the selected order on its operational date', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/pages/admin/Dashboard.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('Dashboard.ts', source, ts.ScriptTarget.Latest, true);
+const declaration = ast.statements.find(node => ts.isFunctionDeclaration(node) && node.name.text === 'openOrder');
+const code = ts.transpile(declaration.getText(ast), { target: ts.ScriptTarget.ES2020 });
+for (const mode of ['live', 'demo']) {
+    let visit;
+    const props = { mode, filters: { date: '2026-09-04' } };
+    const serviceOverviewOpen = { value: true };
+    const router = { get: url => { visit = url; } };
+    const indexOrder = { url: options => ({ mode: 'live', ...options }) };
+    const demoAdmin = { orders: { url: options => ({ mode: 'demo', ...options }) } };
+    const openOrder = new Function('props', 'serviceOverviewOpen', 'router', 'indexOrder', 'demoAdmin', `${code}; return openOrder;`)(props, serviceOverviewOpen, router, indexOrder, demoAdmin);
+    openOrder(7, '2026-09-06');
+    assert.deepEqual(visit, { mode, query: { date: '2026-09-06', order: 7 } });
+    assert.equal(serviceOverviewOpen.value, false);
+}
+JS;
+
+    $result = Process::path(base_path())->run(['node', '-e', $script]);
+
+    expect($result->successful())->toBeTrue($result->errorOutput());
+});
+
+test('service overview groups start open and toggle independently', function () {
+    $script = <<<'JS'
+const fs = require('node:fs');
+const ts = require('typescript');
+const assert = require('node:assert/strict');
+const source = fs.readFileSync('resources/js/components/admin/ServiceOverview.vue', 'utf8').split('<script setup lang="ts">')[1].split('</script>')[0];
+const ast = ts.createSourceFile('ServiceOverview.ts', source, ts.ScriptTarget.Latest, true);
+const code = ts.transpile(ast.statements.filter(node =>
+    ts.isFunctionDeclaration(node) && node.name.text === 'toggleGroup'
+    || ts.isVariableStatement(node) && node.declarationList.declarations.some(declaration => declaration.name.text === 'collapsedGroups')
+).map(node => node.getText(ast)).join('\n'), { target: ts.ScriptTarget.ES2020 });
+const ref = value => ({ value });
+const { collapsedGroups, toggleGroup } = new Function('ref', `${code}; return { collapsedGroups, toggleGroup };`)(ref);
+assert.deepEqual([...collapsedGroups.value], []);
+toggleGroup('Cuci');
+assert.deepEqual([...collapsedGroups.value], ['Cuci']);
+toggleGroup('Paket');
+assert.deepEqual([...collapsedGroups.value], ['Cuci', 'Paket']);
+toggleGroup('Cuci');
+assert.deepEqual([...collapsedGroups.value], ['Paket']);
+toggleGroup('Paket');
+assert.deepEqual([...collapsedGroups.value], []);
 JS;
 
     $result = Process::path(base_path())->run(['node', '-e', $script]);
